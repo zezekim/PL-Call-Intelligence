@@ -28,7 +28,7 @@ import structlog
 from callsentry.config import get_settings
 from callsentry.core.providers import Attempt, Component, ProviderSpec, get_registry
 from callsentry.intel import audio
-from callsentry.intel.transcript import Segment, renumber
+from callsentry.intel.transcript import Segment, exact_speakers, renumber
 
 log = structlog.get_logger(__name__)
 
@@ -54,7 +54,7 @@ class Transcription:
     segments: list[Segment]
     provider: str
     tier: str
-    # True when segments carry real speaker labels (diarization or channels).
+    # True when speaker labels are exact (one recording channel per person).
     diarized: bool
     duration_seconds: float
     cost_usd: float = 0.0
@@ -62,7 +62,24 @@ class Transcription:
 
 
 def parse_deepgram(data: dict[str, Any], *, multichannel: bool) -> list[Segment]:
-    """Deepgram `utterances` -> segments. Speaker is the channel on stereo."""
+    """Deepgram response -> segments.
+
+    Stereo: one utterance stream per channel; the channel is the speaker.
+
+    Mono: sentences from the diarized paragraphs. Sentence granularity matters
+    when diarization fails - on narrow-band phone audio Deepgram sometimes
+    hears one voice, and an utterance then spans both people. With fewer than
+    two speakers the labels are dropped, so the roles are attributed per
+    sentence from the conversation instead of trusting a single label.
+    """
+    if not multichannel:
+        sentences = _deepgram_sentences(data)
+        if sentences:
+            if len({s.speaker for s in sentences}) < 2:
+                for s in sentences:
+                    s.speaker = ""
+            return renumber(sentences)
+
     segments: list[Segment] = []
     for utt in (data.get("results") or {}).get("utterances") or []:
         text = str(utt.get("transcript") or "").strip()
@@ -81,6 +98,30 @@ def parse_deepgram(data: dict[str, Any], *, multichannel: bool) -> list[Segment]
     return renumber(segments)
 
 
+def _deepgram_sentences(data: dict[str, Any]) -> list[Segment]:
+    channels = (data.get("results") or {}).get("channels") or []
+    if not channels:
+        return []
+    alternatives = channels[0].get("alternatives") or [{}]
+    paragraphs = (alternatives[0].get("paragraphs") or {}).get("paragraphs") or []
+    out: list[Segment] = []
+    for paragraph in paragraphs:
+        speaker = str(paragraph.get("speaker", 0))
+        for sentence in paragraph.get("sentences") or []:
+            text = str(sentence.get("text") or "").strip()
+            if text:
+                out.append(
+                    Segment(
+                        id=0,
+                        start=float(sentence.get("start", 0.0)),
+                        end=float(sentence.get("end", 0.0)),
+                        text=text,
+                        speaker=speaker,
+                    )
+                )
+    return out
+
+
 async def _deepgram(path: Path, info: audio.AudioInfo) -> Transcription:
     settings = get_settings()
     multichannel = info.channels >= 2
@@ -89,6 +130,7 @@ async def _deepgram(path: Path, info: audio.AudioInfo) -> Transcription:
         "smart_format": "true",
         "punctuate": "true",
         "utterances": "true",
+        "paragraphs": "true",
         # Split turns at shorter pauses than the default so a quick
         # back-and-forth isn't merged into one utterance.
         "utt_split": "0.8",
@@ -118,7 +160,7 @@ async def _deepgram(path: Path, info: audio.AudioInfo) -> Transcription:
         segments=segments,
         provider="deepgram",
         tier="cloud",
-        diarized=len({s.speaker for s in segments}) > 1,
+        diarized=exact_speakers(segments),
         duration_seconds=duration,
         cost_usd=round(duration / 60 * DEEPGRAM_PER_MINUTE * channels, 6),
     )

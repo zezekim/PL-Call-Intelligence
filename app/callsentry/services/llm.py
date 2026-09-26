@@ -293,6 +293,10 @@ class LLMService:
         max_tokens: int,
     ) -> LLMResult:
         model = self.settings.call_intel_model
+        extra: dict[str, Any] = {}
+        if model.startswith(("claude-opus-5", "claude-fable-5")):
+            # Re-run on a fallback model if a safety classifier declines.
+            extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
         async with self._claude().beta.messages.stream(
             model=model,
             max_tokens=max_tokens,
@@ -305,9 +309,7 @@ class LLMService:
                 "effort": effort,
                 "format": {"type": "json_schema", "schema": schema},
             },
-            # Re-run on a fallback model if a safety classifier declines.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
+            **extra,
         ) as stream:
             resp = await stream.get_final_message()
 

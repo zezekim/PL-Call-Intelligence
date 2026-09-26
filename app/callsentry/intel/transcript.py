@@ -86,11 +86,28 @@ def clock(seconds: float) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+def exact_speakers(segments: list[Segment]) -> bool:
+    """True when speaker labels are recording channels - one person per channel.
+
+    Channel labels are exact. Voice-separation labels on mono phone audio are
+    not: they are shown to the model as hints and roles are attributed per
+    sentence from the conversation.
+    """
+    labels = {s.speaker for s in segments}
+    return len(labels) > 1 and all(label.startswith("ch") for label in labels)
+
+
+def _label(speaker: str) -> str:
+    if not speaker:
+        return "?"
+    return f"SPEAKER {speaker}" if speaker.startswith("ch") else f"VOICE {speaker}?"
+
+
 def render(segments: list[Segment], *, by_role: bool) -> str:
     """Numbered transcript for the model: `[12] 01:23 REP: text`."""
     lines = []
     for s in segments:
-        who = s.role.upper() if by_role else (f"SPEAKER {s.speaker}" if s.speaker else "?")
+        who = s.role.upper() if by_role else _label(s.speaker)
         lines.append(f"[{s.id}] {clock(s.start)} {who}: {s.text}")
     return "\n".join(lines)
 

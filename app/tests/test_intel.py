@@ -18,6 +18,7 @@ from callsentry.intel.transcript import (
     CUSTOMER,
     REP,
     Segment,
+    exact_speakers,
     merge_adjacent,
     quote_score,
     render,
@@ -207,7 +208,16 @@ def test_merge_joins_same_speaker_turns_only():
 def test_render_numbers_lines_for_citation():
     text = render(_segments(), by_role=True)
     assert text.splitlines()[0].startswith("[1] 00:00 REP: ")
-    assert render(_segments(), by_role=False).splitlines()[1].startswith("[2] 00:03 SPEAKER 1:")
+    assert render(_segments(), by_role=False).splitlines()[1].startswith("[2] 00:03 VOICE 1?:")
+
+
+def test_only_channel_labels_are_exact():
+    segs = _segments()
+    assert not exact_speakers(segs)
+    for s in segs:
+        s.speaker = "ch0" if s.role == REP else "ch1"
+    assert exact_speakers(segs)
+    assert render(segs, by_role=False).splitlines()[0].startswith("[1] 00:00 SPEAKER ch0:")
 
 
 def test_roles_from_speaker_map():
@@ -220,6 +230,14 @@ def test_roles_from_speaker_map():
         diarized=True,
     )
     assert [s.role for s in segs] == [REP, CUSTOMER, REP]
+
+
+@pytest.mark.parametrize("label", ["SPEAKER 0", "speaker 0", "0"])
+def test_roles_accept_the_label_as_rendered(label):
+    segs = _segments()
+    analyze.assign_roles(segs, {"speaker_roles": [{"speaker": label, "role": "rep"}]},
+                         diarized=True)
+    assert segs[0].role == REP
 
 
 def test_roles_from_segment_ids_when_not_diarized():
@@ -243,6 +261,31 @@ def test_deepgram_diarized_utterances():
         (1, "0", "Summit Pest, this is Jo."),
         (2, "1", "Hi there."),
     ]
+
+
+def _paragraphs(*paras):
+    return {"results": {"channels": [{"alternatives": [{"paragraphs": {"paragraphs": [
+        {"speaker": spk, "sentences": [{"text": t, "start": a, "end": b} for t, a, b in sents]}
+        for spk, sents in paras
+    ]}}]}]}}
+
+
+def test_deepgram_mono_uses_sentences_with_speaker_labels():
+    data = _paragraphs(
+        (0, [("Summit Pest, this is Jo.", 0.2, 2.0), ("How can I help?", 2.1, 3.0)]),
+        (1, [("I want to cancel.", 3.5, 5.0)]),
+    )
+    segs = parse_deepgram(data, multichannel=False)
+    assert [(s.speaker, s.text) for s in segs] == [
+        ("0", "Summit Pest, this is Jo."), ("0", "How can I help?"), ("1", "I want to cancel."),
+    ]
+
+
+def test_deepgram_single_speaker_drops_labels_for_attribution():
+    data = _paragraphs((0, [("Summit Pest, this is Jo.", 0.2, 2.0),
+                            ("I want to cancel.", 3.5, 5.0)]))
+    segs = parse_deepgram(data, multichannel=False)
+    assert [s.speaker for s in segs] == ["", ""]
 
 
 def test_deepgram_multichannel_uses_channel_as_speaker():
@@ -297,3 +340,50 @@ def test_outcome_follows_the_lens():
 )
 def test_external_ref_from_filename(name, ref):
     assert external_ref(name) == ref
+
+
+# --- Consensus across scoring runs -----------------------------------------------
+
+
+def _run(statuses: dict[str, str], tag: str) -> dict[str, Any]:
+    return {
+        "items": [{"key": k, "status": v, "reason": f"{tag}:{k}", "evidence": []}
+                  for k, v in statuses.items()],
+        "overall_feedback": tag,
+    }
+
+
+def test_consensus_takes_the_majority_and_records_agreement():
+    runs = [
+        _run({"validate": "met", "close": "missed"}, "a"),
+        _run({"validate": "met", "close": "met"}, "b"),
+        _run({"validate": "missed", "close": "met"}, "c"),
+    ]
+    judgements, best = analyze.consensus(runs)
+    assert judgements["validate"]["status"] == "met"
+    assert judgements["validate"]["agreement"] == "2/3"
+    assert judgements["close"]["status"] == "met"
+    # Run b matches the majority on every item, so its coaching is used.
+    assert best["overall_feedback"] == "b"
+
+
+def test_consensus_reason_explains_the_majority_verdict():
+    runs = [
+        _run({"validate": "missed"}, "a"),
+        _run({"validate": "met"}, "b"),
+        _run({"validate": "met"}, "c"),
+    ]
+    judgements, _ = analyze.consensus(runs)
+    assert judgements["validate"]["reason"] in ("b:validate", "c:validate")
+
+
+def test_consensus_tie_is_a_miss():
+    runs = [_run({"validate": "met"}, "a"), _run({"validate": "missed"}, "b")]
+    judgements, _ = analyze.consensus(runs)
+    assert judgements["validate"]["status"] == "missed"
+    assert judgements["validate"]["agreement"] == "1/2"
+
+
+def test_unanimous_single_run():
+    judgements, _ = analyze.consensus([_run({"validate": "met"}, "a")])
+    assert judgements["validate"]["agreement"] == "1/1"

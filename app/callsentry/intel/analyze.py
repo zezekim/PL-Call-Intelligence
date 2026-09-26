@@ -14,11 +14,14 @@ a grade can always be traced back to the lines of the call that earned it.
 
 from __future__ import annotations
 
+import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 
+from callsentry.config import get_settings
 from callsentry.intel import rubrics
 from callsentry.intel.rubrics import CallType, Scorecard
 from callsentry.intel.transcript import (
@@ -35,7 +38,7 @@ from callsentry.services.llm import LLMResult, get_llm
 log = structlog.get_logger(__name__)
 
 # Bump when a prompt or schema changes, so re-scored calls can be told apart.
-PROMPT_VERSION = "2026-09-26.1"
+PROMPT_VERSION = "2026-09-26.3"
 
 SOLUTION_BANK = [
     "free_reservice",
@@ -179,9 +182,12 @@ misheard; words may be dropped. Each line is `[segment id] mm:ss SPEAKER: text`.
 - The rep works for the pest control company and usually answers with a greeting like \
 "<Company>, this is <name>". The customer is the caller (or the person the rep calls).
 - An automated menu, hold message or voicemail greeting is role "other".
-- If lines are labelled SPEAKER x, map every label in `speaker_roles`.
-- If lines have no speaker labels ("?"), list in `rep_segment_ids` every segment the rep \
-spoke, judging from content and turn-taking.
+- Lines labelled SPEAKER chN come from separate recording channels, one person each: map \
+every label in `speaker_roles` and leave `rep_segment_ids` empty.
+- Otherwise (lines labelled VOICE x? or ?), the voice labels are unreliable hints from \
+automatic separation of mono phone audio. Decide who spoke each line from its content and \
+the turn-taking, and list in `rep_segment_ids` every segment the rep spoke. Leave \
+`speaker_roles` empty.
 - `rep_name` is the name the rep introduces themselves with (first name is fine), with the \
 segment id where they say it. If they never say it, use "" and 0.
 
@@ -207,8 +213,12 @@ solicitor or vendor, internal staff call, or a call that ends before the rep can
 what happens next.
 - `customer_wins`: what the customer values (wants, interests, needs) as short phrases, e.g. \
 "pet-safe treatment", "fast appointment", "keep costs down".
-- Fill `sales`, `retention` and `service` for the matching call type; for the others set \
-outcome/resolution to "not_applicable", strings to "" and lists to [].
+- Fill the block that matches the call type - `sales` for sales, `retention` for \
+retention, `service` for reservice, scheduling, billing and other_service calls (inbound or \
+outbound). Set the other blocks' outcome/resolution to "not_applicable", strings to "" and \
+lists to [].
+- service.resolution: did the reason for the call get handled by the end? resolved / \
+partially / unresolved.
 - sales.outcome: sold = agreed to start service or booked the initial service; follow_up = \
 interested but deciding / needs a callback; not_sold = declined.
 - sales.objections: each concern the customer raised that stood between them and buying \
@@ -237,6 +247,11 @@ Reps should affirm ("got it", "absolutely"), never interrupt, and ask follow-up 
 that use what the customer already said.
 
 ## How to grade
+- The standard for every item: would the rep's manager, reviewing this call against the \
+scorecard, tick the box? Award it when the rep clearly performs the step's purpose, even \
+briefly or imperfectly. Do not award it for a phrase that only resembles the step by \
+accident, or for something the customer did instead of the rep. Where an item lists what \
+counts and what does not, follow that exactly.
 - Judge only the rep, and only on what the transcript shows. The transcript is \
 machine-generated: ignore garbled words and never penalise transcription errors.
 - Credit the behaviour, not the exact script wording. A functionally equivalent line counts.
@@ -362,9 +377,9 @@ def assign_roles(segments: list[Segment], triage: dict[str, Any], *, diarized: b
         roles = {}
         for entry in triage.get("speaker_roles") or []:
             role = entry.get("role")
-            roles[str(entry.get("speaker"))] = (
-                REP if role == "rep" else CUSTOMER if role == "customer" else UNKNOWN
-            )
+            # The model may echo the label as rendered ("SPEAKER 0") or bare ("0").
+            label = re.sub(r"(?i)^speaker\s*", "", str(entry.get("speaker", ""))).strip()
+            roles[label] = REP if role == "rep" else CUSTOMER if role == "customer" else UNKNOWN
         apply_roles(segments, roles)
         return
     rep_ids = {int(i) for i in triage.get("rep_segment_ids") or [] if isinstance(i, int)}
@@ -397,7 +412,8 @@ def apply_manual_rules(
                 # "On sales calls where the customer doesn't give any objections
                 # ... the Sales Rep automatically gets 4 points."
                 j["status"] = "not_needed"
-                j["reason"] = j.get("reason") or "No objections raised - awarded automatically."
+                j["agreement"] = "rule"
+                j["reason"] = "No objections were raised, so this point is awarded automatically."
             elif j.get("status") == "not_needed":
                 j["status"] = "missed"
     if call_type == CallType.RETENTION:
@@ -408,6 +424,7 @@ def apply_manual_rules(
         )
         if exempt and j.get("status") != "met":
             j["status"] = "not_needed"
+            j["agreement"] = "rule"
         elif not exempt and j.get("status") == "not_needed":
             j["status"] = "missed"
 
@@ -425,6 +442,8 @@ async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
         raise AnalysisFailed("call classification returned no result")
 
     assign_roles(segments, triage, diarized=diarized)
+    if not any(s.role == REP for s in segments):
+        raise AnalysisFailed("could not tell which speaker is the rep")
 
     call_type = str(triage["call_type"])
     rep_name = (triage.get("rep_name") or "").strip() or None
@@ -445,17 +464,33 @@ async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
         return analysis
 
     context = _call_context(call_type, triage)
-    scored, scoring_llm = await llm.analyse_json(
-        SCORING_SYSTEM + "\n\n" + _scorecard_text(scorecard),
-        f"{context}\n\nTranscript:\n\n{render(segments, by_role=True)}",
-        _scoring_schema(scorecard),
-        effort="high",
+    runs = max(1, get_settings().intel_scoring_runs)
+    outcomes = await asyncio.gather(
+        *(
+            llm.analyse_json(
+                SCORING_SYSTEM + "\n\n" + _scorecard_text(scorecard),
+                f"{context}\n\nTranscript:\n\n{render(segments, by_role=True)}",
+                _scoring_schema(scorecard),
+                effort="high",
+            )
+            for _ in range(runs)
+        ),
+        return_exceptions=True,
     )
-    analysis.llm_results.append(scoring_llm)
-    if not scored or not scored.get("items"):
-        raise AnalysisFailed("scoring returned no result")
+    scorings: list[dict[str, Any]] = []
+    for outcome in outcomes:
+        if isinstance(outcome, BaseException):
+            log.warning("intel.scoring_run_failed", error=str(outcome))
+            continue
+        scored_run, run_llm = outcome
+        analysis.llm_results.append(run_llm)
+        if scored_run and scored_run.get("items"):
+            scorings.append(scored_run)
+    # A majority needs more than half the requested runs to have answered.
+    if len(scorings) * 2 <= runs:
+        raise AnalysisFailed(f"scoring returned {len(scorings)} of {runs} results")
 
-    judgements = {str(j.get("key")): dict(j) for j in scored["items"]}
+    judgements, scored = consensus(scorings)
     apply_manual_rules(call_type, judgements, triage)
     items, score = rubrics.tally(scorecard, judgements)
 
@@ -477,6 +512,7 @@ async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
                 "auto_awarded": item.auto_awarded,
                 "reason": item.reason,
                 "evidence": evidence,
+                "agreement": judgements.get(item.key, {}).get("agreement"),
             }
         )
 
@@ -492,6 +528,45 @@ async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
         "coaching": [_moment(c, segments) for c in scored.get("coaching") or []],
     }
     return analysis
+
+
+def consensus(
+    scorings: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Majority verdict per item across independent scoring runs.
+
+    One run can tip a borderline item either way; the majority is stable. Each
+    item records how many runs agreed, so a split decision is shown as
+    borderline rather than presented as certain. Ties go to "missed" - a point
+    has to be earned. Reasons, evidence and coaching come from the run that
+    agrees with the majority most often, so they explain the grade shown.
+    """
+    per_run = [
+        {str(j.get("key")): dict(j) for j in run.get("items") or []} for run in scorings
+    ]
+    keys = list(dict.fromkeys(k for run in per_run for k in run))
+    verdicts: dict[str, str] = {}
+    agreement: dict[str, str] = {}
+    for key in keys:
+        votes = [run[key].get("status", "missed") for run in per_run if key in run]
+        counts = {status: votes.count(status) for status in set(votes)}
+        top = max(counts.values())
+        leaders = [status for status, n in counts.items() if n == top]
+        verdicts[key] = leaders[0] if len(leaders) == 1 else "missed"
+        agreement[key] = f"{counts.get(verdicts[key], 0)}/{len(per_run)}"
+
+    def matches(run: dict[str, dict[str, Any]]) -> int:
+        return sum(1 for k, v in verdicts.items() if run.get(k, {}).get("status") == v)
+
+    best = max(range(len(per_run)), key=lambda i: matches(per_run[i]))
+    judgements: dict[str, dict[str, Any]] = {}
+    for key, status in verdicts.items():
+        source = per_run[best].get(key)
+        if source is None or source.get("status") != status:
+            # The representative run disagrees here; explain the majority view.
+            source = next(run[key] for run in per_run if run.get(key, {}).get("status") == status)
+        judgements[key] = {**source, "status": status, "agreement": agreement[key]}
+    return judgements, scorings[best]
 
 
 def _call_context(call_type: str, triage: dict[str, Any]) -> str:

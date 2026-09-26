@@ -162,14 +162,16 @@ _CONCLUSION = Item(
     "Provide a Conclusion",
     "Verify",
     "The rep wraps up loose ends and sets expectations for what happens next: confirms "
-    "details such as date/time, name, address, email, notes for the tech, pets, gate codes.",
+    "details such as date/time, name, address, email, notes for the tech, pets, gate codes. "
+    "Does not count: only 'you're all set' with no detail.",
 )
 _THANK = Item(
     "thank_customer",
     "Thank the Customer",
     "Verify",
     "The rep genuinely thanks the customer near the end of the call (a sincere thank-you "
-    "for calling / for their business, not only a reflexive 'thanks, bye').",
+    "for calling / for their business). Does not count: only a reflexive 'thanks, bye' or "
+    "'have a good one', or thanks said only by the customer.",
 )
 _FINAL_INFO = Item(
     "final_information",
@@ -222,7 +224,9 @@ RETENTION = Scorecard(
             "Transition Statement",
             "Validation",
             "The rep transitions into looking at the account (e.g. 'what's the address on "
-            "the account? ... let me take a quick look here').",
+            "the account? ... let me take a quick look here'). Counts: asking for the "
+            "address/account in order to pull it up, or saying they'll take a look. Does not "
+            "count: going straight from the cancel request to processing it.",
         ),
         Item(
             "do_research",
@@ -283,21 +287,27 @@ RETENTION = Scorecard(
             "Provide a Conclusion",
             "Verify",
             "The rep wraps up and sets clear expectations for what happens next, whether "
-            "saved or cancelled.",
+            "saved or cancelled. Counts: confirming what was done and at least one concrete "
+            "next step or detail (effective date, no further charges, next service date, "
+            "confirmation email). Does not count: only 'you're all set'.",
         ),
         Item(
             "thank_customer",
             "Thank the Customer",
             "Verify",
-            "The rep genuinely thanks the customer.",
+            "The rep genuinely thanks the customer (for calling, for their business, for "
+            "being a customer). Does not count: only 'have a good one' / 'bye', or thanks "
+            "said only by the customer.",
         ),
         Item(
             "leave_teaser",
             "Leave a Teaser",
             "Verify",
             "The rep ends on a positive note with an incentive or open door to come back "
-            "(e.g. a free initial service if they return). On a saved account, a positive "
-            "forward-looking close counts.",
+            "(e.g. a free initial service if they return). Counts: an explicit invitation to "
+            "restart service later (an incentive is best practice, not required). On a saved "
+            "account, a positive forward-looking close counts. Does not count: a generic "
+            "'call us if you need anything' with no mention of coming back.",
         ),
     ),
     gold_at=12,
@@ -398,6 +408,10 @@ SALES = Scorecard(
     notes=(
         "If the customer raised no objections, the four objection items are awarded "
         "automatically.",
+        "Inspection-first sales (commercial accounts, termites, wildlife and other jobs the "
+        "company only quotes after an inspection): explaining clearly what the inspection "
+        "involves and why meets Present Solution, and explaining how and when the price "
+        "will be given meets Pricing.",
     ),
 )
 

@@ -17,7 +17,7 @@ from callsentry.core.providers import ProviderUnavailable
 from callsentry.intel import analyze, audio
 from callsentry.intel.analyze import Analysis, AnalysisFailed
 from callsentry.intel.transcribe import EmptyTranscript, transcribe
-from callsentry.intel.transcript import Segment, merge_adjacent, plain_text
+from callsentry.intel.transcript import Segment, exact_speakers, merge_adjacent, plain_text
 from callsentry.models import (
     Call,
     CallAnalysis,
@@ -99,7 +99,7 @@ async def process(session: AsyncSession, call_id: uuid.UUID, *, reuse_transcript
             segments = [Segment.from_dict(s) for s in call.segments]
         else:
             segments = await _transcribe(session, call)
-        diarized = len({s.speaker for s in segments}) > 1
+        diarized = exact_speakers(segments)
 
         call.processing_status = ProcessingStatus.ANALYZING
         await session.commit()

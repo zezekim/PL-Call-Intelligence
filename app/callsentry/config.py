@@ -57,12 +57,14 @@ class Settings(BaseSettings):
     # --- Call intelligence --------------------------------------------------
     # Model that classifies and scores recorded calls. Offline, so accuracy
     # wins over latency.
-    call_intel_model: str = "claude-opus-5"
+    call_intel_model: str = "claude-sonnet-5"
     # Default transcription engine for uploads: auto | deepgram | local.
     call_stt_engine: str = "auto"
     deepgram_model: str = "nova-3"
     # Where uploaded recordings are stored. Never inside the repository.
     upload_dir: str = "./data/uploads"
+    # Independent scoring runs per call; each item takes the majority verdict.
+    intel_scoring_runs: int = 3
     # Recordings processed in parallel by the in-process job runner.
     intel_workers: int = 2
 
