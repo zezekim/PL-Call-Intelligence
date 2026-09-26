@@ -31,6 +31,7 @@ log = logging.getLogger("worker")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base.en")
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_SAMPLE_RATE = 24_000
+MODEL_DIR = os.getenv("MODEL_DIR", "/models")
 
 app = FastAPI(title="CallSentry Worker", version="1.0.0")
 
@@ -54,7 +55,7 @@ def _load_whisper() -> Any:
                     WHISPER_MODEL,
                     device="cpu",
                     compute_type="int8",
-                    download_root="/models",
+                    download_root=MODEL_DIR,
                 )
                 log.info("whisper ready")
     return _whisper
@@ -147,6 +148,48 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
         "text": text,
         "duration_seconds": round(float(getattr(info, "duration", 0.0)), 2),
         "language": getattr(info, "language", "en"),
+        "provider": "whisper.cpp",
+    }
+
+
+@app.post("/stt/segments")
+async def transcribe_segments(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Offline transcription of a recorded call, with segment timestamps.
+
+    Tuned for accuracy rather than latency: beam search, and no conditioning
+    on previous text, which stops Whisper looping on a repeated phrase over a
+    long, noisy phone recording.
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty audio")
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+        tmp.write(data)
+        tmp.flush()
+        try:
+            model = _load_whisper()
+            segments, info = model.transcribe(
+                tmp.name,
+                beam_size=5,
+                vad_filter=True,
+                condition_on_previous_text=False,
+                language="en",
+            )
+            out = [
+                {"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()}
+                for s in segments
+                if s.text.strip()
+            ]
+        except Exception as exc:
+            log.exception("stt segments failed")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, f"transcription failed: {exc}"
+            ) from exc
+
+    return {
+        "segments": out,
+        "duration_seconds": round(float(getattr(info, "duration", 0.0)), 2),
         "provider": "whisper.cpp",
     }
 

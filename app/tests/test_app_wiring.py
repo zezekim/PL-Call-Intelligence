@@ -78,6 +78,12 @@ PUBLIC_ROUTES = [
     ("delete", "/admin/businesses/{business_id}"),
     ("get", "/admin/costs"),
     ("get", "/health"),
+    ("post", "/intel/uploads"),
+    ("get", "/intel/calls"),
+    ("get", "/intel/calls/{call_id}"),
+    ("post", "/intel/calls/{call_id}/reprocess"),
+    ("delete", "/intel/calls/{call_id}"),
+    ("get", "/intel/reps"),
 ]
 
 

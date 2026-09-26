@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /srv
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
+    && apt-get install -y --no-install-recommends build-essential curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
@@ -18,7 +18,7 @@ COPY alembic ./alembic
 COPY callsentry ./callsentry
 COPY tests ./tests
 
-RUN pip install --no-deps -e .
+RUN pip install --no-deps -e . && mkdir -p /data/uploads
 
 EXPOSE 8000
 

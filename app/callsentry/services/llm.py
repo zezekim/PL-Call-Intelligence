@@ -244,6 +244,111 @@ class LLMService:
             return {}, result
 
 
+    async def analyse_json(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        effort: str = "high",
+        max_tokens: int = 32_000,
+    ) -> tuple[dict[str, Any], LLMResult]:
+        """Schema-constrained offline analysis on the call-intelligence model.
+
+        Claude only. A small local model grading a twenty-minute sales call
+        produces plausible, wrong scores - worse than no score - so there is
+        no local or mock tier: if Claude is unavailable this raises
+        ProviderUnavailable and the caller marks the call as failed.
+
+        Streams because long transcripts with adaptive thinking can outlast a
+        non-streaming HTTP timeout.
+        """
+        attempts: list[Attempt] = []
+
+        async def claude(_: ProviderSpec) -> LLMResult:
+            return await self._claude_analysis(
+                system, user, schema, effort=effort, max_tokens=max_tokens
+            )
+
+        result, _spec = await self.registry.run(
+            Component.LLM, {"claude": claude}, attempts=attempts, order=["claude"]
+        )
+        result.attempts = attempts
+        if result.refused:
+            return {}, result
+        try:
+            parsed = json.loads(result.text)
+        except json.JSONDecodeError as exc:
+            log.warning("llm.analysis_parse_failed", error=str(exc))
+            return {}, result
+        return (parsed if isinstance(parsed, dict) else {}), result
+
+    async def _claude_analysis(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        effort: str,
+        max_tokens: int,
+    ) -> LLMResult:
+        model = self.settings.call_intel_model
+        async with self._claude().beta.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            # The rubric system prompt is identical for every call scored on
+            # the same scorecard, so it is cached across the whole batch.
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+            thinking={"type": "adaptive"},
+            output_config={
+                "effort": effort,
+                "format": {"type": "json_schema", "schema": schema},
+            },
+            # Re-run on a fallback model if a safety classifier declines.
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+        ) as stream:
+            resp = await stream.get_final_message()
+
+        usage = resp.usage
+        price_in, price_out = ANALYSIS_PRICES.get(model, (CLAUDE_INPUT_PER_MTOK,
+                                                          CLAUDE_OUTPUT_PER_MTOK))
+        cost = (
+            (usage.input_tokens + (usage.cache_creation_input_tokens or 0) * 1.25
+             + (usage.cache_read_input_tokens or 0) * 0.1) / 1_000_000 * price_in
+            + usage.output_tokens / 1_000_000 * price_out
+        )
+        if resp.stop_reason == "refusal":
+            log.warning("llm.analysis_refused",
+                        category=getattr(resp.stop_details, "category", None))
+            return LLMResult(text="", provider="claude", tier="cloud",
+                             input_tokens=usage.input_tokens,
+                             output_tokens=usage.output_tokens,
+                             cost_usd=round(cost, 6), refused=True)
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError("analysis hit max_tokens before finishing")
+
+        text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        return LLMResult(
+            text=text,
+            provider="claude",
+            tier="cloud",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cost_usd=round(cost, 6),
+        )
+
+
+# USD per million tokens (input, output) for the call-intelligence model.
+ANALYSIS_PRICES: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (5.00, 25.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-fable-5-1": (10.00, 50.00),
+}
+
+
 _service: LLMService | None = None
 
 

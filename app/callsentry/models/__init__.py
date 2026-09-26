@@ -2,8 +2,9 @@
 
 from callsentry.models.appointment import Appointment, AppointmentStatus
 from callsentry.models.business import Business
-from callsentry.models.call import Call, CallOutcome, Sentiment
+from callsentry.models.call import Call, CallOutcome, CallSource, ProcessingStatus, Sentiment
 from callsentry.models.cost import CostCategory, CostEntry
+from callsentry.models.intel import CallAnalysis, Rep
 from callsentry.models.kb import KBChunk, KBDocument
 from callsentry.models.platform_setting import PlatformSetting
 from callsentry.models.user import User, UserRole
@@ -13,12 +14,16 @@ __all__ = [
     "AppointmentStatus",
     "Business",
     "Call",
+    "CallAnalysis",
     "CallOutcome",
+    "CallSource",
     "CostCategory",
     "CostEntry",
     "KBChunk",
     "KBDocument",
     "PlatformSetting",
+    "ProcessingStatus",
+    "Rep",
     "Sentiment",
     "User",
     "UserRole",

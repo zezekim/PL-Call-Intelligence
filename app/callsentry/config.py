@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     retell_api_key: str = ""
     openai_api_key: str = ""
 
+    # --- Call intelligence --------------------------------------------------
+    # Model that classifies and scores recorded calls. Offline, so accuracy
+    # wins over latency.
+    call_intel_model: str = "claude-opus-5"
+    # Default transcription engine for uploads: auto | deepgram | local.
+    call_stt_engine: str = "auto"
+    deepgram_model: str = "nova-3"
+    # Where uploaded recordings are stored. Never inside the repository.
+    upload_dir: str = "./data/uploads"
+    # Recordings processed in parallel by the in-process job runner.
+    intel_workers: int = 2
+
     # --- Calendar -----------------------------------------------------------
     calcom_api_key: str = ""
     calcom_base_url: str = "https://api.cal.com/v1"

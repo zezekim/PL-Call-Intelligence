@@ -1,4 +1,4 @@
-name: callsentry
+name: pestlaunch
 
 x-app-env: &app-env
   DATABASE_URL: postgresql+asyncpg://callsentry:${POSTGRES_PASSWORD:-callsentry}@postgres:5432/callsentry
@@ -17,6 +17,11 @@ x-app-env: &app-env
   TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
   CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-5}
+  CALL_INTEL_MODEL: ${CALL_INTEL_MODEL:-claude-opus-5}
+  CALL_STT_ENGINE: ${CALL_STT_ENGINE:-auto}
+  DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+  UPLOAD_DIR: /data/uploads
+  INTEL_WORKERS: ${INTEL_WORKERS:-2}
   ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
   RETELL_API_KEY: ${RETELL_API_KEY:-}
@@ -90,6 +95,8 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+    volumes:
+      - uploads:/data/uploads
     ports:
       - "${APP_PORT:-8000}:8000"
     healthcheck:
@@ -127,3 +134,4 @@ volumes:
   redisdata:
   ollamadata:
   modeldata:
+  uploads:

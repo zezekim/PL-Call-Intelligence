@@ -234,15 +234,26 @@ class ProviderRegistry:
         handlers: dict[str, Callable[[ProviderSpec], Awaitable[T]]],
         *,
         attempts: list[Attempt] | None = None,
+        order: list[str] | None = None,
     ) -> tuple[T, ProviderSpec]:
         """Walk the chain for `component`, returning the first successful result.
 
         `handlers` maps provider name -> coroutine. Providers with no handler
         are skipped. Every attempt (including failures) is appended to
         `attempts` so the call record can show exactly what was tried.
+
+        `order` overrides the catalogue's local-first order for callers that
+        need a different preference (offline call analysis prefers the cloud
+        tier because accuracy matters more than latency there).
         """
+        chain = CATALOGUE[component]
+        if order is not None:
+            rank = {name: i for i, name in enumerate(order)}
+            chain = sorted(
+                (s for s in chain if s.name in rank), key=lambda s: rank[s.name]
+            )
         errors: list[str] = []
-        for spec in CATALOGUE[component]:
+        for spec in chain:
             handler = handlers.get(spec.name)
             if handler is None:
                 continue

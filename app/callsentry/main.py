@@ -21,6 +21,7 @@ from callsentry.api.routes import (
     appointments,
     auth,
     calls,
+    intel,
     internal,
     kb,
     webhooks,
@@ -85,13 +86,20 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         public_base_url=settings.public_base_url,
     )
 
-    task = asyncio.create_task(_background_loop())
+    from callsentry.intel import jobs as intel_jobs
+
+    tasks = [
+        asyncio.create_task(_background_loop()),
+        asyncio.create_task(intel_jobs.run()),
+    ]
     try:
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(
@@ -169,6 +177,7 @@ async def health_deep() -> dict[str, Any]:
 for router in (
     auth.router,
     calls.router,
+    intel.router,
     appointments.router,
     kb.router,
     settings_routes.router,

@@ -24,3 +24,6 @@ dashboard/tsconfig.tsbuildinfo
 
 # Call recordings
 *.mp3
+
+# Local runtime data (uploaded recordings, models)
+data/

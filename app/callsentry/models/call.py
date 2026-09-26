@@ -15,6 +15,7 @@ from callsentry.core.db import Base, TimestampMixin, uuid_pk
 if TYPE_CHECKING:
     from callsentry.models.appointment import Appointment
     from callsentry.models.business import Business
+    from callsentry.models.intel import CallAnalysis, Rep
 
 
 class CallOutcome(StrEnum):
@@ -29,6 +30,19 @@ class Sentiment(StrEnum):
     POSITIVE = "positive"
     NEUTRAL = "neutral"
     NEGATIVE = "negative"
+
+
+class CallSource(StrEnum):
+    TWILIO = "twilio"
+    UPLOAD = "upload"
+
+
+class ProcessingStatus(StrEnum):
+    QUEUED = "queued"
+    TRANSCRIBING = "transcribing"
+    ANALYZING = "analyzing"
+    DONE = "done"
+    FAILED = "failed"
 
 
 class Call(Base, TimestampMixin):
@@ -70,5 +84,43 @@ class Call(Base, TimestampMixin):
         JSONB, default=list, nullable=False
     )
 
+    # --- Call intelligence (uploaded recordings) -----------------------------
+    source: Mapped[str] = mapped_column(
+        String(16), default=CallSource.TWILIO, server_default=CallSource.TWILIO, nullable=False
+    )
+    # The business's own reference for the call, e.g. "CALL-014".
+    external_ref: Mapped[str | None] = mapped_column(String(64))
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    # Relative to UPLOAD_DIR. Never served directly - see the signed audio route.
+    audio_path: Mapped[str | None] = mapped_column(Text)
+    audio_channels: Mapped[int | None] = mapped_column(Integer)
+    # When the call happened, if known; created_at is when it was uploaded.
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    processing_status: Mapped[str] = mapped_column(
+        String(16), default=ProcessingStatus.DONE, server_default=ProcessingStatus.DONE,
+        nullable=False, index=True,
+    )
+    processing_error: Mapped[str | None] = mapped_column(Text)
+    stt_engine: Mapped[str | None] = mapped_column(String(16))
+    stt_provider: Mapped[str | None] = mapped_column(String(32))
+    # [{id, start, end, text, speaker, role}] - see intel.transcript.Segment.
+    segments: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default="[]", nullable=False
+    )
+
+    # Denormalised from the analysis so the call log filters without a join.
+    call_type: Mapped[str | None] = mapped_column(String(24), index=True)
+    rep_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reps.id", ondelete="SET NULL"), index=True
+    )
+    score: Mapped[int | None] = mapped_column(Integer)
+    score_max: Mapped[int | None] = mapped_column(Integer)
+    grade: Mapped[str | None] = mapped_column(String(8))
+
     business: Mapped[Business] = relationship(back_populates="calls")
     appointments: Mapped[list[Appointment]] = relationship(back_populates="call")
+    rep: Mapped[Rep | None] = relationship(back_populates="calls")
+    analysis: Mapped[CallAnalysis | None] = relationship(
+        back_populates="call", cascade="all, delete-orphan", uselist=False
+    )
