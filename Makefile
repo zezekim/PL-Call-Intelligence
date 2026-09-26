@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 .PHONY: help
 help: ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: env
 env: ## Create .env from .env.example with generated secrets
@@ -14,67 +14,41 @@ env: ## Create .env from .env.example with generated secrets
 t=t.replace('ENCRYPTION_KEY=','ENCRYPTION_KEY='+base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(),1);\
 t=t.replace('JWT_SECRET=','JWT_SECRET='+secrets.token_urlsafe(48),1);\
 t=t.replace('INTERNAL_API_TOKEN=','INTERNAL_API_TOKEN='+secrets.token_urlsafe(32),1);\
+t=t.replace('POSTGRES_PASSWORD=','POSTGRES_PASSWORD='+secrets.token_urlsafe(24),1);\
 p.write_text(t)"
-	@echo "Wrote .env with generated ENCRYPTION_KEY / JWT_SECRET / INTERNAL_API_TOKEN"
-
-.PHONY: keygen
-keygen: ## Print a fresh set of secrets
-	@python3 -c "import secrets,base64;print('ENCRYPTION_KEY='+base64.urlsafe_b64encode(secrets.token_bytes(32)).decode());print('JWT_SECRET='+secrets.token_urlsafe(48));print('INTERNAL_API_TOKEN='+secrets.token_urlsafe(32))"
+	@echo "Wrote .env - add CLAUDE_API_KEY and DEEPGRAM_API_KEY"
 
 .PHONY: up
-up: ## Start all services
+up: ## Build and start everything
 	$(COMPOSE) up -d --build
 
 .PHONY: down
-down: ## Stop all services
+down: ## Stop everything
 	$(COMPOSE) down
 
-.PHONY: clean
-clean: ## Stop services and delete all volumes (destructive)
-	$(COMPOSE) down -v
-
-.PHONY: migrate
-migrate: ## Apply database migrations
-	$(COMPOSE) run --rm app alembic upgrade head
-
-.PHONY: revision
-revision: ## Create a migration: make revision m="add thing"
-	$(COMPOSE) run --rm app alembic revision --autogenerate -m "$(m)"
-
-.PHONY: models
-models: ## Pull local Ollama models (llama3.2 + nomic-embed-text)
-	$(COMPOSE) exec ollama ollama pull llama3.2
-	$(COMPOSE) exec ollama ollama pull nomic-embed-text
-
 .PHONY: seed
-seed: ## Create a demo business + admin user
-	$(COMPOSE) run --rm app python -m callsentry.scripts.seed
+seed: ## Create the business and first admin user
+	set -a; . ./.env; set +a; $(COMPOSE) exec -e SEED_BUSINESS_NAME -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD app python -m callsentry.scripts.seed
 
-.PHONY: bootstrap
-bootstrap: env up migrate models seed ## Full first-run setup
-	@echo ""
-	@echo "CallSentry is up."
-	@echo "  Dashboard : http://localhost:3000  (demo@callsentry.local / changeme)"
-	@echo "  API docs  : http://localhost:8000/docs"
-	@echo "  Providers : http://localhost:8000/settings/providers"
+.PHONY: import
+import: ## Queue a folder of recordings: make import dir=/path/to/recordings
+	@test -n "$(dir)" || { echo "usage: make import dir=/path/to/recordings"; exit 1; }
+	$(COMPOSE) cp "$(dir)" app:/tmp/import
+	$(COMPOSE) exec app python -m callsentry.scripts.import_calls /tmp/import --email "$$(grep -E '^SEED_ADMIN_EMAIL=' .env | cut -d= -f2-)"
+	$(COMPOSE) exec app rm -rf /tmp/import
 
 .PHONY: logs
 logs: ## Tail logs (make logs s=app)
 	$(COMPOSE) logs -f $(s)
 
-.PHONY: shell
-shell: ## Shell into a service (make shell s=app)
-	$(COMPOSE) exec $(or $(s),app) /bin/bash
-
 .PHONY: psql
-psql: ## Open a psql session
+psql: ## Database shell
 	$(COMPOSE) exec postgres psql -U callsentry -d callsentry
 
 .PHONY: test
-test: ## Run the backend test suite
-	$(COMPOSE) run --rm app pytest -q
+test: ## Backend tests
+	$(COMPOSE) run --rm --no-deps app pytest -q
 
-.PHONY: lint
-lint: ## Type-check and lint the backend
-	$(COMPOSE) run --rm app ruff check callsentry
-	$(COMPOSE) run --rm app mypy callsentry
+.PHONY: dev
+dev: ## Start the database and worker for running the API natively
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis worker

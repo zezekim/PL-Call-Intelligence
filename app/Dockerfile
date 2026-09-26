@@ -13,6 +13,7 @@ RUN apt-get update \
 COPY pyproject.toml ./
 RUN pip install --upgrade pip setuptools wheel && pip install ".[dev]"
 
+COPY entrypoint.sh ./
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY callsentry ./callsentry
@@ -22,4 +23,4 @@ RUN pip install --no-deps -e . && mkdir -p /data/uploads
 
 EXPOSE 8000
 
-CMD ["uvicorn", "callsentry.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./entrypoint.sh"]

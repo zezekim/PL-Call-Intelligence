@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
-import { ErrorSummary, Field } from "@/components/ui";
+import { ErrorNote, Spinner } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function LoginPage() {
     try {
       const result = await api.post<{ access_token: string }>("/auth/login", { email, password });
       setToken(result.access_token);
-      router.replace("/overview");
+      router.replace("/calls");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
     } finally {
@@ -28,59 +28,49 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b-[10px] border-brand bg-ink text-white">
-        <div className="mx-auto flex max-w-page items-baseline gap-3 px-6 py-3">
-          <span className="text-xl font-bold tracking-tight">CallSentry</span>
-          <span className="text-sm text-[#b1b4b6]">Receptionist administration</span>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-page flex-1 px-6 py-10">
-        <div className="max-w-md">
-          <h1 className="h1 mb-6">Sign in</h1>
-          <ErrorSummary error={error} />
-          <form onSubmit={submit} noValidate>
-            <Field label="Email address" htmlFor="email">
-              <input
-                id="email"
-                type="email"
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-                spellCheck={false}
-                required
-              />
-            </Field>
-            <Field label="Password" htmlFor="password">
-              <input
-                id="password"
-                type="password"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </Field>
-            <button type="submit" className="btn" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
-
-          <div className="inset mt-10 text-sm">
-            This service is for authorised staff of the business it serves. Access is logged.
-            If you have lost your password, ask an administrator to reset it from Settings.
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-lg font-bold text-white">
+            P
+          </span>
+          <div className="leading-tight">
+            <p className="font-semibold">PestLaunch OS</p>
+            <p className="text-sm text-muted">Call intelligence</p>
           </div>
         </div>
-      </main>
-
-      <footer className="border-t border-border bg-canvas">
-        <div className="mx-auto max-w-page px-6 py-6 text-sm text-secondary">
-          CallSentry · self-hosted voice receptionist
-        </div>
-      </footer>
+        <form onSubmit={submit} className="card space-y-4 p-6" noValidate>
+          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+          {error && <ErrorNote message={error} />}
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Email</span>
+            <input
+              type="email"
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              spellCheck={false}
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Password</span>
+            <input
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
+            {busy && <Spinner className="h-3.5 w-3.5" />}
+            Sign in
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

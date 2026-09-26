@@ -17,10 +17,11 @@ from sqlalchemy.orm import selectinload
 
 from callsentry.api.deps import BusinessDep, SessionDep
 from callsentry.config import get_settings
-from callsentry.intel import audio, ingest, jobs, pipeline
-from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS
+from callsentry.intel import audio, ingest, insights, jobs, pipeline
+from callsentry.intel import leads as leads_service
+from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
-from callsentry.models import Call, CallAnalysis, CallSource, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, CallSource, Lead, ProcessingStatus, Rep
 
 router = APIRouter(prefix="/intel", tags=["call-intelligence"])
 
@@ -50,6 +51,8 @@ class CallRow(BaseModel):
     score: int | None
     score_max: int | None
     grade: str | None
+    needs_review: bool = False
+    call_type_overridden: bool = False
 
 
 class CallPage(BaseModel):
@@ -96,6 +99,27 @@ class ReprocessRequest(BaseModel):
     # keep: re-run analysis on the stored transcript. redo: transcribe again.
     transcript: str = "keep"
     engine: str | None = None
+    # A manager's correction of the call type; "" clears a previous one.
+    call_type: str | None = None
+
+
+class LeadOut(BaseModel):
+    id: str
+    name: str
+    stage: str
+    stage_source: str
+    pests: list[str]
+    service: str | None
+    price_quoted: str | None
+    next_step: str | None
+    rep_name: str | None
+    last_call_id: str | None
+    last_contact_at: datetime | None
+    calls: int
+
+
+class LeadUpdate(BaseModel):
+    stage: str
 
 
 # --- Helpers -------------------------------------------------------------------
@@ -135,6 +159,12 @@ def _row(call: Call) -> CallRow:
         score=call.score,
         score_max=call.score_max,
         grade=call.grade,
+        needs_review=bool(
+            analysis
+            and not call.call_type_override
+            and float(analysis.call_type_confidence or 0) < insights.REVIEW_CONFIDENCE
+        ),
+        call_type_overridden=bool(call.call_type_override),
     )
 
 
@@ -233,10 +263,16 @@ async def list_calls(
     grade: str | None = None,
     status_: Annotated[str | None, Query(alias="status")] = None,
     q: str | None = None,
+    review: bool = False,
     limit: Annotated[int, Query(le=200)] = 50,
     offset: int = 0,
 ) -> CallPage:
     stmt = _base_query(business.id)
+    if review:
+        stmt = stmt.join(CallAnalysis, CallAnalysis.call_id == Call.id).where(
+            Call.call_type_override.is_(None),
+            CallAnalysis.call_type_confidence < insights.REVIEW_CONFIDENCE,
+        )
     if call_type:
         stmt = stmt.where(Call.call_type == call_type)
     if lens:
@@ -250,7 +286,9 @@ async def list_calls(
         stmt = stmt.where(Call.processing_status == status_)
     if q:
         pattern = f"%{q}%"
-        stmt = stmt.outerjoin(CallAnalysis, CallAnalysis.call_id == Call.id).where(
+        if not review:
+            stmt = stmt.outerjoin(CallAnalysis, CallAnalysis.call_id == Call.id)
+        stmt = stmt.where(
             or_(
                 Call.transcript.ilike(pattern),
                 Call.summary.ilike(pattern),
@@ -303,6 +341,19 @@ async def reprocess(
         pipeline.QUEUED_ANALYSIS,
     ):
         raise HTTPException(status.HTTP_409_CONFLICT, "call is already being processed")
+    if payload.call_type is not None:
+        if payload.call_type and payload.call_type not in {t.value for t in CallType}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown call type")
+        call.call_type_override = payload.call_type or None
+        if (
+            payload.call_type
+            and payload.call_type == call.call_type
+            and payload.engine is None
+            and call.analysis is not None
+        ):
+            # Confirming the type it already has: nothing to re-grade.
+            await session.commit()
+            return _row(call)
     if payload.engine is not None:
         if payload.engine not in {e.value for e in Engine}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown engine")
@@ -341,15 +392,65 @@ async def call_audio(
     return FileResponse(path, media_type=audio.content_type(path))
 
 
-@router.get("/reps", response_model=list[dict[str, Any]])
-async def list_reps(session: SessionDep, business: BusinessDep) -> list[dict[str, Any]]:
+@router.get("/overview")
+async def overview(
+    session: SessionDep, business: BusinessDep, days: int | None = None
+) -> dict[str, Any]:
+    """Scorecard, the sales / retention / service lenses, and what to train on."""
+    return await insights.overview(session, business.id, days)
+
+
+@router.get("/reps")
+async def list_reps(
+    session: SessionDep, business: BusinessDep, days: int | None = None
+) -> list[dict[str, Any]]:
+    return await insights.reps(session, business.id, days)
+
+
+@router.get("/reps/{rep_id}")
+async def get_rep(
+    rep_id: uuid.UUID, session: SessionDep, business: BusinessDep, days: int | None = None
+) -> dict[str, Any]:
+    detail = await insights.rep_detail(session, business.id, rep_id, days)
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "rep not found")
+    return detail
+
+
+@router.get("/pipeline", response_model=list[LeadOut])
+async def pipeline_board(session: SessionDep, business: BusinessDep) -> list[LeadOut]:
     rows = (
         await session.execute(
-            select(Rep, func.count(Call.id))
-            .outerjoin(Call, Call.rep_id == Rep.id)
-            .where(Rep.business_id == business.id)
-            .group_by(Rep.id)
-            .order_by(Rep.name)
+            select(Lead, Rep.name, func.count(Call.id))
+            .outerjoin(Rep, Rep.id == Lead.rep_id)
+            .outerjoin(Call, Call.lead_id == Lead.id)
+            .where(Lead.business_id == business.id)
+            .group_by(Lead.id, Rep.name)
+            .order_by(Lead.last_contact_at.desc().nullslast())
         )
     ).all()
-    return [{"id": str(r.id), "name": r.name, "calls": int(n)} for r, n in rows]
+    return [
+        LeadOut(
+            id=str(lead.id), name=lead.name, stage=lead.stage, stage_source=lead.stage_source,
+            pests=list(lead.pests or []), service=lead.service, price_quoted=lead.price_quoted,
+            next_step=lead.next_step, rep_name=rep_name,
+            last_call_id=str(lead.last_call_id) if lead.last_call_id else None,
+            last_contact_at=lead.last_contact_at, calls=int(n),
+        )
+        for lead, rep_name, n in rows
+    ]
+
+
+@router.patch("/leads/{lead_id}", response_model=dict[str, str])
+async def move_lead(
+    lead_id: uuid.UUID, payload: LeadUpdate, session: SessionDep, business: BusinessDep
+) -> dict[str, str]:
+    lead = await session.get(Lead, lead_id)
+    if lead is None or lead.business_id != business.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lead not found")
+    if payload.stage not in leads_service.STAGES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown stage")
+    lead.stage = payload.stage
+    lead.stage_source = "manual"
+    await session.commit()
+    return {"id": str(lead.id), "stage": lead.stage}

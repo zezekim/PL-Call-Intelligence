@@ -27,3 +27,5 @@ dashboard/tsconfig.tsbuildinfo
 
 # Local runtime data (uploaded recordings, models)
 data/
+next-env.d.ts
+*~

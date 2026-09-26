@@ -1,61 +1,14 @@
-{
-	# Set an email to enable automatic TLS from Let's Encrypt in production.
-	# admin@example.com
-	auto_https disable_redirects
-}
+{$SITE_DOMAIN:localhost} {
+	encode gzip
 
-{$CALLSENTRY_DOMAIN:localhost} {
-	# Twilio Media Streams websocket -> Pipecat voice agent.
-	# This must be reachable over wss:// from Twilio's network.
-	@ws {
-		path /ws/*
-		header Connection *Upgrade*
-		header Upgrade websocket
-	}
-	# handle blocks are evaluated before a bare reverse_proxy, so this must
-	# be a handle too or the dashboard catch-all below swallows the upgrade.
-	handle @ws {
-		reverse_proxy pipecat:8080
-	}
-
-	# Backend API surface.
-	handle /auth/* {
-		reverse_proxy app:8000
-	}
-	handle /calls/* {
-		reverse_proxy app:8000
-	}
-	handle /appointments/* {
-		reverse_proxy app:8000
-	}
-	handle /kb/* {
-		reverse_proxy app:8000
-	}
-	handle /settings/* {
-		reverse_proxy app:8000
-	}
-	handle /admin/* {
-		reverse_proxy app:8000
-	}
-	handle /webhooks/* {
-		reverse_proxy app:8000
-	}
-	handle /health {
-		reverse_proxy app:8000
-	}
-	handle /docs* {
-		reverse_proxy app:8000
-	}
-	handle /openapi.json {
+	handle_path /api/* {
 		reverse_proxy app:8000
 	}
 
-	# Everything else is the dashboard.
 	handle {
 		reverse_proxy dashboard:3000
 	}
 
-	encode gzip
 	log {
 		output stdout
 		format console

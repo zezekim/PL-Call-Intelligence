@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from callsentry.api.deps import SessionDep, UserDep
+from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
 from callsentry.core.security import hash_password, issue_token, verify_password
 from callsentry.models import User, UserRole
@@ -43,6 +43,7 @@ class MeResponse(BaseModel):
     email: str
     role: str
     business_id: str
+    business_name: str = ""
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -90,9 +91,10 @@ async def logout() -> None:
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(user: UserDep) -> MeResponse:
+async def me(user: UserDep, business: BusinessDep) -> MeResponse:
     return MeResponse(
-        id=str(user.id), email=user.email, role=user.role, business_id=str(user.business_id)
+        id=str(user.id), email=user.email, role=user.role, business_id=str(user.business_id),
+        business_name=business.name,
     )
 
 

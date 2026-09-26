@@ -1,296 +1,274 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect } from "react";
+import type { Grade } from "@/lib/api";
+import {
+  GRADE_LABEL,
+  OUTCOME_LABEL,
+  OUTCOME_TONE,
+  TONE_TEXT,
+  initials,
+  pct,
+} from "@/lib/format";
+import { AlertIcon } from "./icons";
 
-/* ------------------------------------------------------------------------ */
-/* Page structure                                                           */
-/* ------------------------------------------------------------------------ */
-
-export function PageHeader({
-  caption,
-  title,
-  lede,
-  actions,
+export function Card({
+  children,
+  className = "",
+  accent = false,
 }: {
-  caption?: string;
-  title: string;
-  lede?: ReactNode;
-  actions?: ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  accent?: boolean;
+}) {
+  return <section className={`card ${accent ? "card-accent" : ""} ${className}`}>{children}</section>;
+}
+
+export function CardHeader({
+  title,
+  eyebrow,
+  action,
+}: {
+  title: React.ReactNode;
+  eyebrow?: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+    <div className="mb-4 flex items-start justify-between gap-3">
       <div>
-        {caption && <span className="caption">{caption}</span>}
-        <h1 className="h1">{title}</h1>
-        {lede && <p className="mt-3 max-w-3xl text-secondary">{lede}</p>}
+        {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
+        <h2 className="section-title">{title}</h2>
       </div>
-      {actions && <div className="flex flex-wrap gap-3">{actions}</div>}
+      {action}
     </div>
   );
 }
 
-export function Card({
-  title,
-  description,
-  actions,
-  children,
-  flush = false,
-  className = "",
-}: {
-  title?: string;
-  description?: string;
-  actions?: ReactNode;
-  children: ReactNode;
-  flush?: boolean;
-  className?: string;
-}) {
-  return (
-    <section className={`card ${className}`}>
-      {(title || actions) && (
-        <header className="card-header">
-          <div>
-            {title && <h2 className="card-title">{title}</h2>}
-            {description && <p className="mt-0.5 text-sm text-secondary">{description}</p>}
-          </div>
-          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-        </header>
-      )}
-      {flush ? children : <div className="card-body">{children}</div>}
-    </section>
-  );
-}
-
-export function Stat({
+export function Metric({
   label,
   value,
+  tone = "none",
   hint,
 }: {
   label: string;
-  value: string | number;
-  hint?: string;
+  value: React.ReactNode;
+  tone?: "good" | "warn" | "bad" | "none";
+  hint?: React.ReactNode;
 }) {
   return (
-    <div className="stat">
-      <div className="stat-value">{value}</div>
-      <div className="stat-label">{label}</div>
-      {hint && <div className="mt-1 text-xs text-secondary">{hint}</div>}
+    <div className="min-w-0">
+      <p className="text-[13px] leading-tight text-muted">{label}</p>
+      <p className={`tnum mt-1 text-[28px] font-semibold leading-none tracking-tight ${TONE_TEXT[tone]}`}>
+        {value}
+      </p>
+      {hint && <p className="mt-1.5 text-xs text-muted">{hint}</p>}
     </div>
   );
 }
 
-export function SummaryList({
-  rows,
-}: {
-  rows: { key: string; value: ReactNode; action?: ReactNode }[];
-}) {
-  return (
-    <dl className="summary-list">
-      {rows.map((row) => (
-        <div key={row.key} className="summary-row">
-          <dt className="summary-key">{row.key}</dt>
-          <dd className="summary-value">{row.value}</dd>
-          {row.action && <dd className="text-right">{row.action}</dd>}
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-export function Details({ summary, children }: { summary: string; children: ReactNode }) {
-  return (
-    <details className="my-4 group">
-      <summary className="cursor-pointer text-link underline underline-offset-[3px] hover:text-link-hover">
-        {summary}
-      </summary>
-      <div className="mt-3 border-l-[5px] border-border pl-4 text-base">{children}</div>
-    </details>
-  );
-}
-
-/* ------------------------------------------------------------------------ */
-/* Status                                                                   */
-/* ------------------------------------------------------------------------ */
-
-const TONES: Record<string, string> = {
-  booked: "tag-green",
-  answered: "tag-blue",
-  escalated: "tag-orange",
-  voicemail: "tag-turquoise",
-  abandoned: "tag-red",
-  positive: "tag-green",
-  neutral: "tag-grey",
-  negative: "tag-red",
-  confirmed: "tag-green",
-  cancelled: "tag-red",
-  no_show: "tag-yellow",
-  local: "tag-green",
-  cloud: "tag-blue",
-  mock: "tag-yellow",
-  admin: "tag-blue",
-  operator: "tag-purple",
-  viewer: "tag-turquoise",
-  healthy: "tag-green",
-  unavailable: "tag-grey",
+const GRADE_STYLE: Record<Grade, string> = {
+  gold: "bg-gold-soft text-gold",
+  green: "bg-good-soft text-good",
+  below: "bg-bad-soft text-bad",
 };
 
-export function Tag({ value, tone }: { value: string | null | undefined; tone?: string }) {
-  if (!value) return <span className="text-secondary">—</span>;
-  return <span className={`tag ${tone ?? TONES[value] ?? "tag-grey"}`}>{value.replace(/_/g, " ")}</span>;
+export function GradeBadge({ grade, size = "sm" }: { grade: Grade | null; size?: "sm" | "lg" }) {
+  if (!grade) return <span className="text-sm text-faint">Not scored</span>;
+  return (
+    <span
+      className={`chip ${GRADE_STYLE[grade]} ${size === "lg" ? "px-3 py-1 text-sm" : ""}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+      {GRADE_LABEL[grade]}
+    </span>
+  );
 }
 
-export function Notice({
-  kind = "info",
+export function ScoreCell({
+  score,
+  max,
+  grade,
+}: {
+  score: number | null;
+  max: number | null;
+  grade: Grade | null;
+}) {
+  if (score === null || !max) return <span className="text-sm text-faint">Not scored</span>;
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="tnum w-11 text-sm font-semibold">
+        {score}/{max}
+      </span>
+      <GradeBadge grade={grade} />
+    </div>
+  );
+}
+
+export function TypeBadge({ label, review }: { label: string | null; review?: boolean }) {
+  if (!label) return <span className="text-sm text-faint">-</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="chip bg-panel text-ink ring-1 ring-line">{label}</span>
+      {review && (
+        <span className="chip bg-warn-soft text-warn" title="Call type needs review">
+          <AlertIcon className="h-3 w-3" />
+          Check type
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function OutcomeText({ outcome }: { outcome: string | null }) {
+  if (!outcome || outcome === "not_applicable") return <span className="text-faint">-</span>;
+  const tone = OUTCOME_TONE[outcome] ?? "none";
+  return <span className={`font-medium ${TONE_TEXT[tone]}`}>{OUTCOME_LABEL[outcome] ?? outcome}</span>;
+}
+
+export function Avatar({ name, size = 32 }: { name: string | null; size?: number }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent"
+      style={{ width: size, height: size, fontSize: size * 0.38 }}
+      aria-hidden
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+/** Single-series horizontal bar: one hue, value labelled in text. */
+export function HitBar({
+  label,
+  value,
+  detail,
+  href,
+  invert = false,
+}: {
+  label: string;
+  value: number | null;
+  detail?: string;
+  href?: string;
+  invert?: boolean;
+}) {
+  const width = Math.max(0, Math.min(100, value ?? 0));
+  const body = (
+    <div className="group py-1.5">
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+        <span className={`truncate ${href ? "group-hover:text-accent" : ""}`}>{label}</span>
+        <span className="tnum shrink-0 text-muted">
+          {detail ?? pct(value)}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-panel" title={`${label}: ${pct(value)}`}>
+        <div
+          className={`h-2 rounded-full ${invert ? "bg-[#9db9ec]" : "bg-accent"}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+  return href ? <Link href={href}>{body}</Link> : body;
+}
+
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  size = "md",
+}: {
+  options: { value: T; label: React.ReactNode }[];
+  value: T;
+  onChange: (value: T) => void;
+  size?: "sm" | "md";
+}) {
+  return (
+    <div className="inline-flex rounded-xl bg-[#e3e6ec] p-1" role="tablist">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role="tab"
+          aria-selected={o.value === value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-lg font-medium transition ${
+            size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"
+          } ${o.value === value ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Empty({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-panel px-6 py-10 text-center">
+      <p className="font-medium">{title}</p>
+      {children && <div className="mt-1 text-sm text-muted">{children}</div>}
+    </div>
+  );
+}
+
+export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block animate-spin rounded-full border-2 border-current border-r-transparent ${className}`}
+      aria-label="Loading"
+    />
+  );
+}
+
+export function Loading() {
+  return (
+    <div className="flex items-center gap-2 py-16 text-sm text-muted">
+      <Spinner /> Loading
+    </div>
+  );
+}
+
+export function ErrorNote({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm text-bad">
+      <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{message}</span>
+    </div>
+  );
+}
+
+export function Modal({
+  open,
+  onClose,
   title,
   children,
 }: {
-  kind?: "info" | "success";
-  title?: string;
-  children: ReactNode;
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
 }) {
-  const heading = title ?? (kind === "success" ? "Success" : "Important");
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
   return (
-    <div className={`banner ${kind === "success" ? "banner-success" : ""}`} role="status">
-      <div className="banner-title">{heading}</div>
-      <div className="banner-body">{children}</div>
-    </div>
-  );
-}
-
-export function ErrorSummary({ error, title = "There is a problem" }: { error: string | null; title?: string }) {
-  if (!error) return null;
-  return (
-    <div className="error-summary" role="alert" aria-live="assertive">
-      <h2 className="h3 mb-2">{title}</h2>
-      <p className="text-base">{error}</p>
-    </div>
-  );
-}
-
-export function Inset({ children }: { children: ReactNode }) {
-  return <div className="inset">{children}</div>;
-}
-
-export function WarningText({ children }: { children: ReactNode }) {
-  return (
-    <div className="warning-text">
-      <span
-        aria-hidden
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-lg font-bold text-white"
-      >
-        !
-      </span>
-      <div>
-        <span className="sr-only">Warning: </span>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 p-4 backdrop-blur-[2px] sm:items-center"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div role="dialog" aria-modal="true" aria-label={title} className="card w-full max-w-lg p-6 shadow-pop">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="section-title">{title}</h2>
+          <button className="btn-ghost -mr-2 px-2" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
         {children}
       </div>
     </div>
   );
-}
-
-export function Empty({ message, hint }: { message: string; hint?: string }) {
-  return (
-    <div className="px-4 py-10 text-center">
-      <p className="text-base">{message}</p>
-      {hint && <p className="mt-1 text-sm text-secondary">{hint}</p>}
-    </div>
-  );
-}
-
-export function Spinner({ label = "Loading" }: { label?: string }) {
-  return (
-    <p className="px-4 py-10 text-center text-base text-secondary" role="status">
-      {label}…
-    </p>
-  );
-}
-
-/* ------------------------------------------------------------------------ */
-/* Forms                                                                    */
-/* ------------------------------------------------------------------------ */
-
-export function Field({
-  label,
-  hint,
-  error,
-  htmlFor,
-  children,
-  className = "",
-}: {
-  label: string;
-  hint?: ReactNode;
-  error?: string | null;
-  htmlFor?: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`form-group ${error ? "form-group-error" : ""} ${className}`}>
-      <label className="label" htmlFor={htmlFor}>
-        {label}
-      </label>
-      {hint && <span className="hint">{hint}</span>}
-      {error && <span className="error-msg">{error}</span>}
-      {children}
-    </div>
-  );
-}
-
-export function ButtonLink({
-  href,
-  children,
-  variant = "secondary",
-  small = false,
-}: {
-  href: string;
-  children: ReactNode;
-  variant?: "primary" | "secondary" | "warning";
-  small?: boolean;
-}) {
-  const cls = ["btn", variant === "secondary" && "btn-secondary", variant === "warning" && "btn-warning", small && "btn-sm"]
-    .filter(Boolean)
-    .join(" ");
-  return (
-    <Link href={href} className={cls}>
-      {children}
-    </Link>
-  );
-}
-
-/* ------------------------------------------------------------------------ */
-/* Formatting                                                               */
-/* ------------------------------------------------------------------------ */
-
-export function money(value: number): string {
-  // Sub-cent amounts are the whole point of the cost tracker; don't round
-  // them away to "$0.00".
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return `$${value.toFixed(4)}`;
-  return `$${value.toFixed(2)}`;
-}
-
-export function duration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-export function when(iso: string, timeZone?: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    ...(timeZone ? { timeZone } : {}),
-  });
-}
-
-export function dateOnly(iso: string, timeZone?: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    ...(timeZone ? { timeZone } : {}),
-  });
 }

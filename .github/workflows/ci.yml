@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check callsentry tests
+      - run: pytest -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: /api
+
+  deploy:
+    # Only pushes to main reach the server; pull requests never run on it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [api, dashboard]
+    runs-on: [self-hosted, pestlaunch]
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start
+        run: docker compose --env-file /opt/pestlaunch/.env up -d --build --remove-orphans
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose --env-file /opt/pestlaunch/.env exec -T app \
+                python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose --env-file /opt/pestlaunch/.env logs --tail 50 app
+          exit 1
+      - name: Clean up old images
+        run: docker image prune -f

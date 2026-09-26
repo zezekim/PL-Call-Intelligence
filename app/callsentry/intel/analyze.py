@@ -429,7 +429,11 @@ def apply_manual_rules(
             j["status"] = "missed"
 
 
-async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
+async def analyse(
+    segments: list[Segment], *, diarized: bool, forced_type: str | None = None
+) -> Analysis:
+    """`forced_type` is a manager's correction of the call type: triage still
+    extracts the details, but the call is graded on that type's scorecard."""
     llm = get_llm()
 
     triage, triage_llm = await llm.analyse_json(
@@ -445,6 +449,11 @@ async def analyse(segments: list[Segment], *, diarized: bool) -> Analysis:
     if not any(s.role == REP for s in segments):
         raise AnalysisFailed("could not tell which speaker is the rep")
 
+    if forced_type and forced_type in {t.value for t in CallType}:
+        triage["classified_as"] = triage["call_type"]
+        triage["call_type"] = forced_type
+        triage["call_type_confidence"] = 1.0
+        triage["call_type_reason"] = "Call type set by a manager."
     call_type = str(triage["call_type"])
     rep_name = (triage.get("rep_name") or "").strip() or None
     analysis = Analysis(

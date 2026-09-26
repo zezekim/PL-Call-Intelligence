@@ -114,6 +114,11 @@ class Call(Base, TimestampMixin):
     rep_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("reps.id", ondelete="SET NULL"), index=True
     )
+    # Set by a manager when the classifier picked the wrong call type.
+    call_type_override: Mapped[str | None] = mapped_column(String(24))
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), index=True
+    )
     score: Mapped[int | None] = mapped_column(Integer)
     score_max: Mapped[int | None] = mapped_column(Integer)
     grade: Mapped[str | None] = mapped_column(String(8))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
@@ -32,6 +33,55 @@ class Rep(Base, TimestampMixin):
     name_key: Mapped[str] = mapped_column(String(120), nullable=False)
 
     calls: Mapped[list[Call]] = relationship(back_populates="rep")
+
+
+class LeadStage(StrEnum):
+    NEW = "new"
+    QUOTED = "quoted"
+    FOLLOW_UP = "follow_up"
+    WON = "won"
+    LOST = "lost"
+
+
+class Lead(Base, TimestampMixin):
+    """A prospect in the sales pipeline, created and moved by sales calls.
+
+    Stage is set from each call's outcome. A manager can move a lead by hand
+    (`stage_source = "manual"`); the next call about the same person moves it
+    again, because a new conversation is newer information.
+    """
+
+    __tablename__ = "leads"
+    __table_args__ = (
+        Index("uq_leads_business_name_key", "business_id", "name_key", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    business_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), nullable=False)
+    stage_source: Mapped[str] = mapped_column(
+        String(8), default="auto", server_default="auto", nullable=False
+    )
+    pests: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default="[]", nullable=False
+    )
+    service: Mapped[str | None] = mapped_column(Text)
+    price_quoted: Mapped[str | None] = mapped_column(Text)
+    next_step: Mapped[str | None] = mapped_column(Text)
+    rep_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reps.id", ondelete="SET NULL")
+    )
+    last_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("calls.id", ondelete="SET NULL", use_alter=True)
+    )
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class CallAnalysis(Base, TimestampMixin):

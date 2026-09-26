@@ -2,42 +2,42 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
-import { api, clearToken, getToken } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, clearToken, getToken, type Me } from "@/lib/api";
+import {
+  AssistantIcon,
+  FinancialsIcon,
+  HealthIcon,
+  HomeIcon,
+  LogoutIcon,
+  PhoneIcon,
+  SearchIcon,
+  TasksIcon,
+  TeamIcon,
+} from "./icons";
 
+// The rest of PestLaunch OS, shown for orientation. Only Calls is part of
+// this build, so the others are visible but inactive.
 const NAV = [
-  { href: "/overview", label: "Overview" },
-  { href: "/calls", label: "Calls" },
-  { href: "/appointments", label: "Appointments" },
-  { href: "/kb", label: "Knowledge base" },
-  { href: "/analytics", label: "Reports" },
-  { href: "/settings", label: "Settings" },
+  { label: "Home", icon: HomeIcon },
+  { label: "Tasks", icon: TasksIcon },
+  { label: "Team", icon: TeamIcon },
+  { label: "Assistant", icon: AssistantIcon },
+  { label: "Financials", icon: FinancialsIcon },
+  { label: "Calls", icon: PhoneIcon, href: "/calls" },
+  { label: "Customer Health", icon: HealthIcon },
 ];
-
-export interface Session {
-  id: string;
-  email: string;
-  role: string;
-  business_id: string;
-}
-
-const SessionContext = createContext<Session | null>(null);
-
-export function useSession(): Session | null {
-  return useContext(SessionContext);
-}
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [me, setMe] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-
-  // The showcase page and sign-in render without the authenticated frame.
-  const isPublic = pathname === "/" || pathname === "/login";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const bare = pathname.startsWith("/login");
 
   useEffect(() => {
-    if (isPublic) {
+    if (bare) {
       setReady(true);
       return;
     }
@@ -45,107 +45,140 @@ export function Shell({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
+    setReady(true);
     api
-      .get<Session>("/auth/me")
-      .then(setSession)
-      .catch(() => {
-        /* the api client already redirects on 401 */
-      })
-      .finally(() => setReady(true));
-  }, [isPublic, pathname, router]);
+      .get<Me>("/auth/me")
+      .then(setMe)
+      .catch(() => undefined);
+  }, [bare, router]);
 
-  if (isPublic) return <>{children}</>;
-  if (!ready) return <p className="p-8 text-secondary">Loading…</p>;
+  useEffect(() => setMenuOpen(false), [pathname]);
 
-  const role = session?.role;
-  const nav =
-    role === "operator"
-      ? [...NAV, { href: "/admin", label: "Administration" }]
-      : role === "viewer"
-        ? NAV.filter((item) => item.href !== "/settings")
-        : NAV;
+  if (bare) return <>{children}</>;
+  if (!ready) return null;
 
-  function signOut() {
-    clearToken();
-    router.replace("/login");
-  }
+  const company = me?.business_name || "PestLaunch";
 
   return (
-    <SessionContext.Provider value={session}>
-      <div className="flex min-h-screen flex-col">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-0 focus:top-0 focus:z-20 focus:bg-focus focus:px-4 focus:py-2 focus:font-bold"
-        >
-          Skip to main content
-        </a>
-
-        <header className="border-b-[10px] border-brand bg-ink text-white">
-          <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
-            <Link href="/overview" className="flex items-baseline gap-3 text-white no-underline">
-              <span className="text-xl font-bold tracking-tight">CallSentry</span>
-              <span className="text-sm text-[#b1b4b6]">Receptionist administration</span>
-            </Link>
-            <div className="flex items-center gap-4 text-sm">
-              {session && (
-                <span className="hidden sm:inline">
-                  {session.email}
-                  <span className="ml-2 text-[#b1b4b6]">({session.role})</span>
-                </span>
-              )}
-              <button onClick={signOut} className="link text-white hover:text-white">
-                Sign out
-              </button>
-            </div>
+    <div className="min-h-screen lg:pl-[248px]">
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-line bg-white px-3 py-4 transition-transform lg:translate-x-0 ${
+          menuOpen ? "translate-x-0 shadow-pop" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center gap-2.5 px-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent text-sm font-bold text-white">
+            {company.slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-semibold">{company} OS</p>
+            <p className="text-[11px] text-muted">Powered by PestLaunch</p>
           </div>
-        </header>
+        </div>
 
-        <nav aria-label="Service" className="border-b border-border bg-white">
-          <ul className="mx-auto flex max-w-page flex-wrap gap-x-6 px-6">
-            {nav.map((item) => {
-              const active = pathname.startsWith(item.href);
+        <SearchBox />
+
+        <nav className="mt-4 flex flex-1 flex-col gap-0.5" aria-label="Main">
+          {NAV.map(({ label, icon: Icon, href }) => {
+            const active = href && pathname.startsWith(href);
+            if (!href) {
               return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`-mb-px block border-b-4 py-3 text-base no-underline ${
-                      active
-                        ? "border-brand font-bold text-ink"
-                        : "border-transparent text-link hover:border-border hover:text-link-hover"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
+                <span
+                  key={label}
+                  className="flex cursor-default items-center gap-3 rounded-xl px-3 py-2 text-sm text-faint"
+                  title="Not part of this build"
+                >
+                  <Icon />
+                  {label}
+                </span>
               );
-            })}
-          </ul>
+            }
+            return (
+              <Link
+                key={label}
+                href={href}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium ${
+                  active ? "bg-accent-soft text-accent" : "text-ink hover:bg-panel"
+                }`}
+              >
+                <Icon />
+                {label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <main id="main" className="mx-auto w-full max-w-page flex-1 px-6 py-8">
-          {children}
-        </main>
+        <div className="border-t border-line pt-3">
+          {me && <p className="truncate px-3 pb-1 text-xs text-muted">{me.email}</p>}
+          <button
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted hover:bg-panel hover:text-ink"
+            onClick={() => {
+              clearToken();
+              router.replace("/login");
+            }}
+          >
+            <LogoutIcon />
+            Sign out
+          </button>
+        </div>
+      </aside>
 
-        <footer className="border-t border-border bg-canvas">
-          <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-6 py-6 text-sm text-secondary">
-            <span>CallSentry · self-hosted voice receptionist</span>
-            <span>
-              Calls are recorded and transcribed under your retention policy.
-              {role !== "viewer" && (
-                <>
-                  {" "}
-                  See{" "}
-                  <Link href="/settings/platform" className="link">
-                    data retention
-                  </Link>
-                  .
-                </>
-              )}
-            </span>
-          </div>
-        </footer>
-      </div>
-    </SessionContext.Provider>
+      {menuOpen && (
+        <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={() => setMenuOpen(false)} />
+      )}
+
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+        <button className="btn-ghost px-2" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+            <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+          </svg>
+        </button>
+        <span className="text-sm font-semibold">{company} OS</span>
+      </header>
+
+      <main className="mx-auto w-full max-w-[1180px] px-4 pb-16 pt-5 sm:px-6 lg:px-8 lg:pt-7">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function SearchBox() {
+  const router = useRouter();
+  const ref = useRef<HTMLInputElement>(null);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        ref.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <form
+      className="relative mt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        router.push(`/calls/log${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
+      }}
+    >
+      <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+      <input
+        ref={ref}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search calls"
+        aria-label="Search calls"
+        className="w-full rounded-xl border border-line bg-panel py-2 pl-9 pr-10 text-sm placeholder:text-faint focus:border-accent focus:bg-white"
+      />
+      <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-line bg-white px-1.5 text-[10px] text-muted">
+        ⌘K
+      </kbd>
+    </form>
   );
 }

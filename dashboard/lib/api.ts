@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * Thin API client.
- *
- * The JWT lives in localStorage rather than a cookie because the dashboard is
- * a pure SPA against a separate API origin in dev; there is no server-rendered
- * authenticated surface that would need it sent automatically.
+ * API client. The dashboard and API share an origin in production (the API
+ * lives under /api behind Caddy), so the default base is relative.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const TOKEN_KEY = "callsentry.token";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const TOKEN_KEY = "pestlaunch.token";
 
 export class ApiError extends Error {
   constructor(
@@ -22,7 +19,11 @@ export class ApiError extends Error {
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string): void {
@@ -30,7 +31,11 @@ export function setToken(token: string): void {
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -44,8 +49,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${BASE}${path}`, { ...init, headers });
 
   if (response.status === 401) {
-    // The token expired or was revoked. Drop it and bounce to login rather
-    // than letting every subsequent panel render its own error.
     clearToken();
     if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
@@ -59,7 +62,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       const body = await response.json();
       detail = body.detail ?? detail;
     } catch {
-      /* non-JSON error body; keep the status text */
+      /* non-JSON error body */
     }
     throw new ApiError(typeof detail === "string" ? detail : "Request failed", response.status);
   }
@@ -74,162 +77,279 @@ export const api = {
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   patch: <T,>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
-  put: <T,>(path: string, body: unknown) =>
-    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   delete: <T,>(path: string) => request<T>(path, { method: "DELETE" }),
-  upload: <T,>(path: string, file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request<T>(path, { method: "POST", body: form });
-  },
-  /** Absolute URL, for links and audio elements that bypass the fetch wrapper. */
+  form: <T,>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
   url: (path: string) => `${BASE}${path}`,
-  async blob(path: string, body: unknown): Promise<Blob> {
-    const token = getToken();
-    const response = await fetch(`${BASE}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) throw new ApiError("Request failed", response.status);
-    return response.blob();
-  },
 };
 
-// --- Shared response types -------------------------------------------------
+// --- Types -------------------------------------------------------------------
 
-export interface CallSummary {
-  id: string;
-  caller_number: string;
-  duration_seconds: number;
-  outcome: string;
-  sentiment: string | null;
-  escalated: boolean;
-  cost_usd: number;
-  created_at: string;
-}
+export type Grade = "gold" | "green" | "below";
+export type Lens = "sales" | "retention" | "service";
 
-export interface CallDetail extends CallSummary {
-  transcript: string | null;
-  summary: string | null;
-  recording_url: string | null;
-  escalation_reason: string | null;
-  provider_log: ProviderAttempt[];
-}
-
-export interface ProviderAttempt {
-  component: string;
-  provider: string;
-  tier: string;
-  ok: boolean;
-  latency_ms: number;
-  detail?: string;
-}
-
-export interface CallStats {
-  calls_today: number;
-  bookings_today: number;
-  escalations_today: number;
-  avg_duration_seconds: number;
-  cost_today_usd: number;
-  cost_all_time_usd: number;
-  local_share_pct: number;
-  sentiment: Record<string, number>;
-  outcomes: Record<string, number>;
-}
-
-export interface Appointment {
-  id: string;
-  call_id: string | null;
-  caller_name: string;
-  caller_phone: string;
-  caller_email: string | null;
-  reason: string | null;
-  scheduled_at: string;
-  timezone: string;
-  status: string;
-  cal_com_event_id: string | null;
-  reminder_sent: boolean;
-  confirmation_sent: boolean;
-  created_at: string;
-}
-
-export interface KBDocument {
-  id: string;
-  filename: string;
-  content_type: string;
-  chunk_count: number;
-  indexed: boolean;
-  created_at: string;
-}
-
-export interface ProviderRow {
-  provider: string;
-  tier: string;
-  healthy: boolean;
-  detail: string;
-  unit: string;
-  cost_per_unit: number;
-}
-
-export interface ProviderSnapshot {
-  local_only: boolean;
-  components: Record<string, ProviderRow[]>;
-}
-
-export interface BusinessSettings {
-  business_id: string;
-  name: string;
-  timezone: string;
-  business_hours: Record<string, [string, string] | null>;
-  escalation_phone: string | null;
-  after_hours_message: string | null;
-  greeting_override: string | null;
-  twilio_number: string | null;
-  voice_id: string;
-  cal_com_event_type_id: string | null;
-  cal_com_api_key: string;
-  local_only: boolean;
-}
-
-export interface Analytics {
-  volume: { date: string; calls: number; bookings: number; escalations: number; cost_usd: number }[];
-  peak_hours: { hour: number; calls: number }[];
-  booking_conversion_pct: number;
-  escalation_rate_pct: number;
-  avg_cost_per_call_usd: number;
-  cost_by_category: Record<string, Record<string, number>>;
-  top_topics: { topic: string; count: number }[];
-}
-
-export interface DashboardUser {
-  id: string;
+export interface Me {
   email: string;
   role: string;
+  business_id: string;
+  business_name?: string;
+}
+
+export interface CallRow {
+  id: string;
+  external_ref: string | null;
+  original_filename: string | null;
+  occurred_at: string | null;
   created_at: string;
-  is_current_user: boolean;
+  duration_seconds: number;
+  processing_status: string;
+  processing_error: string | null;
+  call_type: string | null;
+  call_type_label: string | null;
+  lens: Lens | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  customer_name: string | null;
+  summary: string | null;
+  outcome: string | null;
+  score: number | null;
+  score_max: number | null;
+  grade: Grade | null;
+  needs_review: boolean;
+  call_type_overridden: boolean;
 }
 
-export interface PlatformField {
+export interface CallPage {
+  items: CallRow[];
+  total: number;
+}
+
+export interface Evidence {
+  segment_id: number;
+  quote: string;
+  start: number | null;
+  role: string | null;
+  verified: boolean;
+}
+
+export interface ScoreItem {
   key: string;
-  env: string;
-  group: string;
   label: string;
-  kind: "text" | "secret" | "bool" | "int" | "float" | "url";
-  help: string;
-  restart_required: boolean;
-  value: string;
-  is_set: boolean;
-  overridden: boolean;
-  env_value: string;
-  updated_at: string | null;
+  quadrant: string;
+  status: "met" | "missed" | "not_needed";
+  awarded: boolean;
+  auto_awarded: boolean;
+  reason: string;
+  evidence: Evidence[];
+  agreement: string | null;
 }
 
-export interface PlatformSettings {
-  can_edit: boolean;
-  groups: { id: string; label: string }[];
-  fields: PlatformField[];
+export interface Moment {
+  title: string;
+  segment_id: number;
+  start: number | null;
+  verified?: boolean;
+}
+
+export interface CoachingTip extends Moment {
+  item_keys: string[];
+  what_happened: string;
+  try_saying: string;
+  why_it_matters: string;
+}
+
+export interface Strength extends Moment {
+  detail: string;
+  quote: string;
+}
+
+export interface Triage {
+  call_type_reason: string;
+  direction: string;
+  company_name: string;
+  customer_wins: string[];
+  pests: string[];
+  sales: {
+    outcome: string;
+    service_discussed: string;
+    price_quoted: string;
+    objections: { objection: string; segment_id: number }[];
+    lost_reason: string;
+  };
+  retention: {
+    outcome: string;
+    cancel_reason: string;
+    root_cause: string;
+    offers_made: string[];
+    first_offer_accepted: boolean;
+    under_contract: string;
+  };
+  service: { request: string; resolution: string; actions_taken: string[] };
+  appointment: { booked: boolean; when: string };
+  follow_ups: { action: string; owner: string; due: string }[];
+  customer_sentiment_end: string;
+  classified_as?: string;
+}
+
+export interface Analysis {
+  model: string;
+  updated_at: string;
+  call_type: string;
+  call_type_label: string;
+  call_type_confidence: number;
+  lens: Lens | null;
+  outcome: string | null;
+  rep_name: string | null;
+  customer_name: string | null;
+  summary: string | null;
+  scorecard_key: string | null;
+  scorecard_name: string | null;
+  score: number | null;
+  score_max: number | null;
+  grade: Grade | null;
+  evidence_verified_pct: number | null;
+  triage: Triage;
+  items: ScoreItem[];
+  coaching: { overall_feedback?: string; coaching?: CoachingTip[]; strengths?: Strength[] };
+  cost_usd: number;
+}
+
+export interface Segment {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+  role: "rep" | "customer" | "unknown";
+}
+
+export interface CallDetail extends CallRow {
+  stt_engine: string | null;
+  stt_provider: string | null;
+  audio_channels: number | null;
+  audio_url: string | null;
+  segments: Segment[];
+  analysis: Analysis | null;
+  cost_usd: number;
+}
+
+export interface CallRef {
+  call_id: string;
+  ref: string | null;
+  customer: string | null;
+  rep: string | null;
+  when: string;
+}
+
+export interface MissedStep {
+  step: string;
+  missed: number;
+  of: number;
+  pct: number | null;
+  example_call_id: string | null;
+}
+
+export interface GradeCounts {
+  gold: number;
+  green: number;
+  below: number;
+}
+
+export interface Overview {
+  as_of: string;
+  scorecard: {
+    calls: number;
+    scored: number;
+    avg_score_pct: number | null;
+    grades: GradeCounts;
+    needs_review: number;
+    in_progress: number;
+    failed: number;
+  };
+  sales: {
+    calls: number;
+    sold: number;
+    follow_up: number;
+    not_sold: number;
+    close_rate: number | null;
+    avg_score_pct: number | null;
+    grades: GradeCounts;
+    missed_steps: MissedStep[];
+    objections: (CallRef & { objection: string })[];
+    not_closed: (CallRef & { reason: string })[];
+  };
+  retention: {
+    calls: number;
+    saved: number;
+    cancelled: number;
+    pending: number;
+    save_rate: number | null;
+    avg_score_pct: number | null;
+    grades: GradeCounts;
+    reasons: { reason: string; count: number }[];
+    offers: { offer: string; count: number }[];
+    no_offer_calls: number;
+    missed_steps: MissedStep[];
+    not_saved: (CallRef & { reason: string; root_cause: string; offers_made: string[] })[];
+  };
+  service: {
+    calls: number;
+    by_type: { call_type: string; label: string; count: number }[];
+    resolved: number;
+    partially: number;
+    unresolved: number;
+    resolution_rate: number | null;
+    avg_score_pct: number | null;
+    grades: GradeCounts;
+    missed_steps: MissedStep[];
+    unresolved_calls: (CallRef & { summary: string })[];
+  };
+  training: MissedStep[];
+  follow_ups: (CallRef & { action: string; owner: string; due: string })[];
+  review: (CallRef & { call_type: string; confidence: number })[];
+}
+
+export interface RepSummary {
+  id: string;
+  name: string;
+  calls: number;
+  scored: number;
+  avg_score_pct: number | null;
+  grades: GradeCounts;
+  lenses: Record<string, number>;
+  close_rate: number | null;
+  sales_calls: number;
+  save_rate: number | null;
+  strongest: string | null;
+  weakest: string | null;
+}
+
+export interface StepRate {
+  step: string;
+  quadrant: string;
+  met: number;
+  of: number;
+  pct: number | null;
+}
+
+export interface RepDetail extends RepSummary {
+  scorecards: { scorecard: string; calls: number; steps: StepRate[] }[];
+  training: MissedStep[];
+  coaching: (CallRef & { title: string; try_saying: string; start: number | null })[];
+  strengths: (CallRef & { title: string; detail: string; start: number | null })[];
+  trend: { call_id: string; ref: string | null; when: string; pct: number | null; grade: Grade }[];
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  stage: string;
+  stage_source: string;
+  pests: string[];
+  service: string | null;
+  price_quoted: string | null;
+  next_step: string | null;
+  rep_name: string | null;
+  last_call_id: string | null;
+  last_contact_at: string | null;
+  calls: number;
 }

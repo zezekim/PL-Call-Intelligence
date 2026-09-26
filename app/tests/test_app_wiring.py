@@ -84,6 +84,10 @@ PUBLIC_ROUTES = [
     ("post", "/intel/calls/{call_id}/reprocess"),
     ("delete", "/intel/calls/{call_id}"),
     ("get", "/intel/reps"),
+    ("get", "/intel/reps/{rep_id}"),
+    ("get", "/intel/overview"),
+    ("get", "/intel/pipeline"),
+    ("patch", "/intel/leads/{lead_id}"),
 ]
 
 

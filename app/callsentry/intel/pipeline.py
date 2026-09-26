@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
 from callsentry.core.providers import ProviderUnavailable
-from callsentry.intel import analyze, audio
+from callsentry.intel import analyze, audio, leads
 from callsentry.intel.analyze import Analysis, AnalysisFailed
 from callsentry.intel.transcribe import EmptyTranscript, transcribe
 from callsentry.intel.transcript import Segment, exact_speakers, merge_adjacent, plain_text
@@ -104,7 +104,9 @@ async def process(session: AsyncSession, call_id: uuid.UUID, *, reuse_transcript
         call.processing_status = ProcessingStatus.ANALYZING
         await session.commit()
 
-        result = await analyze.analyse(segments, diarized=diarized)
+        result = await analyze.analyse(
+            segments, diarized=diarized, forced_type=call.call_type_override
+        )
         await _store(session, call, segments, result)
         call.processing_status = ProcessingStatus.DONE
         call.processing_error = None
@@ -196,6 +198,8 @@ async def _store(
     row.items = result.items
     row.coaching = result.coaching
     row.cost_usd = result.cost_usd
+    await session.flush()
+    await leads.sync(session, call, row)
 
     for llm in result.llm_results:
         await costs.record(
