@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Analysis, type CallDetail, type ScoreItem, type Segment } from "@/lib/api";
+import { api, type Analysis, type CallDetail, type RepSummary, type ScoreItem, type Segment } from "@/lib/api";
 import {
   CALL_TYPES,
   CANCEL_REASON,
   OFFER_LABEL,
+  businessZone,
   clock,
   dateTime,
   duration,
+  fromZoneInput,
   titleCase,
+  toZoneInput,
 } from "@/lib/format";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { FollowUpList } from "@/components/follow-up-list";
@@ -138,12 +141,7 @@ function Header({
           </div>
           <h1 className="mt-1.5 text-[28px] font-semibold leading-tight tracking-title">{title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted">
-            {call.rep_name && (
-              <span className="inline-flex items-center gap-2 text-ink">
-                <Avatar name={call.rep_name} size={22} />
-                {call.rep_name}
-              </span>
-            )}
+            <RepEditor call={call} onSaved={reload} />
             <span>{call.external_ref ?? call.original_filename}</span>
             <span>{duration(call.duration_seconds)}</span>
             <DateEditor call={call} onSaved={reload} />
@@ -221,6 +219,101 @@ function Header({
   );
 }
 
+const NEW_REP = "__new__";
+
+function RepEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [choice, setChoice] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const reps = useApi<RepSummary[]>(editing ? "/intel/reps" : null);
+
+  async function save(body: { rep_id?: string; rep_name?: string }) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/intel/calls/${call.id}`, body);
+      setEditing(false);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        className="inline-flex items-center gap-2 text-ink hover:text-link"
+        title="Change who took this call"
+        onClick={() => {
+          setChoice(call.rep_id ?? "");
+          setName("");
+          setEditing(true);
+        }}
+      >
+        {call.rep_name ? (
+          <>
+            <Avatar name={call.rep_name} size={22} />
+            {call.rep_name}
+            {call.rep_locked && <span className="text-muted">(set by manager)</span>}
+          </>
+        ) : (
+          <span className="text-link">Assign rep</span>
+        )}
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <select
+        className="select w-auto py-1 text-[13px]"
+        aria-label="Rep who took this call"
+        value={choice}
+        onChange={(e) => setChoice(e.target.value)}
+      >
+        <option value="" disabled>
+          Choose a rep
+        </option>
+        {(reps.data ?? []).map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+        <option value={NEW_REP}>Someone else…</option>
+      </select>
+      {choice === NEW_REP && (
+        <input
+          className="input w-36 px-2 py-1 text-[13px]"
+          placeholder="First name"
+          aria-label="Rep's first name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus
+        />
+      )}
+      <button
+        className="btn-primary px-3 py-1 text-[13px]"
+        disabled={busy || !choice || (choice === NEW_REP && !name.trim())}
+        onClick={() => save(choice === NEW_REP ? { rep_name: name.trim() } : { rep_id: choice })}
+      >
+        Save
+      </button>
+      {call.rep_locked && (
+        <button className="btn-ghost px-2 py-1 text-[13px]" disabled={busy} onClick={() => save({ rep_id: "" })}>
+          Use detected rep
+        </button>
+      )}
+      <button className="btn-ghost px-2 py-1 text-[13px]" onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+      {error && <span className="text-[13px] text-bad">{error}</span>}
+    </span>
+  );
+}
+
 function DateEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -232,9 +325,7 @@ function DateEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promis
         className="hover:text-link"
         title={call.occurred_at ? "Change when this call happened" : "Upload time - set when the call happened"}
         onClick={() => {
-          const d = new Date(when);
-          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-          setValue(local);
+          setValue(toZoneInput(when));
           setEditing(true);
         }}
       >
@@ -250,7 +341,8 @@ function DateEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promis
         className="input w-auto px-2 py-1 text-[13px]"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        max={new Date().toISOString().slice(0, 16)}
+        max={toZoneInput(new Date().toISOString())}
+        aria-label={`When the call happened (${businessZone()})`}
       />
       <button
         className="btn-primary px-3 py-1 text-[13px]"
@@ -258,7 +350,7 @@ function DateEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promis
         onClick={async () => {
           setBusy(true);
           try {
-            await api.patch(`/intel/calls/${call.id}`, { occurred_at: new Date(value).toISOString() });
+            await api.patch(`/intel/calls/${call.id}`, { occurred_at: fromZoneInput(value) });
             setEditing(false);
             await onSaved();
           } finally {

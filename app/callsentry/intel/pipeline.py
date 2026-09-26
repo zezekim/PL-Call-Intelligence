@@ -188,7 +188,8 @@ async def _store(
     call.transcript = plain_text(segments)
     call.summary = result.summary
     call.call_type = result.call_type
-    call.rep_id = rep.id if rep else None
+    if not call.rep_locked:
+        call.rep_id = rep.id if rep else None
     call.score = result.score
     call.score_max = result.score_max
     call.grade = result.grade

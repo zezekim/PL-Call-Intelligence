@@ -13,7 +13,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.orm import selectinload
 
 from callsentry.api.deps import BusinessDep, SessionDep, UserDep
@@ -55,11 +56,24 @@ class CallRow(BaseModel):
     grade: str | None
     needs_review: bool = False
     call_type_overridden: bool = False
+    # Steps the two scoring models still disagree on and no manager has ruled on.
+    disputed_steps: int = 0
+    rep_locked: bool = False
 
 
 class CallPage(BaseModel):
     items: list[CallRow]
     total: int
+
+
+class DuplicateOut(BaseModel):
+    filename: str
+    call_id: str
+
+
+class UploadResult(BaseModel):
+    created: list[CallRow]
+    duplicates: list[DuplicateOut]
 
 
 class AnalysisOut(BaseModel):
@@ -188,6 +202,8 @@ def _row(call: Call) -> CallRow:
             and float(analysis.call_type_confidence or 0) < insights.REVIEW_CONFIDENCE
         ),
         call_type_overridden=bool(call.call_type_override),
+        disputed_steps=insights.disputed_steps(analysis.items or []) if analysis else 0,
+        rep_locked=call.rep_locked,
     )
 
 
@@ -249,7 +265,7 @@ def _base_query(business_id: uuid.UUID) -> Select[Any]:
 # --- Routes --------------------------------------------------------------------
 
 
-@router.post("/uploads", response_model=list[CallRow], status_code=status.HTTP_201_CREATED)
+@router.post("/uploads", response_model=UploadResult, status_code=status.HTTP_201_CREATED)
 async def upload(
     session: SessionDep,
     business: BusinessDep,
@@ -259,7 +275,7 @@ async def upload(
     # JSON list of ISO datetimes, one per file (the browser sends each file's
     # own modified time, which for call exports is when the call happened).
     dates: Annotated[str, Form()] = "",
-) -> list[CallRow]:
+) -> UploadResult:
     try:
         occurred = [_parse_when(d) for d in json.loads(dates)] if dates else []
     except (ValueError, TypeError) as exc:
@@ -271,6 +287,7 @@ async def upload(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "engine must be auto, deepgram or local")
 
     created: list[Call] = []
+    duplicates: list[DuplicateOut] = []
     for index, upload_file in enumerate(files):
         try:
             call = await ingest.ingest(
@@ -282,6 +299,13 @@ async def upload(
                 occurred_at=occurred[index] if index < len(occurred) else None,
             )
             call.scoring_mode = scoring or None
+        except ingest.DuplicateUpload as exc:
+            # Skipped, not fatal: re-uploading a folder shouldn't score calls twice.
+            duplicates.append(
+                DuplicateOut(filename=upload_file.filename or "recording",
+                             call_id=str(exc.existing.id))
+            )
+            continue
         except ingest.RejectedUpload as exc:
             # The whole batch is rolled back; don't leave its files behind.
             for earlier in created:
@@ -294,8 +318,28 @@ async def upload(
     for call in created:
         await session.refresh(call, ["created_at", "analysis", "rep"])
     await session.commit()
-    jobs.notify()
-    return [_row(c) for c in created]
+    if created:
+        jobs.notify()
+    return UploadResult(created=[_row(c) for c in created], duplicates=duplicates)
+
+
+def _when() -> Any:
+    return func.coalesce(Call.occurred_at, Call.created_at)
+
+
+_SORTS: dict[str, Any] = {
+    "date": _when,
+    "score": lambda: Call.score * 1.0 / func.nullif(Call.score_max, 0),
+    "length": lambda: Call.duration_seconds,
+    "rep": lambda: select(Rep.name).where(Rep.id == Call.rep_id).scalar_subquery(),
+    "type": lambda: Call.call_type,
+}
+
+
+def _order(sort: str, order: str) -> list[Any]:
+    column = _SORTS[sort]()
+    primary = column.asc().nulls_last() if order == "asc" else column.desc().nulls_last()
+    return [primary, _when().desc(), Call.external_ref.desc()]
 
 
 @router.get("/calls", response_model=CallPage)
@@ -310,9 +354,14 @@ async def list_calls(
     q: str | None = None,
     source: str | None = None,
     review: bool = False,
+    disputed: bool = False,
+    sort: str = "date",
+    order: str = "desc",
     limit: Annotated[int, Query(le=200)] = 50,
     offset: int = 0,
 ) -> CallPage:
+    if sort not in _SORTS or order not in {"asc", "desc"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown sort")
     stmt = _base_query(business.id)
     if source:
         stmt = stmt.where(Call.source == source)
@@ -320,6 +369,16 @@ async def list_calls(
         stmt = stmt.join(CallAnalysis, CallAnalysis.call_id == Call.id).where(
             Call.call_type_override.is_(None),
             CallAnalysis.call_type_confidence < insights.REVIEW_CONFIDENCE,
+        )
+    if disputed:
+        stmt = stmt.where(
+            Call.id.in_(
+                select(CallAnalysis.call_id).where(
+                    func.jsonb_path_exists(
+                        CallAnalysis.items, cast(insights.DISPUTED_PATH, JSONPATH)
+                    )
+                )
+            )
         )
     if call_type:
         stmt = stmt.where(Call.call_type == call_type)
@@ -351,8 +410,7 @@ async def list_calls(
     rows = (
         await session.scalars(
             stmt.options(selectinload(Call.analysis), selectinload(Call.rep))
-            .order_by(func.coalesce(Call.occurred_at, Call.created_at).desc(),
-                      Call.external_ref.desc())
+            .order_by(*_order(sort, order))
             .limit(limit)
             .offset(offset)
         )
@@ -531,23 +589,57 @@ def _parse_when(value: Any) -> datetime | None:
 
 
 class CallUpdate(BaseModel):
-    occurred_at: datetime
+    occurred_at: datetime | None = None
+    # An existing rep's id, or a new name; "" clears a manual assignment.
+    rep_id: str | None = None
+    rep_name: str | None = Field(default=None, max_length=120)
 
 
 @router.patch("/calls/{call_id}", response_model=CallRow)
 async def update_call(
     call_id: uuid.UUID, payload: CallUpdate, session: SessionDep, business: BusinessDep
 ) -> CallRow:
-    """Correct when a call happened."""
+    """Correct when a call happened, or who took it."""
     call = await _owned_call(session, business.id, call_id)
-    if payload.occurred_at.tzinfo is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "occurred_at needs a timezone")
-    call.occurred_at = payload.occurred_at
+    if payload.occurred_at is not None:
+        if payload.occurred_at.tzinfo is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "occurred_at needs a timezone")
+        call.occurred_at = payload.occurred_at
+    if payload.rep_id is not None or payload.rep_name is not None:
+        await _assign_rep(session, business.id, call, payload)
     await session.flush()
+    await session.refresh(call, ["rep"])
     if call.lead_id:
         await leads_service.refresh_contact(session, call.lead_id)
     await session.commit()
     return _row(call)
+
+
+async def _assign_rep(
+    session: Any, business_id: uuid.UUID, call: Call, payload: CallUpdate
+) -> None:
+    if payload.rep_name and payload.rep_name.strip():
+        rep = await pipeline.get_or_create_rep(session, business_id, payload.rep_name)
+        if rep is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "rep name is empty")
+        call.rep_id, call.rep_locked = rep.id, True
+    elif payload.rep_id:
+        try:
+            rep_uuid = uuid.UUID(payload.rep_id)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid rep_id") from exc
+        rep = await session.get(Rep, rep_uuid)
+        if rep is None or rep.business_id != business_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "rep not found")
+        call.rep_id, call.rep_locked = rep.id, True
+    else:
+        # Back to the rep the analysis identified.
+        call.rep_locked = False
+        name = call.analysis.rep_name if call.analysis else None
+        if call.source == "twilio":
+            name = pipeline.AI_REP_NAME
+        rep = await pipeline.get_or_create_rep(session, business_id, name or "")
+        call.rep_id = rep.id if rep else None
 
 
 def _follow_up_out(f: FollowUp, call: Call | None = None) -> FollowUpOut:

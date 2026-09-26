@@ -45,6 +45,8 @@ class MeResponse(BaseModel):
     role: str
     business_id: str
     business_name: str = ""
+    # IANA zone the dashboard shows times in, e.g. "America/Denver".
+    business_timezone: str = "UTC"
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -104,7 +106,7 @@ async def logout() -> None:
 async def me(user: UserDep, business: BusinessDep) -> MeResponse:
     return MeResponse(
         id=str(user.id), email=user.email, role=user.role, business_id=str(user.business_id),
-        business_name=business.name,
+        business_name=business.name, business_timezone=business.timezone or "UTC",
     )
 
 

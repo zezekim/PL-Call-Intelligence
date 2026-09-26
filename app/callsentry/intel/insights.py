@@ -77,6 +77,15 @@ def needs_review(row: Row) -> bool:
     )
 
 
+# A step the two models still disagree on after deliberating, with no
+# manager ruling yet. It counts as not awarded until someone reviews it.
+DISPUTED_PATH = '$[*] ? (@.agreement == "disputed" && !exists(@.override))'
+
+
+def disputed_steps(items: list[dict[str, Any]]) -> int:
+    return sum(1 for i in items if i.get("agreement") == "disputed" and not i.get("override"))
+
+
 # Steps that share a label within a scorecard; the quadrant tells them apart.
 _AMBIGUOUS = {"expectation_statement_1", "expectation_statement_2"}
 
@@ -256,6 +265,7 @@ async def overview(session: AsyncSession, business_id: uuid.UUID, days: int | No
             "avg_score_pct": _avg([p for r in scored if (p := r.pct) is not None]),
             "grades": _grades(scored),
             "needs_review": sum(1 for r in rows if needs_review(r)),
+            "disputed_calls": sum(1 for r in rows if disputed_steps(r.analysis.items or [])),
             "in_progress": in_progress,
             "failed": status_counts.get(ProcessingStatus.FAILED, 0),
         },

@@ -18,7 +18,7 @@ from sqlalchemy import or_, select, update
 
 from callsentry.config import get_settings
 from callsentry.core.db import get_sessionmaker
-from callsentry.intel import followups, leads, pipeline
+from callsentry.intel import followups, ingest, leads, pipeline
 from callsentry.models import Call, ProcessingStatus
 
 log = structlog.get_logger(__name__)
@@ -120,5 +120,12 @@ async def run() -> None:
             log.info("intel.leads_backfilled", calls=created)
     except Exception as exc:  # noqa: BLE001
         log.warning("intel.leads_backfill_failed", error=str(exc))
+    try:
+        async with get_sessionmaker()() as session:
+            hashed = await ingest.backfill_fingerprints(session)
+        if hashed:
+            log.info("intel.fingerprints_backfilled", calls=hashed)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("intel.fingerprints_backfill_failed", error=str(exc))
     workers = max(1, get_settings().intel_workers)
     await asyncio.gather(*(_worker(i) for i in range(workers)))

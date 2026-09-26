@@ -94,6 +94,8 @@ class Call(Base, TimestampMixin):
     # Relative to UPLOAD_DIR. Never served directly - see the signed audio route.
     audio_path: Mapped[str | None] = mapped_column(Text)
     audio_channels: Mapped[int | None] = mapped_column(Integer)
+    # Fingerprint of the uploaded file, so the same recording isn't scored twice.
+    audio_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     # When the call happened, if known; created_at is when it was uploaded.
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -118,6 +120,10 @@ class Call(Base, TimestampMixin):
     )
     # Set by a manager when the classifier picked the wrong call type.
     call_type_override: Mapped[str | None] = mapped_column(String(24))
+    # Set when a manager assigned the rep by hand; re-scoring keeps it.
+    rep_locked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     lead_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), index=True
     )

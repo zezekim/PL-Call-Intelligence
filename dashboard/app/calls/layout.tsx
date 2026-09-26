@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, type CallRow } from "@/lib/api";
+import { api, type UploadResult } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
 import { startProgress } from "@/components/route-progress";
@@ -144,13 +144,24 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const { env, choose } = useEnvironment();
   const [scoring, setScoring] = useState<"standard" | "enhanced">("standard");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<UploadResult["duplicates"]>([]);
   const [dragging, setDragging] = useState(false);
 
   const reset = () => {
     setFiles([]);
     setError(null);
+    setSkipped([]);
     setBusy(false);
+    setProgress(0);
+  };
+
+  const finish = () => {
+    reset();
+    onClose();
+    startProgress();
+    router.push("/calls/log");
   };
 
   const addFiles = (list: FileList | null) => {
@@ -168,12 +179,17 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
     form.append("dates", JSON.stringify(files.map((f) => new Date(f.lastModified).toISOString())));
     form.append("engine", ENGINE_FOR[env]);
     form.append("scoring", scoring);
+    setProgress(0);
     try {
-      await api.form<CallRow[]>("/intel/uploads", form);
-      reset();
-      onClose();
-      startProgress();
-      router.push("/calls/log");
+      const result = await api.upload<UploadResult>("/intel/uploads", form, setProgress);
+      if (!result.duplicates.length) {
+        finish();
+        return;
+      }
+      // Say which files were skipped before moving on.
+      setFiles([]);
+      setSkipped(result.duplicates);
+      setBusy(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setBusy(false);
@@ -282,6 +298,34 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         </fieldset>
 
         {error && <ErrorNote message={error} />}
+        {skipped.length > 0 && (
+          <div className="rounded-xl bg-warn-soft px-4 py-3 text-[14px]">
+            <p className="font-medium text-warn">
+              {skipped.length === 1 ? "1 file was" : `${skipped.length} files were`} already uploaded and skipped
+            </p>
+            <ul className="mt-1 space-y-0.5 text-[13px]">
+              {skipped.map((d) => (
+                <li key={d.call_id + d.filename}>
+                  <Link href={`/calls/${d.call_id}`} className="text-link hover:underline" onClick={() => { reset(); onClose(); }}>
+                    {d.filename}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {busy && (
+          <div
+            className="h-[5px] overflow-hidden rounded-full bg-fill"
+            role="progressbar"
+            aria-label="Upload progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+          >
+            <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${progress * 100}%` }} />
+          </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onClose} disabled={busy}>
@@ -289,8 +333,17 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
           <button className="btn-primary" onClick={submit} disabled={busy || !files.length}>
             {busy && <Spinner className="h-3.5 w-3.5" />}
-            {busy ? "Uploading" : `Upload ${files.length || ""} ${files.length === 1 ? "call" : "calls"}`}
+            {busy
+              ? progress < 1
+                ? `Uploading ${Math.round(progress * 100)}%`
+                : "Checking files"
+              : `Upload ${files.length || ""} ${files.length === 1 ? "call" : "calls"}`}
           </button>
+          {skipped.length > 0 && !files.length && (
+            <button className="btn-primary" onClick={finish}>
+              View call log
+            </button>
+          )}
         </div>
       </div>
     </Modal>

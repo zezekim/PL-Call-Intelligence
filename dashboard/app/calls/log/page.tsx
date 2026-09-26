@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import type { CallPage, CallRow, RepSummary } from "@/lib/api";
+import { api, type CallPage, type CallRow, type RepSummary } from "@/lib/api";
 import { CALL_TYPES, date, duration } from "@/lib/format";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
@@ -63,24 +63,79 @@ function CallLog() {
     grade: "grade",
     status: "status",
     review: "review",
+    disputed: "disputed",
     source: "source",
+    sort: "sort",
+    order: "order",
   };
   Object.entries(map).forEach(([ui, key]) => {
     const v = params.get(ui);
-    if (v) apiParams.set(key, ui === "review" ? "true" : v);
+    if (v) apiParams.set(key, ui === "review" || ui === "disputed" ? "true" : v);
   });
-  apiParams.set("limit", "200");
+  apiParams.set("limit", String(PAGE));
+  const query = apiParams.toString();
 
-  const { data, error, loading, reload } = useApi<CallPage>(`/intel/calls?${apiParams}`, {
+  const { data, error, loading, reload } = useApi<CallPage>(`/intel/calls?${query}`, {
     poll: (d) => d.items.some((c) => IN_PROGRESS.has(c.processing_status)),
   });
+  // Further pages, appended below the first; dropped when the filters change.
+  const [more, setMore] = useState<CallRow[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => setMore([]), [query]);
+  const items = data ? [...data.items, ...more.filter((m) => !data.items.some((c) => c.id === m.id))] : [];
+
+  async function loadMore() {
+    if (!data) return;
+    setLoadingMore(true);
+    try {
+      const next = new URLSearchParams(query);
+      next.set("offset", String(items.length));
+      const page = await api.get<CallPage>(`/intel/calls?${next}`);
+      setMore((prev) => [...prev, ...page.items]);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const sort = params.get("sort") ?? "date";
+  const order = params.get("order") ?? "desc";
+  const sortBy = (key: string) => {
+    const next = new URLSearchParams(params.toString());
+    // Newest, highest and longest first on the first click; names A-Z.
+    const firstOrder = key === "rep" || key === "type" ? "asc" : "desc";
+    const nextOrder = sort === key ? (order === "desc" ? "asc" : "desc") : firstOrder;
+    if (key === "date" && nextOrder === "desc") {
+      next.delete("sort");
+      next.delete("order");
+    } else {
+      next.set("sort", key);
+      next.set("order", nextOrder);
+    }
+    router.replace(`${pathname}?${next}`);
+  };
+  const header = (key: string, label: string, className: string) => (
+    <th
+      className={`${className} py-3 font-medium`}
+      aria-sort={sort === key ? (order === "asc" ? "ascending" : "descending") : undefined}
+    >
+      <button
+        onClick={() => sortBy(key)}
+        className={`inline-flex items-center gap-1 hover:text-ink ${sort === key ? "text-ink" : ""}`}
+      >
+        {label}
+        <span aria-hidden className={`text-[10px] ${sort === key ? "" : "invisible"}`}>
+          {order === "asc" ? "▲" : "▼"}
+        </span>
+      </button>
+    </th>
+  );
   const reps = useApi<RepSummary[]>("/intel/reps");
 
   useEffect(() => {
     if (refreshKey) void reload();
   }, [refreshKey, reload]);
 
-  const activeFilters = ["type", "lens", "rep", "grade", "status", "review", "source", "q"].filter((k) =>
+  const activeFilters = ["type", "lens", "rep", "grade", "status", "review", "disputed", "source", "q"].filter((k) =>
     params.get(k),
   );
 
@@ -158,6 +213,13 @@ function CallLog() {
         </p>
       )}
 
+      {params.get("disputed") && (
+        <p className="footnote px-1">
+          Showing calls where the two scoring models still disagree on a step. Those steps count as missed
+          until you rule on them from the call page.
+        </p>
+      )}
+
       {error && <ErrorNote message={error} />}
 
       <Card className="overflow-hidden">
@@ -165,7 +227,7 @@ function CallLog() {
           <div className="px-6">
             <Loading />
           </div>
-        ) : !data?.items.length ? (
+        ) : !items.length ? (
           <div className="p-6">
             <Empty title={activeFilters.length ? "No calls match these filters" : "No calls yet"}>
               {activeFilters.length ? "Try clearing a filter." : "Upload recordings to get started."}
@@ -177,16 +239,16 @@ function CallLog() {
               <thead className="border-b border-line text-[12px] text-muted">
                 <tr>
                   <th className="px-6 py-3 font-medium">Call</th>
-                  <th className="px-3 py-3 font-medium">Type</th>
-                  <th className="px-3 py-3 font-medium">Rep</th>
+                  {header("type", "Type", "px-3")}
+                  {header("rep", "Rep", "px-3")}
                   <th className="px-3 py-3 font-medium">Outcome</th>
-                  <th className="px-3 py-3 font-medium">Score</th>
-                  <th className="px-3 py-3 text-right font-medium">Length</th>
-                  <th className="px-6 py-3 text-right font-medium">Date</th>
+                  {header("score", "Score", "px-3")}
+                  {header("length", "Length", "px-3 text-right")}
+                  {header("date", "Date", "px-6 text-right")}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {data.items.map((c) => (
+                {items.map((c) => (
                   <tr
                     key={c.id}
                     className="cursor-pointer transition-colors hover:bg-[#fafafa]"
@@ -227,6 +289,7 @@ function CallLog() {
                       {c.processing_status === "done" && (
                         <ScoreCell score={c.score} max={c.score_max} grade={c.grade} />
                       )}
+                      {c.disputed_steps > 0 && <DisputedNote count={c.disputed_steps} />}
                     </td>
                     <td className="tnum px-3 py-3 text-right text-muted">{duration(c.duration_seconds)}</td>
                     <td className="tnum px-6 py-3 text-right text-muted">
@@ -238,7 +301,7 @@ function CallLog() {
             </table>
 
             <ul className="divide-y divide-line md:hidden">
-              {data.items.map((c) => (
+              {items.map((c) => (
                 <li key={c.id}>
                   <Link href={`/calls/${c.id}`} className="block px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -261,18 +324,38 @@ function CallLog() {
                       {c.processing_status === "done" && (
                         <ScoreCell score={c.score} max={c.score_max} grade={c.grade} />
                       )}
+                      {c.disputed_steps > 0 && <DisputedNote count={c.disputed_steps} />}
                     </div>
                   </Link>
                 </li>
               ))}
             </ul>
-            <p className="border-t border-line px-6 py-3 text-[12px] text-muted">
-              {data.total} call{data.total === 1 ? "" : "s"}
-            </p>
+            <div className="flex items-center justify-between gap-3 border-t border-line px-6 py-3 text-[12px] text-muted">
+              <span>
+                {items.length < (data?.total ?? 0) ? `${items.length} of ${data?.total}` : data?.total} call
+                {data?.total === 1 ? "" : "s"}
+              </span>
+              {items.length < (data?.total ?? 0) && (
+                <button className="btn-secondary px-3 py-1 text-[13px]" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore && <Spinner className="h-3 w-3" />}
+                  Show more
+                </button>
+              )}
+            </div>
           </>
         )}
       </Card>
     </div>
+  );
+}
+
+const PAGE = 50;
+
+function DisputedNote({ count }: { count: number }) {
+  return (
+    <span className="mt-0.5 block text-[12px] text-warn" title="The scoring models disagree; review on the call page">
+      {count} disputed step{count === 1 ? "" : "s"}
+    </span>
   );
 }
 

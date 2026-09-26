@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken, type Me } from "@/lib/api";
+import { setBusinessZone } from "@/lib/format";
 import { APP_VERSION, BUILD_ID } from "@/lib/version";
 import { EnvironmentPrompt } from "./environment";
 import { RouteProgress, startProgress } from "./route-progress";
@@ -39,6 +40,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [zoneKey, setZoneKey] = useState(0);
   const bare = pathname.startsWith("/login");
   // The pipeline board fills the window height, so it needs less padding below.
   const wide = pathname.startsWith("/calls/pipeline");
@@ -57,7 +59,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setReady(true);
     api
       .get<Me>("/auth/me")
-      .then(setMe)
+      .then((m) => {
+        // First load for this browser: re-render the page in the business zone.
+        if (setBusinessZone(m.business_timezone)) setZoneKey((k) => k + 1);
+        setMe(m);
+      })
       .catch(() => undefined);
   }, [bare, router]);
 
@@ -186,7 +192,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           wide ? "pb-4" : "pb-20"
         }`}
       >
-        <div key={section} className="animate-page-in">
+        <div key={`${section}:${zoneKey}`} className="animate-page-in">
           {children}
         </div>
       </main>

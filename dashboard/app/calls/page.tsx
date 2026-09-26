@@ -70,6 +70,12 @@ export default function OverviewPage() {
       href: "/calls/log?review=1",
     },
     {
+      show: scorecard.disputed_calls > 0,
+      title: `${plural(scorecard.disputed_calls, "call")} with disputed steps`,
+      detail: "The two scoring models still disagree on a step; your call decides it",
+      href: "/calls/log?disputed=1",
+    },
+    {
       show: scorecard.failed > 0,
       title: `${plural(scorecard.failed, "recording")} could not be processed`,
       detail: "Open the call to see why and try again",

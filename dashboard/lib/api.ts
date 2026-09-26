@@ -76,6 +76,37 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** POST a form with upload progress (0-1). fetch can't report upload progress. */
+function upload<T>(path: string, form: FormData, onProgress: (fraction: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}${path}`);
+    const token = getToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onerror = () => reject(new ApiError("Upload failed. Check your connection.", 0));
+    xhr.onload = () => {
+      let body: { detail?: unknown } | null = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON body */
+      }
+      if (xhr.status === 401) {
+        clearToken();
+        window.location.href = "/login";
+        reject(new ApiError("Session expired", 401));
+      } else if (xhr.status >= 400) {
+        const detail = body?.detail;
+        reject(new ApiError(typeof detail === "string" ? detail : "Upload failed", xhr.status));
+      } else {
+        resolve(body as T);
+      }
+    };
+    xhr.send(form);
+  });
+}
+
 export const api = {
   get: <T,>(path: string) => request<T>(path),
   post: <T,>(path: string, body?: unknown) =>
@@ -86,6 +117,7 @@ export const api = {
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   delete: <T,>(path: string) => request<T>(path, { method: "DELETE" }),
   form: <T,>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
+  upload,
   url: (path: string) => `${BASE}${path}`,
 };
 
@@ -99,6 +131,12 @@ export interface Me {
   role: string;
   business_id: string;
   business_name?: string;
+  business_timezone?: string;
+}
+
+export interface UploadResult {
+  created: CallRow[];
+  duplicates: { filename: string; call_id: string }[];
 }
 
 export interface CallRow {
@@ -123,6 +161,8 @@ export interface CallRow {
   score_max: number | null;
   grade: Grade | null;
   needs_review: boolean;
+  disputed_steps: number;
+  rep_locked: boolean;
   call_type_overridden: boolean;
 }
 
@@ -291,6 +331,7 @@ export interface Overview {
     avg_score_pct: number | null;
     grades: GradeCounts;
     needs_review: number;
+    disputed_calls: number;
     in_progress: number;
     failed: number;
   };

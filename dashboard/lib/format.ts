@@ -9,19 +9,101 @@ export function clock(seconds: number | null | undefined): string {
   return duration(seconds);
 }
 
+/*
+ * Times are shown in the business's own time zone, not the viewer's, so a
+ * manager travelling or a reviewer abroad sees the time the customer called.
+ * The zone comes from /auth/me and is remembered for the next page load.
+ */
+const ZONE_KEY = "business_tz";
+const browserZone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+let zone: string | undefined = (() => {
+  try {
+    return (typeof window !== "undefined" && localStorage.getItem(ZONE_KEY)) || undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
+export function businessZone(): string {
+  return zone ?? browserZone;
+}
+
+/** Returns true when the zone changed and already-rendered times are stale. */
+export function setBusinessZone(tz: string | null | undefined): boolean {
+  if (!tz || tz === zone) return false;
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz });
+  } catch {
+    return false;
+  }
+  zone = tz;
+  try {
+    localStorage.setItem(ZONE_KEY, tz);
+  } catch {
+    // Remembering it is a convenience only.
+  }
+  return true;
+}
+
+/** Short zone name, e.g. "MDT", shown only when it differs from the viewer's. */
+function zoneSuffix(d: Date): string {
+  const tz = businessZone();
+  if (tz === browserZone) return "";
+  const part = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" })
+    .formatToParts(d)
+    .find((p) => p.type === "timeZoneName");
+  return part ? ` ${part.value}` : "";
+}
+
 export function date(iso: string | null | undefined): string {
   if (!iso) return "-";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: businessZone() });
 }
 
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return "-";
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
+  const d = new Date(iso);
+  return (
+    d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: businessZone(),
+    }) + zoneSuffix(d)
+  );
+}
+
+function zonedParts(d: Date): Record<string, number> {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: businessZone(),
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
     minute: "2-digit",
-  });
+    second: "2-digit",
+  }).formatToParts(d);
+  return Object.fromEntries(parts.filter((p) => p.type !== "literal").map((p) => [p.type, Number(p.value)]));
+}
+
+/** An instant as a datetime-local value ("2026-09-26T14:30") in the business zone. */
+export function toZoneInput(iso: string): string {
+  const p = zonedParts(new Date(iso));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
+
+/** A datetime-local value read as business-zone wall time, back to an ISO instant. */
+export function fromZoneInput(value: string): string {
+  const [day, time] = value.split("T");
+  const [y, m, d] = day.split("-").map(Number);
+  const [h, min] = time.split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, h, min);
+  const p = zonedParts(new Date(guess));
+  const offset = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - guess;
+  return new Date(guess - offset).toISOString();
 }
 
 export function pct(value: number | null | undefined, digits = 0): string {
