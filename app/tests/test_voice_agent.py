@@ -149,3 +149,51 @@ def test_call_state_round_trips_booking_and_message_flags():
                       booked="Monday between 8 AM and 10 AM", taking_message=True)
     loaded = callstate._load(callstate._dump(state))
     assert loaded.booked == state.booked and loaded.taking_message is True
+
+
+def test_speakable_drops_a_cut_off_sentence_and_formatting():
+    from callsentry.agents.voice_agent import speakable
+
+    cut = (
+        "Yes, we can treat both on one visit. The service covers inside and out. "
+        "Exact pricing gets confirmed by"
+    )
+    assert speakable(cut) == (
+        "Yes, we can treat both on one visit. The service covers inside and out."
+    )
+    formatted = speakable("**Sure** - we can help.\n\nWant to book?")
+    assert formatted == "Sure - we can help. Want to book?"
+    long = "One. Two. Three. Four."
+    assert speakable(long) == "One. Two. Three."
+    # A single unfinished sentence is still better than silence.
+    assert speakable("We can help with") == "We can help with"
+
+
+@pytest.mark.parametrize("text", ["Never mind. Bye.", "okay bye", "No thanks.", "That's all"])
+def test_leaving_is_not_taken_as_a_message(text):
+    from callsentry.agents.voice_agent import _is_leaving
+
+    assert _is_leaving(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Tell them the ants are back in the kitchen", "Nothing works on these ants, call me back"],
+)
+def test_real_messages_are_kept(text):
+    from callsentry.agents.voice_agent import _is_leaving
+
+    assert not _is_leaving(text)
+
+
+def test_kb_answer_sees_the_recent_conversation():
+    from callsentry.agents.kb_agent import _messages
+
+    history = [
+        {"role": "assistant", "content": "Hi, how can I help?"},
+        {"role": "user", "content": "Ants all over the house, and rodents."},
+        {"role": "assistant", "content": "Sorry to hear that."},
+    ]
+    messages = _messages("Can you do it in one session?", history)
+    assert messages[0]["role"] == "user" and "rodents" in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "Can you do it in one session?"}

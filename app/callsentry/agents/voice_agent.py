@@ -18,6 +18,7 @@ Conversation rules enforced here (not left to the model):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -232,6 +233,24 @@ async def _playbook(session: AsyncSession, business: Business) -> str:
 
 # --- Turn handling ---------------------------------------------------------
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def speakable(text: str, *, max_sentences: int = 3) -> str:
+    """Model text made fit to say aloud.
+
+    Formatting is dropped, a sentence cut off by the token limit is removed
+    rather than spoken half-finished, and at most `max_sentences` are kept:
+    a caller can't skim, and a long answer is heard as a monologue.
+    """
+    text = re.sub(r"[*_#`>]+", "", text).replace("\n", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    sentences = [s for s in _SENTENCE_END.split(text) if s]
+    if len(sentences) > 1 and not sentences[-1].rstrip().endswith(("?", ".", "!")):
+        sentences = sentences[:-1]
+    return " ".join(sentences[:max_sentences]).strip()
+
+
 
 async def handle_turn(
     session: AsyncSession,
@@ -244,6 +263,14 @@ async def handle_turn(
     """Process one caller utterance and decide what to say next."""
     state.turns += 1
     state.remember("user", utterance)
+
+    if state.taking_message and _is_leaving(utterance):
+        state.taking_message = False
+        return _finish(
+            state,
+            TurnResponse(text="No problem. Thanks for calling, take care.", end_call=True,
+                         outcome=call.outcome),
+        )
 
     if state.taking_message:
         # The caller was asked what to pass on; this utterance is the message.
@@ -289,12 +316,8 @@ async def handle_turn(
             ),
         )
 
-    if intent.intent is Intent.ESCALATE or intent.frustrated:
-        reason = "caller requested a human" if intent.intent is Intent.ESCALATE else (
-            "caller frustration detected"
-        )
-        return _finish(state, await _escalate(business, state, reason=reason))
-
+    # A caller who is leaving gets a goodbye, however annoyed they sound: asking
+    # "what message should I pass along?" to "never mind, bye" is the wrong call.
     if intent.intent is Intent.WRONG_NUMBER:
         return _finish(
             state,
@@ -314,6 +337,12 @@ async def handle_turn(
                 outcome=call.outcome,
             ),
         )
+
+    if intent.intent is Intent.ESCALATE or intent.frustrated:
+        reason = "caller requested a human" if intent.intent is Intent.ESCALATE else (
+            "caller frustration detected"
+        )
+        return _finish(state, await _escalate(business, state, reason=reason))
 
     if intent.intent in (Intent.BOOKING, Intent.CANCEL):
         booking = await _handle_booking(session, business, call, state, intent.entities)
@@ -359,10 +388,10 @@ async def _escalate(business: Business, state: CallState, *, reason: str) -> Tur
 
     state.taking_message = True
     name = state.collected.get("name")
-    who = "" if name else " and your name"
+    who = "" if name else ", and who should they ask for"
     return TurnResponse(
         text=(
-            "I'll have someone from the team call you back about that. "
+            "I'll have someone from the team call you back. "
             f"What would you like me to pass along{who}?"
         ),
         outcome=CallOutcome.ESCALATED,
@@ -477,6 +506,7 @@ async def _handle_faq(
         business_id=str(business.id),
         business_name=business.name,
         question=question,
+        history=state.history[:-1],
         style=await _playbook(session, business),
     )
     if result.llm:
@@ -484,7 +514,7 @@ async def _handle_faq(
 
     if result.answered:
         return TurnResponse(
-            text=result.text,
+            text=speakable(result.text),
             outcome=CallOutcome.ANSWERED,
             metadata={"kb_sources": result.sources, "kb_confidence": round(result.confidence, 3)},
         )
@@ -514,11 +544,11 @@ async def _handle_freeform(
         _persona(business, playbook=await _playbook(session, business), state=state),
         state.history,
         realtime=True,
-        max_tokens=160,
+        max_tokens=120,
     )
     await _log_llm_cost(session, business, call, result, CostCategory.LLM)
 
-    text = result.text.strip() or (
+    text = speakable(result.text) or (
         "Sorry, I didn't catch that. Are you looking to book an appointment, "
         "or did you have a question?"
     )
@@ -534,6 +564,19 @@ _AFFIRMATIVE = {
     "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "sounds good", "that works",
     "perfect", "great", "works", "book it", "confirm", "correct", "right",
 }
+
+
+_LEAVING = re.compile(
+    r"^(?:ok(?:ay)?[, ]*)?(?:never ?mind|no thanks?(?: you)?|that'?s (?:all|it)|forget it|"
+    r"(?:good)?bye|nothing)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_leaving(text: str) -> bool:
+    """A short 'never mind' / 'bye' - not a message worth passing on."""
+    cleaned = text.strip(" .!?,").lower()
+    return len(cleaned.split()) <= 6 and bool(_LEAVING.match(cleaned))
 
 
 def _is_affirmative(text: str) -> bool:

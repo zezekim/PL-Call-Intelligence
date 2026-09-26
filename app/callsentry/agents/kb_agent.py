@@ -46,9 +46,14 @@ Hard rules:
 - Do not mention "the documents", "the reference material", or that you are
   searching anything. Just answer as the receptionist would.
 
-Style: this is spoken aloud. One or two short sentences. No lists, no
-markdown, no URLs. Use plain spoken numbers. Where it fits, offer a helpful
-next step, such as booking a technician.
+Style - this is spoken aloud on a phone call:
+- Answer the caller's actual question first, directly (yes or no when it is a
+  yes/no question), then stop. At most two short sentences, under 40 words.
+- Say only what was asked. Do not recite service details, and only mention a
+  price when the caller asks what something costs.
+- End with at most one question, such as offering to book a technician.
+- The conversation so far is included; do not repeat what you already said.
+- No lists, no markdown, no URLs. Use plain spoken numbers.
 {style}
 --- REFERENCE MATERIAL ---
 {context}
@@ -70,6 +75,7 @@ async def answer(
     business_id: str,
     business_name: str,
     question: str,
+    history: list[dict[str, str]] | None = None,
     style: str = "",
 ) -> KBAnswer:
     import uuid as _uuid
@@ -78,7 +84,7 @@ async def answer(
     whole = await _small_kb(session, _uuid.UUID(business_id))
     if whole is not None:
         return await _answer_from(whole, business_name=business_name, question=question,
-                                  style=style)
+                                  history=history, style=style)
 
     hits = await kb.search(session, business_id=_uuid.UUID(business_id), query=question, limit=4)
 
@@ -99,7 +105,7 @@ async def answer(
         business_name=business_name, abstain=ABSTAIN, context=context, style=_style(style)
     )
     result = await get_llm().complete(
-        system, [{"role": "user", "content": question}], realtime=True, max_tokens=200
+        system, _messages(question, history), realtime=True, max_tokens=MAX_TOKENS
     )
 
     text = result.text.strip()
@@ -113,6 +119,21 @@ async def answer(
         sources=sorted({h.filename for h in usable}),
         llm=result,
     )
+
+
+# Enough for two spoken sentences; less output is also a faster reply.
+MAX_TOKENS = 110
+# Recent turns give the answer context ("in one session?" means the ants and
+# the rodents the caller just described).
+HISTORY_TURNS = 6
+
+
+def _messages(question: str, history: list[dict[str, str]] | None) -> list[dict[str, str]]:
+    recent = list(history or [])[-HISTORY_TURNS:]
+    # The API needs the conversation to open with the caller.
+    while recent and recent[0]["role"] != "user":
+        recent.pop(0)
+    return [*recent, {"role": "user", "content": question}]
 
 
 # Up to roughly 3k tokens of reference text goes in whole.
@@ -146,14 +167,19 @@ def _style(playbook: str) -> str:
 
 
 async def _answer_from(
-    docs: list[tuple[str, str]], *, business_name: str, question: str, style: str = ""
+    docs: list[tuple[str, str]],
+    *,
+    business_name: str,
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    style: str = "",
 ) -> KBAnswer:
     context = "\n\n---\n\n".join(f"[{name}]\n{content}" for name, content in docs)
     system = SYSTEM_TEMPLATE.format(
         business_name=business_name, abstain=ABSTAIN, context=context, style=_style(style)
     )
     result = await get_llm().complete(
-        system, [{"role": "user", "content": question}], realtime=True, max_tokens=200
+        system, _messages(question, history), realtime=True, max_tokens=MAX_TOKENS
     )
     text = result.text.strip()
     sources = sorted(name for name, _ in docs)
