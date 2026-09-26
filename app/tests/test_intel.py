@@ -512,3 +512,17 @@ def test_no_rep_named_falls_back_to_whoever_answered():
     analyze.assign_roles(segs, triage, diarized=True)
     assert [s.role for s in segs] == [REP, CUSTOMER, REP]
     assert triage["roles_guessed"] is True
+
+
+@pytest.mark.parametrize(
+    ("source", "booked", "expected"),
+    [("twilio", True, True), ("twilio", False, False), ("upload", True, False)],
+)
+def test_only_receptionist_bookings_become_leads_outside_sales(source, booked, expected):
+    from callsentry.intel.leads import _receptionist_booking
+    from callsentry.models import Call, CallAnalysis
+
+    call = Call(source=source)
+    analysis = CallAnalysis(call_type="scheduling",
+                            triage={"appointment": {"booked": booked, "when": "Monday"}})
+    assert _receptionist_booking(call, analysis) is expected

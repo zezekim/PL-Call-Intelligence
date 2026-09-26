@@ -7,12 +7,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.intel.rubrics import CallType
-from callsentry.models import Call, CallAnalysis, Lead, LeadStage, ProcessingStatus
+from callsentry.models import Call, CallAnalysis, CallSource, Lead, LeadStage, ProcessingStatus
 
 STAGES = [s.value for s in LeadStage]
 
@@ -35,9 +35,25 @@ def name_key(name: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", "", name.lower()).strip()
 
 
+def _receptionist_booking(call: Call, analysis: CallAnalysis) -> bool:
+    """A caller who booked a visit with the AI receptionist.
+
+    The receptionist has no customer list, so it cannot tell a new prospect
+    from an existing customer; a booked visit is treated as a lead either way.
+    """
+    appointment = (analysis.triage or {}).get("appointment") or {}
+    return call.source == CallSource.TWILIO and bool(appointment.get("booked"))
+
+
 async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lead | None:
-    """Attach a sales call to its lead, creating or moving the lead as needed."""
-    if analysis.call_type != CallType.SALES:
+    """Attach a lead-generating call to its lead, creating or moving it as needed.
+
+    Sales calls move the lead by their outcome. A visit booked with the AI
+    receptionist creates a new lead, but never moves an existing lead back.
+    """
+    from_sales = analysis.call_type == CallType.SALES
+    from_receptionist = not from_sales and _receptionist_booking(call, analysis)
+    if not (from_sales or from_receptionist):
         call.lead_id = None
         return None
 
@@ -64,7 +80,7 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
     follow_ups = triage.get("follow_ups") or []
     contact_at = call.occurred_at or call.created_at or datetime.now(UTC)
     is_latest = lead.last_contact_at is None or contact_at >= lead.last_contact_at
-    if is_latest:
+    if is_latest and from_sales:
         lead.stage = stage_for(triage)
         lead.stage_source = "auto"
         lead.last_call_id = call.id
@@ -73,6 +89,15 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
         lead.service = (sales.get("service_discussed") or "").strip() or lead.service
         lead.price_quoted = (sales.get("price_quoted") or "").strip() or lead.price_quoted
         lead.next_step = follow_ups[0].get("action") if follow_ups else None
+    elif is_latest:
+        # Booked through the receptionist: record the visit, keep the stage.
+        when = ((triage.get("appointment") or {}).get("when") or "").strip()
+        request = ((triage.get("service") or {}).get("request") or "").strip()
+        lead.last_call_id = call.id
+        lead.last_contact_at = contact_at
+        lead.rep_id = call.rep_id
+        lead.service = request or lead.service
+        lead.next_step = f"Visit booked for {when}" if when else "Visit booked"
     lead.pests = sorted({*(lead.pests or []), *(triage.get("pests") or [])})
     lead.updated_at = datetime.now(UTC)
     call.lead_id = lead.id
@@ -85,7 +110,8 @@ async def backfill(session: AsyncSession) -> int:
         await session.execute(
             select(Call, CallAnalysis)
             .join(CallAnalysis, CallAnalysis.call_id == Call.id)
-            .where(Call.lead_id.is_(None), Call.call_type == CallType.SALES,
+            .where(Call.lead_id.is_(None),
+                   or_(Call.call_type == CallType.SALES, Call.source == CallSource.TWILIO),
                    Call.processing_status == ProcessingStatus.DONE)
             .order_by(Call.created_at)
         )
