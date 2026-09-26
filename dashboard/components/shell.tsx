@@ -114,6 +114,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               return (
                 <span
                   key={label}
+                  role="link"
+                  aria-disabled="true"
                   className="flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-faint"
                   title="Not part of this build"
                 >
@@ -227,7 +229,7 @@ function SearchBox() {
         aria-label="Search calls"
         className="w-full rounded-[9px] border-0 bg-black/[0.05] py-[6px] pl-8 pr-10 text-[14px] placeholder:text-muted focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-accent/25"
       />
-      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-faint">
+      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-[#5e5e63]">
         ⌘K
       </kbd>
     </form>

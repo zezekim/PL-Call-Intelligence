@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from callsentry import logging as app_logging
+from callsentry.api.deps import UserDep
 from callsentry.api.readonly import viewer_allowed
 from callsentry.api.routes import (
     admin,
@@ -111,11 +112,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 await task
 
 
+# Interactive API docs are for development; a public deployment (served over
+# https) keeps its schema to itself.
+_public = get_settings().public_base_url.startswith("https://")
+
 app = FastAPI(
     title="CallSentry",
     version="1.0.0",
     description="Self-hosted, local-first AI voice receptionist.",
     lifespan=lifespan,
+    docs_url=None if _public else "/docs",
+    redoc_url=None if _public else "/redoc",
+    openapi_url=None if _public else "/openapi.json",
 )
 
 app.add_middleware(
@@ -165,8 +173,11 @@ async def health() -> dict[str, Any]:
 
 
 @app.get("/health/deep", tags=["health"])
-async def health_deep() -> dict[str, Any]:
-    """Health including a live database round-trip and provider probes."""
+async def health_deep(_: UserDep) -> dict[str, Any]:
+    """Health including a live database round-trip and provider probes.
+
+    Signed-in only: the provider snapshot says which keys are configured.
+    """
     from sqlalchemy import text
 
     database = "ok"

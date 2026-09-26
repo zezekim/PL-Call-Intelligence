@@ -129,7 +129,7 @@ export default function PipelinePage() {
                     />
                   ))}
                   {!cards.length && (
-                    <p className="px-2 py-6 text-center text-[13px] text-faint">No leads</p>
+                    <p className="px-2 py-6 text-center text-[13px] text-[#5e5e63]">No leads</p>
                   )}
                 </div>
               </section>

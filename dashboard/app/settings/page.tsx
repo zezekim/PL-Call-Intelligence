@@ -247,6 +247,7 @@ function FieldRow({
             autoComplete="new-password"
             className="input"
             placeholder="Paste the new value"
+            aria-label={field.label}
             value={edit ?? ""}
             onChange={(e) => onEdit(e.target.value || null)}
             disabled={disabled}
@@ -284,6 +285,7 @@ function FieldRow({
       <label className="inline-flex cursor-pointer items-center gap-2 text-[14px]">
         <input
           type="checkbox"
+          aria-label={field.label}
           className="h-4 w-4 accent-[#0071e3]"
           checked={current}
           onChange={(e) => onEdit(e.target.checked === (field.value === "true") ? null : String(e.target.checked))}
@@ -297,6 +299,7 @@ function FieldRow({
   } else if (field.key === "scoring_mode") {
     control = (
       <select
+        aria-label={field.label}
         className="select w-full sm:max-w-[300px]"
         value={edit ?? field.value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
@@ -312,6 +315,7 @@ function FieldRow({
   } else if (field.key === "call_stt_engine") {
     control = (
       <select
+        aria-label={field.label}
         className="select w-full sm:max-w-[300px]"
         value={edit ?? field.value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
@@ -327,6 +331,7 @@ function FieldRow({
   } else {
     control = (
       <input
+        aria-label={field.label}
         className="input w-full sm:max-w-[300px]"
         inputMode={field.kind === "float" || field.kind === "int" ? "decimal" : undefined}
         value={edit ?? field.value}
@@ -366,6 +371,7 @@ function ModelPicker({
   return (
     <div className="w-full space-y-1.5 sm:max-w-[300px]">
       <select
+        aria-label={field.label}
         className="select"
         value={value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
@@ -655,16 +661,17 @@ function TeamPanel({ canEdit }: { canEdit: boolean }) {
       <div className="group-list">
         {adding && (
           <div className="grid gap-2 px-5 py-4 sm:grid-cols-[1.4fr_1fr_140px_auto]">
-            <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="input" type="email" placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <input
               className="input"
               type="password"
               autoComplete="new-password"
               placeholder="Temporary password (10+ characters)"
+              aria-label="Temporary password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
+            <select className="select" aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="admin">Admin</option>
               <option value="viewer">View only</option>
             </select>
@@ -716,6 +723,7 @@ function TeamPanel({ canEdit }: { canEdit: boolean }) {
                   type="password"
                   autoComplete="new-password"
                   placeholder="New password (10+ characters)"
+                  aria-label="New password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
@@ -770,6 +778,7 @@ function AccountPanel() {
           type="password"
           autoComplete="current-password"
           placeholder="Current password"
+          aria-label="Current password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
         />
@@ -778,6 +787,7 @@ function AccountPanel() {
           type="password"
           autoComplete="new-password"
           placeholder="New password (10+ characters)"
+          aria-label="New password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
         />

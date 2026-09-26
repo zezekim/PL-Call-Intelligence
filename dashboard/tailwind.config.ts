@@ -13,7 +13,7 @@ export default {
       colors: {
         ink: "#1d1d1f",
         muted: "#6e6e73",
-        faint: "#86868b",
+        faint: "#707075",
         line: "#e5e5ea",
         hairline: "rgba(0,0,0,0.08)",
         canvas: "#f5f5f7",

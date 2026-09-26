@@ -852,7 +852,7 @@ function Transcript({
                 </p>
                 <div
                   className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left text-[15px] leading-[1.4] [overflow-wrap:anywhere] ${
-                    rep ? "bg-[#e9e9eb] text-ink" : "bg-[#0a84ff] text-white"
+                    rep ? "bg-[#e9e9eb] text-ink" : "bg-[#0071e3] text-white"
                   }`}
                 >
                   {turn.items.map((s) => (

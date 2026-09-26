@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Grade } from "@/lib/api";
 import {
   GRADE_LABEL,
@@ -281,6 +281,9 @@ export function ErrorNote({ message }: { message: string }) {
   );
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({
   open,
   onClose,
@@ -292,12 +295,47 @@ export function Modal({
   title: string;
   children: React.ReactNode;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Keyboard focus stays inside the dialog and returns to where it was.
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = ref.current;
+    const first = dialog?.querySelector<HTMLElement>(
+      "input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+    ) ?? dialog?.querySelector<HTMLElement>(FOCUSABLE);
+    first?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !dialog) return;
+      const items = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => el.offsetParent !== null,
+      );
+      if (!items.length) return;
+      const head = items[0];
+      const tail = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === head) {
+        e.preventDefault();
+        tail.focus();
+      } else if (!e.shiftKey && document.activeElement === tail) {
+        e.preventDefault();
+        head.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previous?.focus?.();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div
@@ -305,6 +343,7 @@ export function Modal({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
