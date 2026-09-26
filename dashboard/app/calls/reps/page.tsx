@@ -30,10 +30,10 @@ export default function RepsPage() {
 
   return (
     <Card className="overflow-hidden">
-      <table className="hidden w-full text-left text-sm md:table">
-        <thead className="border-b border-line text-xs text-muted">
+      <table className="hidden w-full text-left text-[14px] md:table">
+        <thead className="border-b border-line text-[12px] text-muted">
           <tr>
-            <th className="px-5 py-3 font-medium">Rep</th>
+            <th className="px-6 py-3 font-medium">Rep</th>
             <th className="px-3 py-3 text-right font-medium">Calls</th>
             <th className="px-3 py-3 text-right font-medium">Avg score</th>
             <th className="px-3 py-3 font-medium">Grades</th>
@@ -45,9 +45,9 @@ export default function RepsPage() {
         </thead>
         <tbody className="divide-y divide-line">
           {reps.map((r) => (
-            <tr key={r.id} className="hover:bg-panel/70">
-              <td className="px-5 py-3">
-                <Link href={`/calls/reps/${r.id}`} className="flex items-center gap-2.5 font-medium hover:text-accent">
+            <tr key={r.id} className="transition-colors hover:bg-[#fafafa]">
+              <td className="px-6 py-3.5">
+                <Link href={`/calls/reps/${r.id}`} className="flex items-center gap-3 text-[15px] font-medium tracking-tightish hover:text-link">
                   <Avatar name={r.name} size={30} />
                   {r.name}
                 </Link>
@@ -62,8 +62,8 @@ export default function RepsPage() {
               <td className="tnum px-3 py-3 text-right">
                 {r.sales_calls ? pct(r.close_rate) : <span className="text-faint">-</span>}
               </td>
-              <td className="max-w-[180px] truncate px-3 py-3 text-good">{r.strongest ?? "-"}</td>
-              <td className="max-w-[180px] truncate px-3 py-3 text-bad">{r.weakest ?? "-"}</td>
+              <td className="max-w-[180px] truncate px-3 py-3">{r.strongest ?? "-"}</td>
+              <td className="max-w-[180px] truncate px-3 py-3">{r.weakest ?? "-"}</td>
               <td className="pr-4">
                 <Link href={`/calls/reps/${r.id}`} aria-label={`Open ${r.name}`}>
                   <ChevronIcon className="h-4 w-4 text-faint" />
@@ -98,16 +98,17 @@ export default function RepsPage() {
 
 function GradeMix({ grades }: { grades: RepSummary["grades"] }) {
   const parts = [
-    { n: grades.gold, label: "Gold", cls: "bg-gold-soft text-gold" },
-    { n: grades.green, label: "Green", cls: "bg-good-soft text-good" },
-    { n: grades.below, label: "Below", cls: "bg-bad-soft text-bad" },
+    { n: grades.gold, label: "Gold", cls: "bg-[#c99a00]" },
+    { n: grades.green, label: "Green", cls: "bg-good" },
+    { n: grades.below, label: "Below", cls: "bg-bad" },
   ].filter((p) => p.n > 0);
   if (!parts.length) return <span className="text-faint">-</span>;
   return (
-    <span className="flex flex-wrap gap-1">
+    <span className="flex flex-wrap gap-3 text-[13px] text-muted">
       {parts.map((p) => (
-        <span key={p.label} className={`chip ${p.cls}`}>
-          {p.n} {p.label}
+        <span key={p.label} className="inline-flex items-center gap-1.5">
+          <span className={`h-[7px] w-[7px] rounded-full ${p.cls}`} />
+          <span className="tnum text-ink">{p.n}</span> {p.label}
         </span>
       ))}
     </span>

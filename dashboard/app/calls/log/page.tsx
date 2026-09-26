@@ -92,9 +92,9 @@ function CallLog() {
             setParam("q", search.trim());
           }}
         >
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-muted" />
           <input
-            className="input pl-9"
+            className="input rounded-full pl-9"
             placeholder="Search customer, rep, transcript or call ID"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -102,7 +102,7 @@ function CallLog() {
           />
         </form>
         <select
-          className="select w-auto"
+          className="select w-auto rounded-full"
           value={params.get("type") ?? ""}
           onChange={(e) => setParam("type", e.target.value)}
           aria-label="Call type"
@@ -115,7 +115,7 @@ function CallLog() {
           ))}
         </select>
         <select
-          className="select w-auto"
+          className="select w-auto rounded-full"
           value={params.get("rep") ?? ""}
           onChange={(e) => setParam("rep", e.target.value)}
           aria-label="Rep"
@@ -128,7 +128,7 @@ function CallLog() {
           ))}
         </select>
         <select
-          className="select w-auto"
+          className="select w-auto rounded-full"
           value={params.get("grade") ?? ""}
           onChange={(e) => setParam("grade", e.target.value)}
           aria-label="Grade"
@@ -146,12 +146,12 @@ function CallLog() {
       </div>
 
       {params.get("lens") && (
-        <p className="text-sm text-muted">
+        <p className="footnote px-1">
           Showing {params.get("lens")} calls{params.get("review") ? " that need a type check" : ""}.
         </p>
       )}
       {params.get("review") && !params.get("lens") && (
-        <p className="text-sm text-muted">
+        <p className="footnote px-1">
           Showing calls whose type could not be determined confidently. Open one to confirm it.
         </p>
       )}
@@ -171,31 +171,31 @@ function CallLog() {
           </div>
         ) : (
           <>
-            <table className="hidden w-full text-left text-sm md:table">
-              <thead className="border-b border-line text-xs text-muted">
+            <table className="hidden w-full text-left text-[14px] md:table">
+              <thead className="border-b border-line text-[12px] text-muted">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Call</th>
+                  <th className="px-6 py-3 font-medium">Call</th>
                   <th className="px-3 py-3 font-medium">Type</th>
                   <th className="px-3 py-3 font-medium">Rep</th>
                   <th className="px-3 py-3 font-medium">Outcome</th>
                   <th className="px-3 py-3 font-medium">Score</th>
                   <th className="px-3 py-3 text-right font-medium">Length</th>
-                  <th className="px-5 py-3 text-right font-medium">Date</th>
+                  <th className="px-6 py-3 text-right font-medium">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {data.items.map((c) => (
                   <tr
                     key={c.id}
-                    className="cursor-pointer hover:bg-panel/70"
+                    className="cursor-pointer transition-colors hover:bg-[#fafafa]"
                     onClick={() => router.push(`/calls/${c.id}`)}
                   >
-                    <td className="max-w-[280px] px-5 py-3">
+                    <td className="max-w-[280px] px-6 py-3.5">
                       <Link href={`/calls/${c.id}`} className="block" onClick={(e) => e.stopPropagation()}>
-                        <span className="block truncate font-medium">
+                        <span className="block truncate text-[15px] font-medium tracking-tightish">
                           {c.customer_name ?? c.external_ref ?? c.original_filename}
                         </span>
-                        <span className="block truncate text-xs text-muted">
+                        <span className="block truncate text-[12px] text-muted">
                           {c.source === "twilio" ? "AI receptionist call" : c.external_ref ?? c.original_filename}
                         </span>
                       </Link>
@@ -208,7 +208,7 @@ function CallLog() {
                     <td className="px-3 py-3">
                       {c.rep_name ? (
                         <span className="inline-flex items-center gap-2">
-                          <Avatar name={c.rep_name} size={24} />
+                          <Avatar name={c.rep_name} size={22} />
                           {c.rep_name}
                         </span>
                       ) : (
@@ -224,7 +224,7 @@ function CallLog() {
                       )}
                     </td>
                     <td className="tnum px-3 py-3 text-right text-muted">{duration(c.duration_seconds)}</td>
-                    <td className="tnum px-5 py-3 text-right text-muted">
+                    <td className="tnum px-6 py-3 text-right text-muted">
                       {date(c.occurred_at ?? c.created_at)}
                     </td>
                   </tr>
@@ -261,7 +261,7 @@ function CallLog() {
                 </li>
               ))}
             </ul>
-            <p className="border-t border-line px-5 py-2.5 text-xs text-muted">
+            <p className="border-t border-line px-6 py-3 text-[12px] text-muted">
               {data.total} call{data.total === 1 ? "" : "s"}
             </p>
           </>
@@ -275,13 +275,14 @@ function StatusOr({ call, children }: { call: CallRow; children: React.ReactNode
   if (call.processing_status === "done") return <>{children}</>;
   if (call.processing_status === "failed") {
     return (
-      <span className="chip bg-bad-soft text-bad" title={call.processing_error ?? ""}>
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-bad" title={call.processing_error ?? ""}>
+        <span className="h-[7px] w-[7px] rounded-full bg-bad" />
         Failed
       </span>
     );
   }
   return (
-    <span className="chip bg-accent-soft text-accent">
+    <span className="inline-flex items-center gap-1.5 text-[13px] text-muted">
       <Spinner className="h-3 w-3" />
       {STATUS_LABEL[call.processing_status] ?? "Processing"}
     </span>

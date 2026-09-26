@@ -91,6 +91,16 @@ make import dir=/path/to/recordings
   are refused until the next UTC day and the receptionist politely declines
   calls.
 
+### Scoring models
+
+The scoring model is picked in Settings from a list fetched live from Anthropic
+and OpenAI. **Standard** scoring runs that model three times and takes the
+majority per step; only the first run writes coaching, which keeps output
+tokens down. **Enhanced** scoring has the scoring model and a second-opinion
+model from the other provider grade independently, then shows each the other's
+verdict and evidence on every step they disagree on. Steps still disputed
+after that second round are marked *Disputed* and not awarded.
+
 ### The AI receptionist
 
 1. In **Settings**, add the Twilio account SID, auth token and phone number, save,
@@ -98,7 +108,15 @@ make import dir=/path/to/recordings
 2. `make receptionist` loads business hours and a short FAQ built only from facts
    in the call manuals. The receptionist answers from that FAQ or offers to take a
    message; it never improvises prices or policies.
-3. Call the number. Live calls always use cloud speech (Deepgram) and Claude,
+3. Optionally, **Settings → Receptionist playbook → Generate from calls** drafts
+   a playbook of technique from your graded calls: the questions callers ask,
+   how the best reps phrase each step of the call process, and how they handle
+   objections. Names, companies, contact details and prices are stripped, first
+   by instruction and then by a check against every name seen in the calls. A
+   manager edits and publishes it; only the published version is used.
+4. Callers who have phoned the receptionist before are greeted by first name,
+   and it knows what they called about last time.
+5. Call the number. Live calls always use cloud speech (Deepgram) and Claude,
    because local speech on a CPU is too slow for conversation. Appointments are
    booked into two-hour arrival windows within business hours.
 

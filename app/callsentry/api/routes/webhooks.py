@@ -22,7 +22,9 @@ from callsentry.models import (
     AppointmentStatus,
     Business,
     Call,
+    CallAnalysis,
     CallOutcome,
+    CallSource,
     CostCategory,
 )
 from callsentry.services import callstate, costs
@@ -117,15 +119,18 @@ async def twilio_voice(
 
     after_hours = not is_open(business)
     greeting = opening_line(business, after_hours=after_hours)
-
-    await callstate.save(
-        CallState(
-            call_id=str(call.id),
-            business_id=str(business.id),
-            caller_number=from_number,
-            after_hours=after_hours,
-        )
+    state = CallState(
+        call_id=str(call.id),
+        business_id=str(business.id),
+        caller_number=from_number,
+        after_hours=after_hours,
     )
+    known_name, note = await _caller_history(session, business.id, from_number, call.id)
+    if known_name:
+        state.collected["name"] = known_name
+        greeting = f"{greeting} Welcome back, {known_name.split()[0]}."
+    state.returning_note = note
+    await callstate.save(state)
 
     ws_url = f"{settings.public_ws_url.rstrip('/')}/ws/call/{call.id}"
     log.info(
@@ -148,6 +153,43 @@ async def twilio_voice(
         "</Stream>"
         "</Connect>"
     )
+
+
+async def _caller_history(
+    session: SessionDep, business_id: Any, number: str, current: Any
+) -> tuple[str, str]:
+    """Name and a one-line note from this number's last call to the receptionist.
+
+    Only the receptionist's own calls are consulted, matched on caller ID, and
+    only the caller's first name is ever spoken back.
+    """
+    # +266696687 is how Twilio presents a withheld caller ID.
+    if not number or number in {"unknown", "anonymous", "+266696687"}:
+        return "", ""
+    row = (
+        await session.execute(
+            select(Call, CallAnalysis)
+            .join(CallAnalysis, CallAnalysis.call_id == Call.id)
+            .where(
+                Call.business_id == business_id,
+                Call.caller_number == number,
+                Call.source == CallSource.TWILIO,
+                Call.id != current,
+            )
+            .order_by(Call.created_at.desc())
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        return "", ""
+    previous, analysis = row
+    name = (analysis.customer_name or "").strip()
+    when = previous.created_at.strftime("%B %-d")
+    note = f"They called before, on {when}. Last time: {analysis.summary or 'no summary'}"
+    appointment = (analysis.triage or {}).get("appointment") or {}
+    if appointment.get("booked") and appointment.get("when"):
+        note += f" They have a visit booked for {appointment['when']}."
+    return name, note
 
 
 @router.post("/twilio/status")

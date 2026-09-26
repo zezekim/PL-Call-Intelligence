@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import type { MissedStep, Overview } from "@/lib/api";
-import { CANCEL_REASON, OFFER_LABEL, pct, titleCase, tone } from "@/lib/format";
+import { CANCEL_REASON, OFFER_LABEL, pct, titleCase } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
-import { ChevronIcon } from "@/components/icons";
-import { Card, CardHeader, Empty, ErrorNote, HitBar, Loading, Metric } from "@/components/ui";
+import { ChevronIcon, PhoneIcon } from "@/components/icons";
+import { Card, CardHeader, Empty, ErrorNote, GroupRow, HitBar, Loading, Metric } from "@/components/ui";
 
 export default function OverviewPage() {
   const { query, refreshKey } = useCalls();
@@ -26,259 +26,246 @@ export default function OverviewPage() {
   const { scorecard, sales, retention, service } = data;
   if (!scorecard.calls && !scorecard.in_progress) {
     return (
-      <Card className="p-6">
+      <Card>
         <Empty title="No calls yet">
-          Upload call recordings and they will be transcribed, classified and scored against
-          your call standards.
+          Upload recordings and each one is transcribed, classified and graded against your
+          call standards.
         </Empty>
       </Card>
     );
   }
 
-  const leaks = [
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const attention = [
     {
       show: data.follow_ups.length > 0,
-      title: `${data.follow_ups.length} follow-up${data.follow_ups.length === 1 ? "" : "s"} promised`,
-      detail: "Callbacks, quotes and visits the team committed to on calls",
+      title: `${plural(data.follow_ups.length, "follow-up")} promised to customers`,
+      detail: "Callbacks, quotes and visits committed to on calls",
       href: "#follow-ups",
-      action: "Review",
     },
     {
       show: sales.not_closed.length > 0,
-      title: `${sales.not_closed.length} sales call${sales.not_closed.length === 1 ? "" : "s"} not closed`,
-      detail: "Prospects who are still deciding or said no",
+      title: `${plural(sales.not_closed.length, "sales call")} not closed`,
+      detail: "Prospects still deciding, or who said no",
       href: "/calls/pipeline",
-      action: "Open pipeline",
     },
     {
       show: retention.no_offer_calls > 0,
-      title: `${retention.no_offer_calls} cancellation${retention.no_offer_calls === 1 ? "" : "s"} with no save offer`,
-      detail: "The rep processed the cancel without offering a solution",
+      title: `${plural(retention.no_offer_calls, "cancellation")} with no save offer`,
+      detail: "The cancel was processed without offering a solution",
       href: "/calls/log?type=retention",
-      action: "Listen",
     },
     {
       show: service.unresolved_calls.length > 0,
-      title: `${service.unresolved_calls.length} service call${service.unresolved_calls.length === 1 ? "" : "s"} not fully resolved`,
+      title: `${plural(service.unresolved_calls.length, "service call")} not fully resolved`,
       detail: "Customers who may need another touch",
       href: "/calls/log?lens=service",
-      action: "View",
     },
     {
       show: scorecard.needs_review > 0,
-      title: `${scorecard.needs_review} call type${scorecard.needs_review === 1 ? "" : "s"} to confirm`,
-      detail: "The call could fit more than one type - confirm it so it is graded on the right scorecard",
+      title: `${plural(scorecard.needs_review, "call type")} to confirm`,
+      detail: "Could fit more than one type; confirm so it is graded on the right scorecard",
       href: "/calls/log?review=1",
-      action: "Confirm",
     },
     {
       show: scorecard.failed > 0,
-      title: `${scorecard.failed} recording${scorecard.failed === 1 ? "" : "s"} could not be processed`,
-      detail: "Open the call to see why and retry",
+      title: `${plural(scorecard.failed, "recording")} could not be processed`,
+      detail: "Open the call to see why and try again",
       href: "/calls/log?status=failed",
-      action: "View",
     },
   ].filter((l) => l.show);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {data.receptionist_number && <ReceptionistCard number={data.receptionist_number} />}
-      <Card accent className="p-6">
-        <CardHeader
-          title="Scorecard"
-          action={
-            scorecard.in_progress > 0 ? (
-              <span className="chip bg-accent-soft text-accent">
-                {scorecard.in_progress} processing
-              </span>
-            ) : undefined
-          }
-        />
-        <div className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 lg:grid-cols-6">
-          <Metric label="Calls analyzed" value={scorecard.calls} />
-          <Metric
-            label="Avg call score"
-            value={pct(scorecard.avg_score_pct)}
-            tone={tone(scorecard.avg_score_pct, 90, 70)}
+
+      <Card className="px-6 py-6">
+        <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x lg:divide-line">
+          <Stat
+            label="Calls analyzed"
+            value={scorecard.calls}
+            hint={scorecard.in_progress ? `${scorecard.in_progress} processing` : undefined}
           />
-          <Metric label="Sales close %" value={pct(sales.close_rate)} tone={tone(sales.close_rate, 50, 30)} hint={`${sales.sold} of ${sales.sold + sales.follow_up + sales.not_sold} sales calls`} />
-          <Metric
+          <Stat label="Average score" value={pct(scorecard.avg_score_pct)} />
+          <Stat
+            label="Sales closed"
+            value={pct(sales.close_rate)}
+            hint={`${sales.sold} of ${sales.sold + sales.follow_up + sales.not_sold} sales calls`}
+          />
+          <Stat
             label="Cancels saved"
-            value={retention.calls ? `${retention.saved}/${retention.saved + retention.cancelled}` : "-"}
-            tone={retention.calls ? tone(retention.save_rate, 50, 25) : "none"}
+            value={retention.calls ? `${retention.saved} of ${retention.saved + retention.cancelled}` : "-"}
           />
-          <Metric
-            label="Gold / Green"
-            value={`${scorecard.grades.gold} / ${scorecard.grades.green}`}
-            tone={scorecard.grades.gold + scorecard.grades.green > 0 ? "good" : "none"}
-          />
-          <Metric
-            label="Below standard"
-            value={scorecard.grades.below}
-            tone={scorecard.grades.below > 0 ? "bad" : "good"}
-            hint={`of ${scorecard.scored} graded calls`}
+          <Stat
+            label="Meeting standard"
+            value={`${scorecard.grades.gold + scorecard.grades.green} of ${scorecard.scored}`}
+            hint="Gold or Green grade"
           />
         </div>
       </Card>
 
-      {leaks.length > 0 && (
-        <Card accent className="p-6">
-          <CardHeader title="Call leaks" />
-          <div className="space-y-2">
-            {leaks.map((l) => (
-              <div key={l.title} className="inset-row">
-                <div className="min-w-0">
-                  <p className="font-medium">{l.title}</p>
-                  <p className="text-sm text-muted">{l.detail}</p>
-                </div>
-                <Link href={l.href} className="btn-primary shrink-0 rounded-full px-4">
-                  {l.action} →
-                </Link>
-              </div>
+      {attention.length > 0 && (
+        <section>
+          <h2 className="section-title mb-3 px-1">Needs attention</h2>
+          <div className="group-list">
+            {attention.map((l) => (
+              <GroupRow key={l.title} href={l.href}>
+                <p className="text-[15px] font-medium">{l.title}</p>
+                <p className="text-[13px] text-muted">{l.detail}</p>
+              </GroupRow>
             ))}
           </div>
-        </Card>
+        </section>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="p-6">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="flex flex-col p-6">
           <CardHeader eyebrow="Sales" title="Are we closing?" />
           <div className="grid grid-cols-3 gap-3">
-            <Metric label="Sold" value={sales.sold} tone={sales.sold ? "good" : "none"} />
-            <Metric label="Follow-up" value={sales.follow_up} tone={sales.follow_up ? "warn" : "none"} />
-            <Metric label="Not sold" value={sales.not_sold} tone={sales.not_sold ? "bad" : "none"} />
+            <Metric size="md" label="Sold" value={sales.sold} />
+            <Metric size="md" label="Deciding" value={sales.follow_up} />
+            <Metric size="md" label="Lost" value={sales.not_sold} />
           </div>
           <Divider />
-          <p className="eyebrow mb-1">Most missed steps</p>
+          <p className="eyebrow mb-1">Steps most often missed</p>
           <StepList steps={sales.missed_steps.slice(0, 3)} />
           {sales.objections.length > 0 && (
             <>
               <Divider />
-              <p className="eyebrow mb-2">Objections heard</p>
-              <ul className="space-y-1.5 text-sm">
-                {sales.objections.slice(0, 4).map((o, i) => (
-                  <li key={i}>
-                    <Link href={`/calls/${o.call_id}`} className="hover:text-accent">
-                      “{o.objection}”
-                      <span className="text-muted"> · {o.customer ?? o.ref}</span>
+              <p className="eyebrow mb-2">What customers pushed back on</p>
+              <ul className="space-y-2">
+                {sales.objections.slice(0, 3).map((o, i) => (
+                  <li key={i} className="text-[14px] leading-snug">
+                    <Link href={`/calls/${o.call_id}`} className="hover:text-link">
+                      {o.objection}
                     </Link>
+                    <span className="text-muted"> · {o.customer ?? o.ref}</span>
                   </li>
                 ))}
               </ul>
             </>
           )}
-          <LensLink href="/calls/log?lens=sales" label={`${sales.calls} sales calls`} />
+          <LensLink href="/calls/log?lens=sales" label={`All ${sales.calls} sales calls`} />
         </Card>
 
-        <Card className="p-6">
+        <Card className="flex flex-col p-6">
           <CardHeader eyebrow="Retention" title="Are we saving cancels?" />
           <div className="grid grid-cols-3 gap-3">
-            <Metric label="Cancel calls" value={retention.calls} />
-            <Metric label="Saved" value={retention.saved} tone={retention.saved ? "good" : "none"} />
-            <Metric label="Lost" value={retention.cancelled} tone={retention.cancelled ? "bad" : "none"} />
+            <Metric size="md" label="Cancel calls" value={retention.calls} />
+            <Metric size="md" label="Saved" value={retention.saved} />
+            <Metric size="md" label="Lost" value={retention.cancelled} />
           </div>
           <Divider />
           <p className="eyebrow mb-2">Why they cancel</p>
-          {retention.reasons.length ? (
-            <ul className="space-y-1 text-sm">
-              {retention.reasons.map((r) => (
-                <li key={r.reason} className="flex justify-between">
-                  <span>{CANCEL_REASON[r.reason] ?? titleCase(r.reason)}</span>
-                  <span className="tnum text-muted">{r.count}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted">No cancellation calls yet.</p>
-          )}
+          <KeyValueList
+            empty="No cancellation calls yet."
+            rows={retention.reasons.map((r) => [CANCEL_REASON[r.reason] ?? titleCase(r.reason), r.count])}
+          />
           <Divider />
           <p className="eyebrow mb-2">Save offers made</p>
-          {retention.offers.length ? (
-            <ul className="space-y-1 text-sm">
-              {retention.offers.map((o) => (
-                <li key={o.offer} className="flex justify-between">
-                  <span>{OFFER_LABEL[o.offer] ?? titleCase(o.offer)}</span>
-                  <span className="tnum text-muted">{o.count}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted">
-              {retention.calls ? "No save offer was made on any cancel call." : "-"}
-            </p>
-          )}
-          <LensLink href="/calls/log?lens=retention" label={`${retention.calls} retention calls`} />
+          <KeyValueList
+            empty={retention.calls ? "No save offer was made on any cancel call." : "-"}
+            rows={retention.offers.map((o) => [OFFER_LABEL[o.offer] ?? titleCase(o.offer), o.count])}
+          />
+          <LensLink href="/calls/log?lens=retention" label={`All ${retention.calls} retention calls`} />
         </Card>
 
-        <Card className="p-6">
-          <CardHeader eyebrow="Customer service" title="How are we handling customers?" />
+        <Card className="flex flex-col p-6">
+          <CardHeader eyebrow="Customer service" title="Are customers well served?" />
           <div className="grid grid-cols-3 gap-3">
-            <Metric label="Calls" value={service.calls} />
-            <Metric
-              label="Resolved"
-              value={pct(service.resolution_rate)}
-              tone={tone(service.resolution_rate, 90, 70)}
-            />
-            <Metric
-              label="Avg score"
-              value={pct(service.avg_score_pct)}
-              tone={tone(service.avg_score_pct, 90, 70)}
-            />
+            <Metric size="md" label="Calls" value={service.calls} />
+            <Metric size="md" label="Resolved" value={pct(service.resolution_rate)} />
+            <Metric size="md" label="Avg score" value={pct(service.avg_score_pct)} />
           </div>
           <Divider />
-          <p className="eyebrow mb-2">Call reasons</p>
-          <ul className="space-y-1 text-sm">
-            {service.by_type.map((t) => (
-              <li key={t.call_type} className="flex justify-between">
-                <span>{t.label}</span>
-                <span className="tnum text-muted">{t.count}</span>
-              </li>
-            ))}
-          </ul>
+          <p className="eyebrow mb-2">Why they called</p>
+          <KeyValueList rows={service.by_type.map((t) => [t.label, t.count])} empty="-" />
           <Divider />
-          <p className="eyebrow mb-1">Most missed steps</p>
+          <p className="eyebrow mb-1">Steps most often missed</p>
           <StepList steps={service.missed_steps.slice(0, 3)} />
-          <LensLink href="/calls/log?lens=service" label={`${service.calls} service calls`} />
+          <LensLink href="/calls/log?lens=service" label={`All ${service.calls} service calls`} />
         </Card>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card className="p-6">
-          <CardHeader
-            eyebrow="Training"
-            title="What to coach this week"
-          />
-          <p className="-mt-2 mb-3 text-sm text-muted">
-            Scorecard steps missed most often across every graded call.
-          </p>
+          <CardHeader title="Coach this week" subtitle="Scorecard steps missed most often across every graded call." />
           <StepList steps={data.training} />
         </Card>
 
-        <Card className="p-6">
-          <div id="follow-ups" className="scroll-mt-6" />
-          <CardHeader eyebrow="Follow-ups" title="What we promised customers" />
+        <section id="follow-ups" className="scroll-mt-8">
+          <h2 className="section-title mb-3 px-1">Promised to customers</h2>
           {data.follow_ups.length ? (
-            <ul className="divide-y divide-line">
+            <div className="group-list">
               {data.follow_ups.map((f, i) => (
-                <li key={i}>
-                  <Link href={`/calls/${f.call_id}`} className="group flex items-start gap-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm group-hover:text-accent">{f.action}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {[f.customer, titleCase(f.owner), f.due].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                    <ChevronIcon className="mt-1 h-4 w-4 shrink-0 text-faint" />
-                  </Link>
-                </li>
+                <GroupRow key={i} href={`/calls/${f.call_id}`}>
+                  <p className="text-[14px] leading-snug">{f.action}</p>
+                  <p className="mt-0.5 text-[12px] text-muted">
+                    {[f.customer, titleCase(f.owner), f.due].filter(Boolean).join(" · ")}
+                  </p>
+                </GroupRow>
               ))}
-            </ul>
+            </div>
           ) : (
-            <Empty title="Nothing outstanding" />
+            <Card>
+              <Empty title="Nothing outstanding" />
+            </Card>
           )}
-        </Card>
+        </section>
       </div>
     </div>
+  );
+}
+
+function Stat(props: React.ComponentProps<typeof Metric>) {
+  return (
+    <div className="lg:px-6 lg:first:pl-0 lg:last:pr-0">
+      <Metric {...props} />
+    </div>
+  );
+}
+
+function StepList({ steps }: { steps: MissedStep[] }) {
+  if (!steps.length) return <p className="text-[14px] text-muted">Nothing missed yet.</p>;
+  return (
+    <div>
+      {steps.map((s) => (
+        <HitBar
+          key={s.step}
+          label={s.step}
+          value={s.pct}
+          detail={`${s.missed} of ${s.of}`}
+          href={s.example_call_id ? `/calls/${s.example_call_id}` : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
+function KeyValueList({ rows, empty }: { rows: [string, number][]; empty: string }) {
+  if (!rows.length) return <p className="text-[14px] text-muted">{empty}</p>;
+  return (
+    <ul className="space-y-1.5 text-[14px]">
+      {rows.map(([k, v]) => (
+        <li key={k} className="flex justify-between gap-3">
+          <span>{k}</span>
+          <span className="tnum text-muted">{v}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Divider() {
+  return <div className="my-5 h-px bg-line" />;
+}
+
+function LensLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="mt-auto inline-flex items-center gap-0.5 pt-5 text-[14px] text-link hover:underline">
+      {label}
+      <ChevronIcon className="h-3.5 w-3.5" />
+    </Link>
   );
 }
 
@@ -292,55 +279,25 @@ function formatPhone(number: string): string {
 
 function ReceptionistCard({ number }: { number: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-card bg-ink px-6 py-5 text-white shadow-card">
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/60">
-          Try the AI receptionist
-        </p>
-        <p className="mt-1 text-xl font-semibold tracking-tight">
-          Call{" "}
-          <a href={`tel:${number}`} className="tnum underline decoration-white/30 underline-offset-4 hover:decoration-white">
+    <Card className="flex flex-wrap items-center gap-5 px-6 py-5">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#30d158] text-white">
+        <PhoneIcon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold tracking-tightish">
+          Call the AI receptionist at{" "}
+          <a href={`tel:${number}`} className="tnum text-link hover:underline">
             {formatPhone(number)}
           </a>
         </p>
-        <p className="mt-1 text-sm text-white/70">
+        <p className="mt-0.5 text-[14px] text-muted">
           Ask about pricing or book an inspection. About a minute after you hang up, the call
-          appears in the Call Log - transcribed, scored and coached like any other.
+          appears in the Call Log, graded like any other.
         </p>
       </div>
-      <Link href="/calls/log?source=twilio" className="btn shrink-0 rounded-full bg-white px-4 text-ink hover:bg-white/90">
-        Receptionist calls →
+      <Link href="/calls/log?source=twilio" className="btn-secondary">
+        Receptionist calls
       </Link>
-    </div>
-  );
-}
-
-function StepList({ steps }: { steps: MissedStep[] }) {
-  if (!steps.length) return <p className="text-sm text-muted">Nothing missed yet.</p>;
-  return (
-    <div>
-      {steps.map((s) => (
-        <HitBar
-          key={s.step}
-          label={s.step}
-          value={s.pct}
-          detail={`missed ${s.missed} of ${s.of}`}
-          href={s.example_call_id ? `/calls/${s.example_call_id}` : undefined}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Divider() {
-  return <div className="my-4 h-px bg-line" />;
-}
-
-function LensLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link href={href} className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent">
-      {label}
-      <ChevronIcon className="h-4 w-4" />
-    </Link>
+    </Card>
   );
 }

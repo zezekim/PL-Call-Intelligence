@@ -95,7 +95,7 @@ export function EnvironmentDialog({ open, onClose }: { open: boolean; onClose: (
   const { env, choose } = useEnvironment();
   return (
     <Modal open={open} onClose={onClose} title="Choose an environment">
-      <p className="-mt-1 mb-4 text-sm text-muted">
+      <p className="-mt-1 mb-4 text-[14px] leading-snug text-muted">
         This decides how call recordings you upload are transcribed. Scoring and coaching work
         the same way in both. You can switch at any time from the Calls page.
       </p>
@@ -107,17 +107,17 @@ export function EnvironmentDialog({ open, onClose }: { open: boolean; onClose: (
               choose(e.value);
               onClose();
             }}
-            className={`w-full rounded-2xl border p-4 text-left transition ${
-              env === e.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel"
+            className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+              env === e.value ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-line hover:bg-panel"
             }`}
           >
             <span className="flex items-baseline justify-between gap-3">
-              <span className="font-semibold">{e.label}</span>
-              <span className={`text-xs font-medium ${e.value === "local" ? "text-warn" : "text-good"}`}>
+              <span className="text-[16px] font-semibold tracking-tightish">{e.label}</span>
+              <span className={`text-[12px] font-medium ${e.value === "local" ? "text-warn" : "text-good"}`}>
                 {e.summary}
               </span>
             </span>
-            <span className="mt-1 block text-sm text-ink/80">{e.detail}</span>
+            <span className="mt-1 block text-[14px] leading-snug text-ink/75">{e.detail}</span>
           </button>
         ))}
       </div>

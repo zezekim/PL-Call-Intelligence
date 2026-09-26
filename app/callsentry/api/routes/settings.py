@@ -390,3 +390,115 @@ async def available_models(_: UserDep) -> dict[str, Any]:
     from callsentry.services.llm import get_llm
 
     return await get_llm().list_models()
+
+
+# --- Receptionist playbook ---------------------------------------------------
+
+
+class PlaybookVersion(BaseModel):
+    content: str
+    source_calls: int
+    removed_items: int
+    updated_at: datetime
+
+
+class PlaybookOut(BaseModel):
+    draft: PlaybookVersion | None
+    published: PlaybookVersion | None
+
+
+class PlaybookEdit(BaseModel):
+    content: str = Field(max_length=20_000)
+
+
+def _require_admin(user: User) -> None:
+    if user.role not in (UserRole.OPERATOR, UserRole.ADMIN):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin role required")
+
+
+async def _playbook_out(session: Any, business_id: uuid.UUID) -> PlaybookOut:
+    from callsentry.intel import playbook
+
+    def version(row: Any) -> PlaybookVersion | None:
+        if row is None:
+            return None
+        return PlaybookVersion(content=row.content, source_calls=row.source_calls,
+                               removed_items=row.removed_items, updated_at=row.updated_at)
+
+    return PlaybookOut(
+        draft=version(await playbook.get(session, business_id, playbook.DRAFT)),
+        published=version(await playbook.get(session, business_id, playbook.PUBLISHED)),
+    )
+
+
+@router.get("/receptionist/playbook", response_model=PlaybookOut)
+async def read_playbook(session: SessionDep, business: BusinessDep, _: UserDep) -> PlaybookOut:
+    return await _playbook_out(session, business.id)
+
+
+@router.post("/receptionist/playbook/generate", response_model=PlaybookOut)
+async def generate_playbook(
+    session: SessionDep, business: BusinessDep, user: UserDep
+) -> PlaybookOut:
+    """Draft a playbook from the analysed calls. Replaces any existing draft."""
+    from callsentry.core.providers import ProviderUnavailable
+    from callsentry.intel import playbook
+    from callsentry.models import CostCategory
+    from callsentry.services import costs
+
+    _require_admin(user)
+    try:
+        draft = await playbook.generate(session, business.id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except ProviderUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    await costs.record(
+        session, business_id=business.id, call_id=None, category=CostCategory.LLM,
+        provider=draft.llm.provider, tier=draft.llm.tier,
+        units=draft.llm.total_tokens / 1000, unit_name="1k_tokens", cost_usd=draft.llm.cost_usd,
+    )
+    await playbook.save(session, business.id, playbook.DRAFT, draft.content,
+                        source_calls=draft.source_calls, removed_items=draft.removed_items)
+    return await _playbook_out(session, business.id)
+
+
+@router.put("/receptionist/playbook/draft", response_model=PlaybookOut)
+async def edit_playbook(
+    payload: PlaybookEdit, session: SessionDep, business: BusinessDep, user: UserDep
+) -> PlaybookOut:
+    from callsentry.intel import playbook
+
+    _require_admin(user)
+    await playbook.save(session, business.id, playbook.DRAFT, payload.content)
+    return await _playbook_out(session, business.id)
+
+
+@router.post("/receptionist/playbook/publish", response_model=PlaybookOut)
+async def publish_playbook(
+    session: SessionDep, business: BusinessDep, user: UserDep
+) -> PlaybookOut:
+    """Put the draft live: the receptionist uses it from the next call."""
+    from callsentry.intel import playbook
+
+    _require_admin(user)
+    draft = await playbook.get(session, business.id, playbook.DRAFT)
+    if draft is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "there is no draft to publish")
+    await playbook.save(session, business.id, playbook.PUBLISHED, draft.content,
+                        source_calls=draft.source_calls, removed_items=draft.removed_items)
+    return await _playbook_out(session, business.id)
+
+
+@router.delete("/receptionist/playbook/published", response_model=PlaybookOut)
+async def unpublish_playbook(
+    session: SessionDep, business: BusinessDep, user: UserDep
+) -> PlaybookOut:
+    from callsentry.intel import playbook
+
+    _require_admin(user)
+    row = await playbook.get(session, business.id, playbook.PUBLISHED)
+    if row is not None:
+        await session.delete(row)
+        await session.flush()
+    return await _playbook_out(session, business.id)

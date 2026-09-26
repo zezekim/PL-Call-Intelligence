@@ -64,6 +64,8 @@ class CallState:
     collected: dict[str, str] = field(default_factory=dict)
     after_hours: bool = False
     turns: int = 0
+    # Set when this number has called the receptionist before.
+    returning_note: str = ""
 
     def remember(self, role: str, content: str) -> None:
         self.history.append({"role": role, "content": content})
@@ -136,29 +138,55 @@ def opening_line(business: Business, *, after_hours: bool) -> str:
     return disclosure + tail
 
 
-PERSONA = """You are the voice receptionist for {business_name}.
-You are speaking on a live phone call.
+PERSONA = """You are the AI receptionist for {business_name}, a local pest control
+company. You are on a live phone call.
 
 Identity:
 - You are an AI assistant. You already disclosed this when the call opened.
 - If asked whether you are a real person, say plainly that you are an AI
-  assistant and offer to connect them with someone on the team.
+  assistant and offer to have someone from the team call them back.
 - Never claim or imply you are human.
+
+How to handle the call - the company's own call process:
+1. Validate. Briefly acknowledge the caller's specific situation with genuine
+   empathy ("ants in the kitchen are no fun"), and say you can help.
+2. Understand. Ask one open-ended question at a time - what pest, where, since
+   when - until you know what they need.
+3. Solve. Offer the next step: answer from the facts you were given, or offer
+   to book a technician visit.
+4. Verify. Confirm details back, thank them genuinely, and remind them to call
+   for any pest need.
 
 Speaking style:
 - One or two short sentences. This is spoken aloud, not read.
-- No markdown, no bullet points, no URLs, no emoji.
-- Say numbers the way a person would: "four thirty", "twenty five dollars".
-- Never quote a price, fee, or policy you were not explicitly given.
-
-Behaviour:
-- Ask one question at a time.
+- No markdown, no lists, no URLs, no emoji.
+- Say numbers the way a person would: "four thirty", "forty nine dollars".
+- Never state a price, fee, discount or policy you were not explicitly given.
 - If you don't know something, say so and offer to have someone call back.
-- If the caller is upset, acknowledge it briefly and offer a human."""
+- If the caller is upset, acknowledge it and offer to have a manager call back.
+{extra}"""
 
 
-def _persona(business: Business) -> str:
-    return PERSONA.format(business_name=business.name)
+def _persona(business: Business, *, playbook: str = "", state: CallState | None = None) -> str:
+    extra = ""
+    if playbook:
+        extra += (
+            "\nHow this company's best reps handle calls (style and technique only - "
+            "facts, prices and policies still come only from what you were given):\n"
+            + playbook
+        )
+    if state is not None and state.returning_note:
+        extra += f"\nAbout this caller: {state.returning_note}"
+    return PERSONA.format(business_name=business.name, extra=extra)
+
+
+async def _playbook(session: AsyncSession, business: Business) -> str:
+    from callsentry.intel import playbook
+
+    try:
+        return await playbook.published_text(session, business.id)
+    except Exception:  # noqa: BLE001 - a missing playbook must never break a call
+        return ""
 
 
 # --- Turn handling ---------------------------------------------------------
@@ -288,7 +316,12 @@ async def _handle_booking(
             name=name or "Phone caller",
             phone=state.collected.get("phone") or state.caller_number,
             email=state.collected.get("email") or None,
-            reason=state.collected.get("reason") or None,
+            reason="; ".join(
+                v for v in (state.collected.get("reason"),
+                            f"Address: {state.collected['address']}"
+                            if state.collected.get("address") else "")
+                if v
+            ) or None,
         )
         state.pending_slot = None
         if not ok:
@@ -324,10 +357,16 @@ async def _handle_booking(
             metadata={"appointment_id": str(appointment.id) if appointment else None},
         )
 
+    reason = state.collected.get("reason", "")
     if not name:
-        return _ask(state, "Happy to book that in. Can I get your name?")
+        opener = (
+            f"I'm sorry you're dealing with {reason}. " if reason else "Happy to help with that. "
+        )
+        return _ask(state, f"{opener}I can get a technician out to you. Can I get your name?")
+    if not state.collected.get("address"):
+        return _ask(state, f"Thanks {name}. What's the address for the service?")
     if not preferred:
-        return _ask(state, f"Thanks {name}. What day and time works best for you?")
+        return _ask(state, "Got it. What day and time work best for the technician to come out?")
 
     proposal = await booking_agent.propose(business, preferred_time=preferred, session=session)
     if not proposal.ok:
@@ -354,6 +393,7 @@ async def _handle_faq(
         business_id=str(business.id),
         business_name=business.name,
         question=question,
+        style=await _playbook(session, business),
     )
     if result.llm:
         await _log_llm_cost(session, business, call, result.llm, CostCategory.LLM)
@@ -387,7 +427,10 @@ async def _handle_freeform(
         )
 
     result = await get_llm().complete(
-        _persona(business), state.history, realtime=True, max_tokens=120
+        _persona(business, playbook=await _playbook(session, business), state=state),
+        state.history,
+        realtime=True,
+        max_tokens=160,
     )
     await _log_llm_cost(session, business, call, result, CostCategory.LLM)
 

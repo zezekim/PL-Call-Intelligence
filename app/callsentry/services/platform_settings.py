@@ -106,7 +106,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "llm",
         "Call scoring model",
         "text",
-        "Claude model that classifies and scores recorded calls.",
+        "Classifies and scores recorded calls. Anthropic or OpenAI.",
     ),
     FieldSpec(
         "scoring_mode",
@@ -114,9 +114,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "llm",
         "Scoring mode",
         "text",
-        "standard: the scoring model grades each call three times and takes the majority. "
-        "enhanced: the scoring model and a second-opinion model grade independently, then "
-        "deliberate on any step they disagree on. Enhanced costs about twice as much.",
+        "Enhanced adds a second model; the two deliberate on disagreements. About 2x the cost.",
     ),
     FieldSpec(
         "enhanced_second_model",
@@ -132,7 +130,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "speech",
         "Default transcription",
         "text",
-        "auto (Deepgram, falling back to local), deepgram, or local.",
+        "Used when an upload does not choose an environment.",
     ),
     FieldSpec(
         "daily_spend_cap_usd",

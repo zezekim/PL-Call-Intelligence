@@ -137,3 +137,33 @@ class CallAnalysis(Base, TimestampMixin):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0, nullable=False)
 
     call: Mapped[Call] = relationship(back_populates="analysis")
+
+
+class ReceptionistPlaybook(Base, TimestampMixin):
+    """How the business's best reps handle calls, for the AI receptionist.
+
+    Generated from analysed calls as a draft, reviewed and edited by a
+    manager, then published. Only the published row reaches live calls.
+    """
+
+    __tablename__ = "receptionist_playbooks"
+    __table_args__ = (
+        Index("uq_receptionist_playbooks_business_status", "business_id", "status",
+              unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    business_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
+    )
+    # draft | published
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0",
+                                              nullable=False)
+    # Entries dropped because they looked like personal or company-specific details.
+    removed_items: Mapped[int] = mapped_column(Integer, default=0, server_default="0",
+                                               nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

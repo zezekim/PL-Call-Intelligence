@@ -11,36 +11,38 @@ import {
   initials,
   pct,
 } from "@/lib/format";
-import { AlertIcon } from "./icons";
+import { AlertIcon, ChevronIcon } from "./icons";
 
 export function Card({
   children,
   className = "",
-  accent = false,
 }: {
   children: React.ReactNode;
   className?: string;
   accent?: boolean;
 }) {
-  return <section className={`card ${accent ? "card-accent" : ""} ${className}`}>{children}</section>;
+  return <section className={`card ${className}`}>{children}</section>;
 }
 
 export function CardHeader({
   title,
   eyebrow,
   action,
+  subtitle,
 }: {
   title: React.ReactNode;
   eyebrow?: string;
   action?: React.ReactNode;
+  subtitle?: React.ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-3">
-      <div>
-        {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
+    <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow mb-0.5">{eyebrow}</p>}
         <h2 className="section-title">{title}</h2>
+        {subtitle && <p className="footnote mt-1">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
@@ -50,36 +52,50 @@ export function Metric({
   value,
   tone = "none",
   hint,
+  size = "lg",
 }: {
   label: string;
   value: React.ReactNode;
   tone?: "good" | "warn" | "bad" | "none";
   hint?: React.ReactNode;
+  size?: "lg" | "md";
 }) {
   return (
     <div className="min-w-0">
       <p className="text-[13px] leading-tight text-muted">{label}</p>
-      <p className={`tnum mt-1 text-[28px] font-semibold leading-none tracking-tight ${TONE_TEXT[tone]}`}>
+      <p
+        className={`tnum mt-1.5 font-semibold leading-none tracking-title ${
+          size === "lg" ? "text-[30px]" : "text-[24px]"
+        } ${TONE_TEXT[tone]}`}
+      >
         {value}
       </p>
-      {hint && <p className="mt-1.5 text-xs text-muted">{hint}</p>}
+      {hint && <p className="mt-1.5 text-[12px] text-muted">{hint}</p>}
     </div>
   );
 }
 
-const GRADE_STYLE: Record<Grade, string> = {
-  gold: "bg-gold-soft text-gold",
-  green: "bg-good-soft text-good",
-  below: "bg-bad-soft text-bad",
+const GRADE_DOT: Record<Grade, string> = {
+  gold: "bg-[#c99a00]",
+  green: "bg-good",
+  below: "bg-bad",
+};
+
+const GRADE_TEXT: Record<Grade, string> = {
+  gold: "text-gold",
+  green: "text-good",
+  below: "text-bad",
 };
 
 export function GradeBadge({ grade, size = "sm" }: { grade: Grade | null; size?: "sm" | "lg" }) {
-  if (!grade) return <span className="text-sm text-faint">Not scored</span>;
+  if (!grade) return <span className="text-[13px] text-muted">Not scored</span>;
   return (
     <span
-      className={`chip ${GRADE_STYLE[grade]} ${size === "lg" ? "px-3 py-1 text-sm" : ""}`}
+      className={`inline-flex items-center gap-1.5 font-medium ${GRADE_TEXT[grade]} ${
+        size === "lg" ? "text-[15px]" : "text-[13px]"
+      }`}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+      <span className={`h-[7px] w-[7px] rounded-full ${GRADE_DOT[grade]}`} aria-hidden />
       {GRADE_LABEL[grade]}
     </span>
   );
@@ -94,11 +110,12 @@ export function ScoreCell({
   max: number | null;
   grade: Grade | null;
 }) {
-  if (score === null || !max) return <span className="text-sm text-faint">Not scored</span>;
+  if (score === null || !max) return <span className="text-[13px] text-muted">Not scored</span>;
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="tnum w-11 text-sm font-semibold">
-        {score}/{max}
+    <div className="flex items-center gap-3">
+      <span className="tnum w-10 text-[14px] font-medium">
+        {score}
+        <span className="text-faint">/{max}</span>
       </span>
       <GradeBadge grade={grade} />
     </div>
@@ -106,13 +123,12 @@ export function ScoreCell({
 }
 
 export function TypeBadge({ label, review }: { label: string | null; review?: boolean }) {
-  if (!label) return <span className="text-sm text-faint">-</span>;
+  if (!label) return <span className="text-[13px] text-faint">-</span>;
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="chip bg-panel text-ink ring-1 ring-line">{label}</span>
+    <span className="inline-flex items-center gap-2">
+      <span className="text-[14px]">{label}</span>
       {review && (
         <span className="chip bg-warn-soft text-warn" title="Call type needs review">
-          <AlertIcon className="h-3 w-3" />
           Check type
         </span>
       )}
@@ -123,14 +139,14 @@ export function TypeBadge({ label, review }: { label: string | null; review?: bo
 export function OutcomeText({ outcome }: { outcome: string | null }) {
   if (!outcome || outcome === "not_applicable") return <span className="text-faint">-</span>;
   const tone = OUTCOME_TONE[outcome] ?? "none";
-  return <span className={`font-medium ${TONE_TEXT[tone]}`}>{OUTCOME_LABEL[outcome] ?? outcome}</span>;
+  return <span className={`text-[14px] font-medium ${TONE_TEXT[tone]}`}>{OUTCOME_LABEL[outcome] ?? outcome}</span>;
 }
 
 export function Avatar({ name, size = 32 }: { name: string | null; size?: number }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent"
-      style={{ width: size, height: size, fontSize: size * 0.38 }}
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#8e8e93] font-medium text-white"
+      style={{ width: size, height: size, fontSize: size * 0.4 }}
       aria-hidden
     >
       {initials(name)}
@@ -138,13 +154,12 @@ export function Avatar({ name, size = 32 }: { name: string | null; size?: number
   );
 }
 
-/** Single-series horizontal bar: one hue, value labelled in text. */
+/** Single-series horizontal bar: one hue, the value always in text beside it. */
 export function HitBar({
   label,
   value,
   detail,
   href,
-  invert = false,
 }: {
   label: string;
   value: number | null;
@@ -154,18 +169,13 @@ export function HitBar({
 }) {
   const width = Math.max(0, Math.min(100, value ?? 0));
   const body = (
-    <div className="group py-1.5">
-      <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-        <span className={`truncate ${href ? "group-hover:text-accent" : ""}`}>{label}</span>
-        <span className="tnum shrink-0 text-muted">
-          {detail ?? pct(value)}
-        </span>
+    <div className="group py-2">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <span className={`truncate text-[14px] ${href ? "group-hover:text-link" : ""}`}>{label}</span>
+        <span className="tnum shrink-0 text-[13px] text-muted">{detail ?? pct(value)}</span>
       </div>
-      <div className="h-2 rounded-full bg-panel" title={`${label}: ${pct(value)}`}>
-        <div
-          className={`h-2 rounded-full ${invert ? "bg-[#9db9ec]" : "bg-accent"}`}
-          style={{ width: `${width}%` }}
-        />
+      <div className="h-[5px] rounded-full bg-fill" title={`${label}: ${pct(value)}`}>
+        <div className="h-[5px] rounded-full bg-accent" style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -184,16 +194,16 @@ export function Segmented<T extends string>({
   size?: "sm" | "md";
 }) {
   return (
-    <div className="inline-flex rounded-xl bg-[#e3e6ec] p-1" role="tablist">
+    <div className="inline-flex rounded-[9px] bg-fill p-[2px]" role="tablist">
       {options.map((o) => (
         <button
           key={o.value}
           role="tab"
           aria-selected={o.value === value}
           onClick={() => onChange(o.value)}
-          className={`rounded-lg font-medium transition ${
-            size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"
-          } ${o.value === value ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+          className={`rounded-[7px] font-medium transition-all duration-150 ${
+            size === "sm" ? "px-3 py-[3px] text-[12px]" : "px-4 py-[5px] text-[13px]"
+          } ${o.value === value ? "bg-white text-ink shadow-thumb" : "text-ink/70 hover:text-ink"}`}
         >
           {o.label}
         </button>
@@ -202,11 +212,39 @@ export function Segmented<T extends string>({
   );
 }
 
+export function GroupRow({
+  href,
+  onClick,
+  children,
+  chevron = true,
+}: {
+  href?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+  chevron?: boolean;
+}) {
+  const inner = (
+    <>
+      <div className="min-w-0 flex-1">{children}</div>
+      {chevron && <ChevronIcon className="h-4 w-4 shrink-0 text-faint" />}
+    </>
+  );
+  const cls = "group-row w-full text-left transition-colors hover:bg-[#fafafa]";
+  if (href) return <Link href={href} className={cls}>{inner}</Link>;
+  if (onClick)
+    return (
+      <button onClick={onClick} className={cls}>
+        {inner}
+      </button>
+    );
+  return <div className="group-row">{inner}</div>;
+}
+
 export function Empty({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-panel px-6 py-10 text-center">
-      <p className="font-medium">{title}</p>
-      {children && <div className="mt-1 text-sm text-muted">{children}</div>}
+    <div className="px-6 py-12 text-center">
+      <p className="text-[17px] font-semibold tracking-tightish">{title}</p>
+      {children && <div className="mx-auto mt-1.5 max-w-sm text-[14px] text-muted">{children}</div>}
     </div>
   );
 }
@@ -214,7 +252,7 @@ export function Empty({ title, children }: { title: string; children?: React.Rea
 export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <span
-      className={`inline-block animate-spin rounded-full border-2 border-current border-r-transparent ${className}`}
+      className={`inline-block animate-spin rounded-full border-[2px] border-current border-r-transparent opacity-70 ${className}`}
       aria-label="Loading"
     />
   );
@@ -222,16 +260,22 @@ export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
 
 export function Loading() {
   return (
-    <div className="flex items-center gap-2 py-16 text-sm text-muted">
-      <Spinner /> Loading
+    <div className="space-y-4" aria-busy="true" aria-label="Loading">
+      <div className="h-8 w-48 animate-pulse rounded-lg bg-fill" />
+      <div className="card h-32 animate-pulse" />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="card h-48 animate-pulse" />
+        <div className="card h-48 animate-pulse" />
+        <div className="card h-48 animate-pulse" />
+      </div>
     </div>
   );
 }
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm text-bad">
-      <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+    <div className="flex items-start gap-2.5 rounded-xl bg-bad-soft px-4 py-3 text-[14px] text-bad">
+      <AlertIcon className="mt-[2px] h-4 w-4 shrink-0" />
       <span>{message}</span>
     </div>
   );
@@ -257,13 +301,22 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 p-4 backdrop-blur-[2px] sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-3 backdrop-blur-[6px] sm:items-center sm:p-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label={title} className="card w-full max-w-lg p-6 shadow-pop">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="section-title">{title}</h2>
-          <button className="btn-ghost -mr-2 px-2" onClick={onClose} aria-label="Close">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-[460px] rounded-[22px] bg-white/95 p-6 shadow-pop backdrop-blur-xl"
+      >
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="text-[19px] font-semibold tracking-title">{title}</h2>
+          <button
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-fill text-[13px] text-muted hover:bg-[#dedee3]"
+            onClick={onClose}
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>

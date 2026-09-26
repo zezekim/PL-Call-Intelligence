@@ -12,7 +12,7 @@ import {
   EnvironmentDialog,
   useEnvironment,
 } from "@/components/environment";
-import { UploadIcon } from "@/components/icons";
+import { RefreshIcon, UploadIcon } from "@/components/icons";
 import { ErrorNote, Modal, Segmented, Spinner } from "@/components/ui";
 
 type Range = "7" | "30" | "all";
@@ -65,54 +65,60 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
   return (
     <CallsContext.Provider value={{ days, refreshKey, query }}>
       {isTab && (
-        <div className="mb-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <h1 className="text-[32px] font-bold leading-none tracking-tight">Calls</h1>
+        <div className="mb-8">
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+            <div>
+              <h1 className="large-title">Calls</h1>
+              <p className="footnote mt-1.5">
+                {range === "all" ? "All calls" : `Last ${range} days`} · updated {dateTime(asOf)}
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setEnvOpen(true)}
-                className="chip bg-white px-3 py-1.5 text-xs ring-1 ring-line hover:bg-panel"
+                className="btn-secondary gap-2 px-3.5"
                 title="Change environment"
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${env === "local" ? "bg-warn" : "bg-good"}`} />
-                {ENVIRONMENTS.find((e) => e.value === env)?.label} environment
+                <span className={`h-[7px] w-[7px] rounded-full ${env === "local" ? "bg-[#ff9f0a]" : "bg-[#30d158]"}`} />
+                {ENVIRONMENTS.find((e) => e.value === env)?.label}
               </button>
-              <span className="hidden text-xs text-muted sm:inline">
-                {range === "all" ? "All time" : `Last ${range} days`}
-              </span>
               <Segmented
                 size="sm"
                 value={range}
                 onChange={changeRange}
                 options={[
-                  { value: "7", label: "7d" },
-                  { value: "30", label: "30d" },
+                  { value: "7", label: "7D" },
+                  { value: "30", label: "30D" },
                   { value: "all", label: "All" },
                 ]}
               />
               <button
-                className="btn-secondary"
+                className="btn-secondary px-3"
+                aria-label="Refresh"
+                title="Refresh"
                 onClick={() => {
                   setRefreshKey((k) => k + 1);
                   setAsOf(new Date().toISOString());
                 }}
               >
-                Refresh
+                <RefreshIcon className="h-4 w-4" />
               </button>
               <button className="btn-primary" onClick={() => setUploadOpen(true)}>
                 <UploadIcon className="h-4 w-4" />
-                Upload calls
+                Upload
               </button>
             </div>
           </div>
-          <div className="mt-5 overflow-x-auto">
-            <div className="inline-flex rounded-xl bg-[#e3e6ec] p-1">
+          <div className="mt-6 overflow-x-auto">
+            <div className="inline-flex rounded-[9px] bg-fill p-[2px]" role="tablist">
               {TABS.map((t) => (
                 <Link
                   key={t.href}
                   href={t.href}
-                  className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition ${
-                    active === t.href ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"
+                  role="tab"
+                  aria-selected={active === t.href}
+                  className={`whitespace-nowrap rounded-[7px] px-4 py-[5px] text-[13px] font-medium transition-all duration-150 ${
+                    active === t.href ? "bg-white text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
                   }`}
                 >
                   {t.label}
@@ -120,7 +126,6 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
               ))}
             </div>
           </div>
-          <p className="mt-2 text-xs text-muted">Calls as of {dateTime(asOf)}</p>
         </div>
       )}
       {children}
@@ -192,13 +197,13 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             setDragging(false);
             addFiles(e.dataTransfer.files);
           }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition ${
-            dragging ? "border-accent bg-accent-soft" : "border-line bg-panel hover:border-accent/50"
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-9 text-center transition-colors ${
+            dragging ? "border-accent bg-accent-soft" : "border-[#c7c7cc] bg-panel hover:bg-[#efeff4]"
           }`}
         >
-          <UploadIcon className="mb-2 h-6 w-6 text-accent" />
-          <span className="text-sm font-medium">Drop recordings here or click to choose</span>
-          <span className="mt-1 text-xs text-muted">MP3, WAV, M4A · up to 200 MB each</span>
+          <UploadIcon className="mb-2.5 h-6 w-6 text-muted" />
+          <span className="text-[15px] font-medium">Drop recordings here</span>
+          <span className="mt-0.5 text-[13px] text-muted">or <span className="text-link">choose files</span> · MP3, WAV or M4A</span>
           <input
             type="file"
             accept="audio/*,.mp3,.wav,.m4a"
@@ -211,7 +216,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         {files.length > 0 && (
           <ul className="max-h-36 space-y-1 overflow-y-auto text-sm">
             {files.map((f, i) => (
-              <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-panel px-3 py-1.5">
+              <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-panel px-3 py-1.5 text-[14px]">
                 <span className="truncate">{f.name}</span>
                 <button
                   className="text-xs text-muted hover:text-bad"
@@ -226,15 +231,15 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         )}
 
         <fieldset>
-          <legend className="mb-2 text-sm font-medium">Environment</legend>
+          <legend className="mb-2 text-[13px] font-medium text-muted">Environment</legend>
           <div className="grid grid-cols-2 gap-2">
             {ENVIRONMENTS.map((e) => (
               <button
                 key={e.value}
                 type="button"
                 onClick={() => choose(e.value)}
-                className={`rounded-xl border px-3 py-2 text-left ${
-                  env === e.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel"
+                className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  env === e.value ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-line hover:bg-panel"
                 }`}
               >
                 <span className="block text-sm font-medium">{e.label}</span>
@@ -247,7 +252,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-medium">Scoring</legend>
+          <legend className="mb-2 text-[13px] font-medium text-muted">Scoring</legend>
           <div className="grid grid-cols-2 gap-2">
             {(
               [
@@ -259,8 +264,8 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
                 key={o.value}
                 type="button"
                 onClick={() => setScoring(o.value)}
-                className={`rounded-xl border px-3 py-2 text-left ${
-                  scoring === o.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel"
+                className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  scoring === o.value ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-line hover:bg-panel"
                 }`}
               >
                 <span className="block text-sm font-medium">{o.label}</span>

@@ -45,6 +45,7 @@ def _dump(state: CallState) -> str:
         "collected": state.collected,
         "after_hours": state.after_hours,
         "turns": state.turns,
+        "returning_note": state.returning_note,
         "pending_slot": (
             {
                 "start": state.pending_slot.start.isoformat(),

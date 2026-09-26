@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { AlertIcon, CheckIcon } from "@/components/icons";
-import { Card, CardHeader, ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
+import { ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
 
 interface Field {
   key: string;
@@ -58,8 +58,8 @@ const SECTIONS: { title: string; description: string; keys: string[] }[] = [
 ];
 
 const MODE_CHOICES = [
-  { value: "standard", label: "Standard - one model, three runs, majority vote" },
-  { value: "enhanced", label: "Enhanced - two models deliberate (about 2x the cost)" },
+  { value: "standard", label: "Standard" },
+  { value: "enhanced", label: "Enhanced (two models)" },
 ];
 
 interface ModelList {
@@ -124,16 +124,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-[32px] font-bold leading-none tracking-tight">Settings</h1>
-          <p className="mt-2 text-sm text-muted">
+          <h1 className="large-title">Settings</h1>
+          <p className="footnote mt-1.5">
             Keys are stored encrypted and can only be replaced, never viewed.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {saved && (
-            <span className="inline-flex items-center gap-1 text-sm text-good">
+            <span className="inline-flex items-center gap-1 text-[14px] text-good">
               <CheckIcon className="h-4 w-4" /> Saved
             </span>
           )}
@@ -155,10 +155,10 @@ export default function SettingsPage() {
       {!data.can_edit && <ErrorNote message="Only an admin can change these settings." />}
 
       {SECTIONS.map((section) => (
-        <Card key={section.title} className="p-6">
-          <CardHeader title={section.title} />
-          <p className="-mt-2 mb-4 text-sm text-muted">{section.description}</p>
-          <div className="divide-y divide-line">
+        <section key={section.title} className="pt-3">
+          <h2 className="section-title px-1">{section.title}</h2>
+          <p className="footnote mb-3 mt-1 max-w-2xl px-1">{section.description}</p>
+          <div className="group-list px-5">
             {section.keys.map((key) =>
               byKey[key] ? (
                 <FieldRow
@@ -176,18 +176,20 @@ export default function SettingsPage() {
           {section.title === "Spending" && spend.data && (
             <SpendMeter spent={spend.data.spent_today_usd} cap={spend.data.cap_usd} />
           )}
-        </Card>
+        </section>
       ))}
 
+      <PlaybookPanel canEdit={data.can_edit} />
+
       <Modal open={confirming} onClose={() => !saving && setConfirming(false)} title="Save these changes?">
-        <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-sm">
+        <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[14px] leading-snug">
           <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
           <p>
             Changing these settings can break the demo. A wrong or missing key stops calls from
             being transcribed, scored or answered until it is fixed.
           </p>
         </div>
-        <ul className="mt-4 space-y-1 text-sm">
+        <ul className="mt-4 space-y-1.5 text-[14px]">
           {Object.keys(edits).map((k) => (
             <li key={k} className="flex justify-between gap-3">
               <span>{byKey[k]?.label ?? k}</span>
@@ -258,15 +260,16 @@ function FieldRow({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`chip ${field.is_set ? "bg-good-soft text-good" : "bg-panel text-muted"}`}>
+          <span className={`inline-flex items-center gap-1.5 text-[14px] ${field.is_set ? "text-ink" : "text-muted"}`}>
+            <span className={`h-[7px] w-[7px] rounded-full ${field.is_set ? "bg-[#34c759]" : "bg-[#c7c7cc]"}`} />
             {field.is_set ? "Set" : "Not set"}
           </span>
           {edit === "" && <span className="chip bg-warn-soft text-warn">Will reset</span>}
-          <button className="btn-secondary px-3 py-1.5" onClick={() => setReplacing(true)} disabled={disabled}>
+          <button className="btn-secondary ml-auto px-3 py-1" onClick={() => setReplacing(true)} disabled={disabled}>
             {field.is_set ? "Replace" : "Add"}
           </button>
           {field.overridden && edit !== "" && (
-            <button className="btn-ghost px-3 py-1.5" onClick={() => onEdit("")} disabled={disabled}>
+            <button className="btn-ghost px-3 py-1" onClick={() => onEdit("")} disabled={disabled}>
               Reset to server default
             </button>
           )}
@@ -275,10 +278,10 @@ function FieldRow({
   } else if (field.kind === "bool") {
     const current = (edit ?? field.value) === "true";
     control = (
-      <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+      <label className="inline-flex cursor-pointer items-center gap-2 text-[14px]">
         <input
           type="checkbox"
-          className="h-4 w-4 accent-[#1f6feb]"
+          className="h-4 w-4 accent-[#0071e3]"
           checked={current}
           onChange={(e) => onEdit(e.target.checked === (field.value === "true") ? null : String(e.target.checked))}
           disabled={disabled}
@@ -291,7 +294,7 @@ function FieldRow({
   } else if (field.key === "scoring_mode") {
     control = (
       <select
-        className="select max-w-md"
+        className="select w-full sm:max-w-[300px]"
         value={edit ?? field.value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
         disabled={disabled}
@@ -306,7 +309,7 @@ function FieldRow({
   } else if (field.key === "call_stt_engine") {
     control = (
       <select
-        className="select max-w-sm"
+        className="select w-full sm:max-w-[300px]"
         value={edit ?? field.value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
         disabled={disabled}
@@ -321,7 +324,7 @@ function FieldRow({
   } else {
     control = (
       <input
-        className="input max-w-sm"
+        className="input w-full sm:max-w-[300px]"
         inputMode={field.kind === "float" || field.kind === "int" ? "decimal" : undefined}
         value={edit ?? field.value}
         onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
@@ -331,12 +334,12 @@ function FieldRow({
   }
 
   return (
-    <div className="grid gap-2 py-4 sm:grid-cols-[240px_1fr] sm:gap-6">
+    <div className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:items-center sm:gap-8">
       <div>
-        <p className="text-sm font-medium">{field.label}</p>
-        {field.help && <p className="mt-0.5 text-xs text-muted">{field.help}</p>}
+        <p className="text-[15px]">{field.label}</p>
+        {field.help && <p className="mt-0.5 text-[12px] leading-snug text-muted">{field.help}</p>}
       </div>
-      <div className="self-center">{control}</div>
+      <div className="flex sm:justify-end">{control}</div>
     </div>
   );
 }
@@ -358,7 +361,7 @@ function ModelPicker({
   const known = new Set([...(models?.anthropic ?? []), ...(models?.openai ?? [])].map((m) => m.id));
   const errors = Object.entries(models?.errors ?? {});
   return (
-    <div className="max-w-md space-y-1.5">
+    <div className="w-full space-y-1.5 sm:max-w-[300px]">
       <select
         className="select"
         value={value}
@@ -405,9 +408,9 @@ function ConnectNumber({ disabled }: { disabled: boolean }) {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-panel px-4 py-3">
-      <div className="min-w-0 flex-1 text-sm">
-        <p className="font-medium">Connect the number</p>
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white px-5 py-4">
+      <div className="min-w-0 flex-1 text-[14px]">
+        <p className="text-[15px]">Connect the number</p>
         <p className="text-muted">
           Points the Twilio number at this site so incoming calls reach the receptionist.
         </p>
@@ -441,23 +444,148 @@ function ConnectNumber({ disabled }: { disabled: boolean }) {
 
 function SpendMeter({ spent, cap }: { spent: number; cap: number }) {
   const pctUsed = cap > 0 ? Math.min(100, (spent / cap) * 100) : 0;
-  const tone = pctUsed >= 100 ? "bg-bad" : pctUsed >= 75 ? "bg-warn" : "bg-accent";
+  const tone = pctUsed >= 100 ? "bg-[#ff3b30]" : pctUsed >= 75 ? "bg-[#ff9f0a]" : "bg-accent";
   return (
-    <div className="mt-4 rounded-2xl bg-panel px-4 py-3">
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="font-medium">Spent today</span>
+    <div className="mt-3 rounded-2xl border border-hairline bg-white px-5 py-4">
+      <div className="flex items-baseline justify-between text-[15px]">
+        <span>Spent today</span>
         <span className="tnum">
           ${spent.toFixed(2)} {cap > 0 ? `of $${cap.toFixed(2)}` : "(no cap)"}
         </span>
       </div>
       {cap > 0 && (
-        <div className="mt-2 h-2 rounded-full bg-white" title={`${pctUsed.toFixed(0)}% of today's cap`}>
-          <div className={`h-2 rounded-full ${tone}`} style={{ width: `${pctUsed}%` }} />
+        <div className="mt-2.5 h-[5px] rounded-full bg-fill" title={`${pctUsed.toFixed(0)}% of today's cap`}>
+          <div className={`h-[5px] rounded-full ${tone}`} style={{ width: `${pctUsed}%` }} />
         </div>
       )}
       {pctUsed >= 100 && (
         <p className="mt-2 text-xs text-bad">Cap reached: paid services are paused until tomorrow (UTC).</p>
       )}
     </div>
+  );
+}
+
+
+interface PlaybookVersion {
+  content: string;
+  source_calls: number;
+  removed_items: number;
+  updated_at: string;
+}
+
+interface Playbook {
+  draft: PlaybookVersion | null;
+  published: PlaybookVersion | null;
+}
+
+function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
+  const { data, setData, error } = useApi<Playbook>("/settings/receptionist/playbook");
+  const [text, setText] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const draft = data?.draft ?? null;
+  const published = data?.published ?? null;
+  const value = text ?? draft?.content ?? "";
+  const edited = text !== null && text !== (draft?.content ?? "");
+  const live = published && draft && published.content === draft.content && !edited;
+
+  async function run(label: string, action: () => Promise<Playbook>) {
+    setBusy(label);
+    setFailure(null);
+    try {
+      const result = await action();
+      setData(result);
+      setText(null);
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="pt-3">
+      <h2 className="section-title px-1">Receptionist playbook</h2>
+      <p className="footnote mb-3 mt-1 max-w-2xl px-1">
+        Technique learned from your graded calls: the questions callers ask, how your best reps
+        phrase each step, and how they handle objections. Names, companies, contact details and
+        prices are removed. Prices and policies still come only from the business FAQ. Review and
+        edit before publishing.
+      </p>
+      <div className="card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[14px]">
+            <span className="inline-flex items-center gap-1.5">
+              <span className={`h-[7px] w-[7px] rounded-full ${published ? "bg-[#34c759]" : "bg-[#c7c7cc]"}`} />
+              {published ? (live ? "Published - the receptionist is using this" : "Published version differs from this draft") : "Not published"}
+            </span>
+            {draft && (
+              <p className="mt-0.5 text-[12px] text-muted">
+                Learned from {draft.source_calls} graded calls
+                {draft.removed_items ? ` · ${draft.removed_items} entries removed for privacy` : ""}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn-secondary"
+              disabled={!canEdit || !!busy}
+              title="Reads every graded call once. Roughly $0.20-0.50 in model usage."
+              onClick={() => run("generate", () => api.post<Playbook>("/settings/receptionist/playbook/generate"))}
+            >
+              {busy === "generate" && <Spinner className="h-3.5 w-3.5" />}
+              {draft ? "Regenerate from calls" : "Generate from calls"}
+            </button>
+            {edited && (
+              <button
+                className="btn-secondary"
+                disabled={!canEdit || !!busy}
+                onClick={() => run("save", () => api.put<Playbook>("/settings/receptionist/playbook/draft", { content: value }))}
+              >
+                {busy === "save" && <Spinner className="h-3.5 w-3.5" />}
+                Save draft
+              </button>
+            )}
+            {draft && !edited && !live && (
+              <button
+                className="btn-primary"
+                disabled={!canEdit || !!busy}
+                onClick={() => run("publish", () => api.post<Playbook>("/settings/receptionist/playbook/publish"))}
+              >
+                {busy === "publish" && <Spinner className="h-3.5 w-3.5" />}
+                Publish
+              </button>
+            )}
+            {published && (
+              <button
+                className="btn-ghost"
+                disabled={!canEdit || !!busy}
+                onClick={() => run("unpublish", () => api.delete<Playbook>("/settings/receptionist/playbook/published"))}
+              >
+                Unpublish
+              </button>
+            )}
+          </div>
+        </div>
+        {busy === "generate" && (
+          <p className="mt-3 text-[13px] text-muted">Reading your calls. This takes about a minute.</p>
+        )}
+        {(failure || error) && (
+          <div className="mt-3">
+            <ErrorNote message={failure ?? error ?? ""} />
+          </div>
+        )}
+        {draft && (
+          <textarea
+            className="input mt-4 min-h-[320px] font-mono text-[13px] leading-relaxed"
+            value={value}
+            onChange={(e) => setText(e.target.value)}
+            disabled={!canEdit}
+            spellCheck
+          />
+        )}
+      </div>
+    </section>
   );
 }

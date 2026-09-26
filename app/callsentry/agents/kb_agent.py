@@ -47,8 +47,9 @@ Hard rules:
   searching anything. Just answer as the receptionist would.
 
 Style: this is spoken aloud. One or two short sentences. No lists, no
-markdown, no URLs. Use plain spoken numbers.
-
+markdown, no URLs. Use plain spoken numbers. Where it fits, offer a helpful
+next step, such as booking a technician.
+{style}
 --- REFERENCE MATERIAL ---
 {context}
 --- END REFERENCE MATERIAL ---"""
@@ -69,13 +70,15 @@ async def answer(
     business_id: str,
     business_name: str,
     question: str,
+    style: str = "",
 ) -> KBAnswer:
     import uuid as _uuid
 
     settings = get_settings()
     whole = await _small_kb(session, _uuid.UUID(business_id))
     if whole is not None:
-        return await _answer_from(whole, business_name=business_name, question=question)
+        return await _answer_from(whole, business_name=business_name, question=question,
+                                  style=style)
 
     hits = await kb.search(session, business_id=_uuid.UUID(business_id), query=question, limit=4)
 
@@ -93,7 +96,7 @@ async def answer(
     context = "\n\n---\n\n".join(f"[{h.filename}]\n{h.chunk_text}" for h in usable)
 
     system = SYSTEM_TEMPLATE.format(
-        business_name=business_name, abstain=ABSTAIN, context=context
+        business_name=business_name, abstain=ABSTAIN, context=context, style=_style(style)
     )
     result = await get_llm().complete(
         system, [{"role": "user", "content": question}], realtime=True, max_tokens=200
@@ -133,11 +136,22 @@ async def _small_kb(session: AsyncSession, business_id: object) -> list[tuple[st
     return [(f, c) for f, c in docs]
 
 
+def _style(playbook: str) -> str:
+    if not playbook:
+        return ""
+    return (
+        "\nHow this company's best reps talk (tone and technique only - every fact "
+        "must still come from the reference material):\n" + playbook + "\n"
+    )
+
+
 async def _answer_from(
-    docs: list[tuple[str, str]], *, business_name: str, question: str
+    docs: list[tuple[str, str]], *, business_name: str, question: str, style: str = ""
 ) -> KBAnswer:
     context = "\n\n---\n\n".join(f"[{name}]\n{content}" for name, content in docs)
-    system = SYSTEM_TEMPLATE.format(business_name=business_name, abstain=ABSTAIN, context=context)
+    system = SYSTEM_TEMPLATE.format(
+        business_name=business_name, abstain=ABSTAIN, context=context, style=_style(style)
+    )
     result = await get_llm().complete(
         system, [{"role": "user", "content": question}], realtime=True, max_tokens=200
     )

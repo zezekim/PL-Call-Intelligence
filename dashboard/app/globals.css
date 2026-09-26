@@ -6,58 +6,91 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   body {
-    @apply bg-canvas font-sans text-[15px] text-ink;
+    @apply bg-canvas font-sans text-[15px] leading-[1.47] tracking-tightish text-ink;
+    font-feature-settings: "cv11", "ss01", "ss03";
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-white;
+    @apply outline-none ring-[3px] ring-accent/40 ring-offset-0;
+  }
+  ::selection {
+    background: rgba(0, 113, 227, 0.18);
   }
 }
 
 @layer components {
+  /* Surfaces */
   .card {
-    @apply rounded-card border border-white/60 bg-white shadow-card;
+    @apply rounded-card border border-hairline bg-white shadow-card;
   }
   .card-accent {
-    @apply relative overflow-hidden;
+    /* Kept for compatibility: emphasis comes from placement, not a stripe. */
   }
-  .card-accent::before {
-    content: "";
-    @apply absolute inset-y-0 left-0 w-1 bg-accent;
+  .group-list {
+    @apply divide-y divide-line overflow-hidden rounded-2xl border border-hairline bg-white;
   }
-  .eyebrow {
-    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted;
+  .group-row {
+    @apply flex items-center gap-3 px-4 py-3;
+  }
+
+  /* Type */
+  .large-title {
+    @apply text-[34px] font-semibold leading-[1.1] tracking-title;
   }
   .section-title {
-    @apply text-[17px] font-semibold tracking-tight;
+    @apply text-[19px] font-semibold leading-tight tracking-title;
   }
+  .eyebrow {
+    @apply text-[13px] font-medium text-muted;
+  }
+  .footnote {
+    @apply text-[13px] leading-snug text-muted;
+  }
+
+  /* Controls */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-[7px] text-[14px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
-    @apply btn bg-accent text-white shadow-sm hover:bg-[#1a62d4];
+    @apply btn bg-accent text-white hover:bg-[#0077ed] active:bg-[#006edb];
   }
   .btn-secondary {
-    @apply btn border border-line bg-white text-ink hover:bg-panel;
+    @apply btn bg-fill text-ink hover:bg-[#dedee3] active:bg-[#d5d5da];
   }
   .btn-ghost {
-    @apply btn text-muted hover:bg-panel hover:text-ink;
+    @apply btn text-link hover:bg-accent-soft/70;
+  }
+  .btn-danger {
+    @apply btn text-bad hover:bg-bad-soft;
   }
   .input {
-    @apply w-full rounded-xl border border-line bg-white px-3 py-2 text-sm placeholder:text-faint focus:border-accent;
+    @apply w-full rounded-[10px] border border-[#d2d2d7] bg-white px-3 py-[7px] text-[15px] placeholder:text-faint transition-shadow focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/20;
   }
   .select {
-    @apply input appearance-none bg-[length:16px] bg-[right_10px_center] bg-no-repeat pr-8;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5'/%3E%3C/svg%3E");
+    @apply input appearance-none bg-[length:14px] bg-[right_10px_center] bg-no-repeat pr-8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236e6e73' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
   }
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-[2px] text-[12px] font-medium;
   }
   .inset-row {
     @apply flex items-center justify-between gap-4 rounded-2xl bg-panel px-4 py-3;
   }
   .tnum {
     font-variant-numeric: tabular-nums;
+  }
+  .link {
+    @apply text-link hover:underline underline-offset-2;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

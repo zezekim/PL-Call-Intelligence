@@ -52,8 +52,12 @@ INTENT_SCHEMA: dict[str, Any] = {
                     "description": "Natural language time the caller asked for, verbatim.",
                 },
                 "reason": {"type": "string"},
+                "address": {
+                    "type": "string",
+                    "description": "Service address the caller gave, verbatim.",
+                },
             },
-            "required": ["name", "email", "phone", "preferred_time", "reason"],
+            "required": ["name", "email", "phone", "preferred_time", "reason", "address"],
             "additionalProperties": False,
         },
     },
@@ -77,8 +81,9 @@ Set `frustrated` true when the caller repeats themselves, raises objections,
 or expresses annoyance - this triggers an offer to transfer.
 
 Leave any entity you did not hear as an empty string. Never guess a name,
-email, or phone number. `preferred_time` is the caller's own words, not a
-resolved date."""
+email, phone number or address. `preferred_time` is the caller's own words, not
+a resolved date. `reason` is the pest problem or request in a few words, e.g.
+"ants in the kitchen"."""
 
 
 @dataclass
@@ -116,4 +121,5 @@ async def detect(utterance: str, *, history: list[dict[str, str]] | None = None)
 
 
 def _empty_entities() -> dict[str, str]:
-    return {"name": "", "email": "", "phone": "", "preferred_time": "", "reason": ""}
+    return {"name": "", "email": "", "phone": "", "preferred_time": "", "reason": "",
+            "address": ""}

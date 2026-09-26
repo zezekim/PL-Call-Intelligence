@@ -32,20 +32,17 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-lg font-bold text-white">
+        <div className="mb-8 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-ink text-[20px] font-semibold text-white">
             P
           </span>
-          <div className="leading-tight">
-            <p className="font-semibold">PestLaunch OS</p>
-            <p className="text-sm text-muted">Call intelligence</p>
-          </div>
+          <h1 className="mt-5 text-[28px] font-semibold tracking-title">Sign in to PestLaunch</h1>
+          <p className="mt-1 text-[15px] text-muted">Call intelligence</p>
         </div>
         <form onSubmit={submit} className="card space-y-4 p-6" noValidate>
-          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
           {error && <ErrorNote message={error} />}
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Email</span>
+            <span className="mb-1.5 block text-[13px] text-muted">Email</span>
             <input
               type="email"
               className="input"
@@ -57,7 +54,7 @@ export default function LoginPage() {
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Password</span>
+            <span className="mb-1.5 block text-[13px] text-muted">Password</span>
             <input
               type="password"
               className="input"
@@ -67,7 +64,7 @@ export default function LoginPage() {
               required
             />
           </label>
-          <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
+          <button type="submit" className="btn-primary w-full py-2.5 text-[15px]" disabled={busy}>
             {busy && <Spinner className="h-3.5 w-3.5" />}
             Sign in
           </button>

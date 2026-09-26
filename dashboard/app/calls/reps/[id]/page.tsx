@@ -6,7 +6,7 @@ import type { RepDetail } from "@/lib/api";
 import { clock, date, pct, tone } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
-import { BackIcon, CheckIcon, QuoteIcon } from "@/components/icons";
+import { BackIcon, CheckIcon } from "@/components/icons";
 import { Avatar, Card, CardHeader, Empty, ErrorNote, HitBar, Loading, Metric } from "@/components/ui";
 
 const SCORECARD_NAME: Record<string, string> = {
@@ -26,7 +26,7 @@ export default function RepPage() {
 
   return (
     <div className="space-y-5">
-      <Link href="/calls/reps" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
+      <Link href="/calls/reps" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
         <BackIcon className="h-4 w-4" /> Reps
       </Link>
 
@@ -34,8 +34,8 @@ export default function RepPage() {
         <div className="flex items-center gap-4">
           <Avatar name={rep.name} size={52} />
           <div>
-            <h1 className="text-[26px] font-bold leading-tight tracking-tight">{rep.name}</h1>
-            <p className="text-sm text-muted">
+            <h1 className="text-[28px] font-semibold leading-tight tracking-title">{rep.name}</h1>
+            <p className="text-[14px] text-muted">
               {rep.calls} call{rep.calls === 1 ? "" : "s"} analyzed
             </p>
           </div>
@@ -99,16 +99,15 @@ export default function RepPage() {
             <ul className="space-y-3">
               {rep.coaching.map((c, i) => (
                 <li key={i} className="rounded-2xl bg-panel p-4">
-                  <Link href={`/calls/${c.call_id}`} className="font-medium hover:text-accent">
+                  <Link href={`/calls/${c.call_id}`} className="text-[15px] font-medium tracking-tightish hover:text-link">
                     {c.title}
                   </Link>
-                  <p className="mt-0.5 text-xs text-muted">
+                  <p className="mt-0.5 text-[12px] text-muted">
                     {[c.customer ?? c.ref, date(c.when), c.start !== null ? clock(c.start) : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
-                  <p className="mt-2 flex gap-2 text-sm">
-                    <QuoteIcon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                  <p className="mt-2 border-l-[3px] border-accent pl-3 text-[14px] leading-relaxed">
                     {c.try_saying}
                   </p>
                 </li>
@@ -124,10 +123,10 @@ export default function RepPage() {
           {rep.strengths.length ? (
             <ul className="space-y-3">
               {rep.strengths.map((s, i) => (
-                <li key={i} className="flex gap-2.5 text-sm">
+                <li key={i} className="flex gap-2.5 text-[14px] leading-snug">
                   <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-good" />
                   <span>
-                    <Link href={`/calls/${s.call_id}`} className="font-medium hover:text-accent">
+                    <Link href={`/calls/${s.call_id}`} className="font-medium hover:text-link">
                       {s.title}.
                     </Link>{" "}
                     {s.detail}
@@ -160,16 +159,16 @@ function Trend({ points }: { points: RepDetail["trend"] }) {
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="Score percentage per call">
       {[0, 50, 100].map((v) => (
         <g key={v}>
-          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="#e6e8ee" />
-          <text x={pad.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#6b7280">
+          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="#e5e5ea" />
+          <text x={pad.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#6e6e73">
             {v}%
           </text>
         </g>
       ))}
-      <path d={path} fill="none" stroke="#1f6feb" strokeWidth={2} strokeLinejoin="round" />
+      <path d={path} fill="none" stroke="#0071e3" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {data.map((p, i) => (
         <a key={p.call_id} href={`/calls/${p.call_id}`}>
-          <circle cx={x(i)} cy={y(p.pct as number)} r={5} fill="#1f6feb" stroke="#fff" strokeWidth={2}>
+          <circle cx={x(i)} cy={y(p.pct as number)} r={4.5} fill="#0071e3" stroke="#fff" strokeWidth={2}>
             <title>{`${p.ref ?? "Call"}: ${p.pct}%`}</title>
           </circle>
           <circle cx={x(i)} cy={y(p.pct as number)} r={12} fill="transparent" />
@@ -177,7 +176,7 @@ function Trend({ points }: { points: RepDetail["trend"] }) {
       ))}
       {data.map((p, i) =>
         i === 0 || i === data.length - 1 ? (
-          <text key={`l${i}`} x={x(i)} y={h - 6} textAnchor={i ? "end" : "start"} fontSize="11" fill="#6b7280">
+          <text key={`l${i}`} x={x(i)} y={h - 6} textAnchor={i ? "end" : "start"} fontSize="11" fill="#6e6e73">
             {p.ref ?? date(p.when)}
           </text>
         ) : null,

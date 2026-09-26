@@ -9,11 +9,11 @@ import { useCalls } from "@/components/calls-context";
 import { Avatar, Card, Empty, ErrorNote, Loading } from "@/components/ui";
 
 const STAGE_DOT: Record<string, string> = {
-  new: "bg-faint",
-  quoted: "bg-accent",
-  follow_up: "bg-warn",
-  won: "bg-good",
-  lost: "bg-bad",
+  new: "bg-[#8e8e93]",
+  quoted: "bg-[#0a84ff]",
+  follow_up: "bg-[#ff9f0a]",
+  won: "bg-[#34c759]",
+  lost: "bg-[#ff3b30]",
 };
 
 export default function PipelinePage() {
@@ -54,7 +54,7 @@ export default function PipelinePage() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
+      <p className="footnote px-1">
         Leads are created and moved by sales calls. Drag a card to move it by hand; the next call
         with that customer moves it again.
       </p>
@@ -78,13 +78,13 @@ export default function PipelinePage() {
                   setDragging(null);
                   setOver(null);
                 }}
-                className={`flex min-h-[320px] flex-col rounded-card p-2.5 transition ${
-                  over === stage.value ? "bg-accent-soft" : "bg-[#e5e8ee]"
+                className={`flex min-h-[360px] flex-col rounded-card p-2 transition-colors ${
+                  over === stage.value ? "bg-accent-soft" : "bg-black/[0.035]"
                 }`}
                 aria-label={stage.label}
               >
-                <header className="mb-2 flex items-center justify-between px-1.5 pt-1">
-                  <span className="flex items-center gap-2 text-sm font-semibold">
+                <header className="mb-2 flex items-center justify-between px-2 pt-1.5">
+                  <span className="flex items-center gap-2 text-[13px] font-semibold">
                     <span className={`h-2 w-2 rounded-full ${STAGE_DOT[stage.value]}`} />
                     {stage.label}
                   </span>
@@ -125,12 +125,12 @@ function LeadCard({
         e.dataTransfer.effectAllowed = "move";
         onDragStart();
       }}
-      className="cursor-grab rounded-2xl bg-white p-3 shadow-card active:cursor-grabbing"
+      className="cursor-grab rounded-[14px] border border-hairline bg-white p-3.5 shadow-card transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] active:cursor-grabbing"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold leading-snug">{lead.name}</p>
+        <p className="text-[14px] font-semibold leading-snug tracking-tightish">{lead.name}</p>
         {lead.stage_source === "manual" && (
-          <span className="chip shrink-0 bg-panel text-[10px] text-muted" title="Moved by hand">
+          <span className="shrink-0 text-[11px] text-muted" title="Moved by hand">
             Manual
           </span>
         )}
@@ -138,15 +138,15 @@ function LeadCard({
       {lead.pests.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {lead.pests.slice(0, 3).map((p) => (
-            <span key={p} className="chip bg-panel text-[11px] capitalize text-ink">
+            <span key={p} className="rounded-md bg-panel px-1.5 py-0.5 text-[11px] capitalize text-muted">
               {p}
             </span>
           ))}
         </div>
       )}
-      {lead.price_quoted && <p className="mt-2 line-clamp-2 text-xs text-ink/80">{lead.price_quoted}</p>}
+      {lead.price_quoted && <p className="mt-2 line-clamp-2 text-[12px] leading-snug">{lead.price_quoted}</p>}
       {lead.next_step && (
-        <p className="mt-2 line-clamp-2 text-xs text-muted">
+        <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-muted">
           <span className="font-medium text-ink">Next:</span> {lead.next_step}
         </p>
       )}
@@ -158,7 +158,7 @@ function LeadCard({
           </span>
         </span>
         {lead.last_call_id && (
-          <Link href={`/calls/${lead.last_call_id}`} className="shrink-0 text-xs font-medium text-accent">
+          <Link href={`/calls/${lead.last_call_id}`} className="shrink-0 text-[12px] text-link hover:underline">
             Call
           </Link>
         )}
@@ -168,7 +168,7 @@ function LeadCard({
       </label>
       <select
         id={`move-${lead.id}`}
-        className="mt-2 w-full rounded-lg border border-line bg-panel px-2 py-1 text-xs text-muted focus:border-accent"
+        className="mt-2 w-full rounded-lg border-0 bg-panel px-2 py-1 text-[12px] text-muted focus:outline-none focus:ring-2 focus:ring-accent/30"
         value={lead.stage}
         onChange={(e) => onMove(e.target.value)}
       >
