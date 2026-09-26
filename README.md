@@ -168,7 +168,6 @@ its configuration in `/opt/pestlaunch/.env`.
   (`dashboard/e2e`). A deploy only happens after they pass.
 - **Errors.** Set `SENTRY_DSN` to send API and dashboard errors to Sentry.
   Request bodies, local variables and personal data are never included.
-  Dependabot proposes dependency updates weekly.
 - **Security headers.** Caddy sends HSTS, a content security policy, and
   frame, referrer and permissions policies. The API schema and docs are not
   served on a public deployment.
