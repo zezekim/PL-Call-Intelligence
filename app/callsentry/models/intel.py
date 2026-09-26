@@ -14,6 +14,7 @@ from callsentry.core.db import Base, TimestampMixin, uuid_pk
 
 if TYPE_CHECKING:
     from callsentry.models.call import Call
+    from callsentry.models.user import User
 
 
 class Rep(Base, TimestampMixin):
@@ -197,3 +198,8 @@ class FollowUp(Base, TimestampMixin):
                                         nullable=False)
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     done_by: Mapped[str | None] = mapped_column(String(320))
+    # The team member responsible; loaded with the row, it's always shown.
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assignee: Mapped[User | None] = relationship(lazy="joined")

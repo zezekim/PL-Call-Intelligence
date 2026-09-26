@@ -119,7 +119,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
                   role="tab"
                   aria-selected={active === t.href}
                   className={`flex-1 whitespace-nowrap rounded-[7px] px-2 py-[5px] text-center text-[13px] font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
-                    active === t.href ? "bg-white text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
+                    active === t.href ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
                   }`}
                 >
                   {t.label}
@@ -220,7 +220,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             addFiles(e.dataTransfer.files);
           }}
           className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-9 text-center transition-colors ${
-            dragging ? "border-accent bg-accent-soft" : "border-[#c7c7cc] bg-panel hover:bg-[#efeff4]"
+            dragging ? "border-accent bg-accent-soft" : "border-neutral bg-panel hover:bg-fill"
           }`}
         >
           <UploadIcon className="mb-2.5 h-6 w-6 text-muted" />

@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { setBusinessZone } from "@/lib/format";
+import { type Theme, getTheme, setTheme } from "@/lib/theme";
 import { useApi, useTitle } from "@/lib/hooks";
 import { AlertIcon, CheckIcon } from "@/components/icons";
-import { ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
+import { ErrorNote, Loading, Modal, Segmented, Spinner } from "@/components/ui";
 
 interface Field {
   key: string;
@@ -50,6 +51,21 @@ const SECTIONS: { title: string; description: string; keys: string[] }[] = [
     title: "AI receptionist",
     description: "The Twilio number callers dial. Connect it after saving the credentials.",
     keys: ["twilio_account_sid", "twilio_auth_token", "twilio_phone_number", "sms_confirmations"],
+  },
+  {
+    title: "Weekly digest",
+    description:
+      "A Monday-morning email with last week's scores, open follow-ups and what to coach on. " +
+      "Nothing is sent until an SMTP server and recipients are set and the digest is switched on.",
+    keys: [
+      "weekly_digest",
+      "digest_recipients",
+      "smtp_host",
+      "smtp_port",
+      "smtp_username",
+      "smtp_password",
+      "smtp_from",
+    ],
   },
   {
     title: "Spending",
@@ -177,6 +193,7 @@ export default function SettingsPage() {
             )}
           </div>
           {section.title === "AI receptionist" && <ConnectNumber disabled={dirty || !data.can_edit} />}
+          {section.title === "Weekly digest" && <DigestTest disabled={dirty || !data.can_edit} />}
           {section.title === "Spending" && spend.data && (
             <SpendMeter spent={spend.data.spent_today_usd} cap={spend.data.cap_usd} />
           )}
@@ -186,6 +203,7 @@ export default function SettingsPage() {
       <PlaybookPanel canEdit={data.can_edit} />
       <TeamPanel canEdit={data.can_edit} />
       <AccountPanel />
+      <AppearancePanel />
 
       <Modal open={confirming} onClose={() => !saving && setConfirming(false)} title="Save these changes?">
         <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[14px] leading-snug">
@@ -268,7 +286,7 @@ function FieldRow({
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className={`inline-flex items-center gap-1.5 text-[14px] ${field.is_set ? "text-ink" : "text-muted"}`}>
-            <span className={`h-[7px] w-[7px] rounded-full ${field.is_set ? "bg-[#34c759]" : "bg-[#c7c7cc]"}`} />
+            <span className={`h-[7px] w-[7px] rounded-full ${field.is_set ? "bg-[#34c759]" : "bg-neutral"}`} />
             {field.is_set ? "Set" : "Not set"}
           </span>
           {edit === "" && <span className="chip bg-warn-soft text-warn">Will reset</span>}
@@ -420,7 +438,7 @@ function ConnectNumber({ disabled }: { disabled: boolean }) {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white px-5 py-4">
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-surface px-5 py-4">
       <div className="min-w-0 flex-1 text-[14px]">
         <p className="text-[15px]">Connect the number</p>
         <p className="text-muted">
@@ -458,7 +476,7 @@ function SpendMeter({ spent, cap }: { spent: number; cap: number }) {
   const pctUsed = cap > 0 ? Math.min(100, (spent / cap) * 100) : 0;
   const tone = pctUsed >= 100 ? "bg-[#ff3b30]" : pctUsed >= 75 ? "bg-[#ff9f0a]" : "bg-accent";
   return (
-    <div className="mt-3 rounded-2xl border border-hairline bg-white px-5 py-4">
+    <div className="mt-3 rounded-2xl border border-hairline bg-surface px-5 py-4">
       <div className="flex items-baseline justify-between text-[15px]">
         <span>Spent today</span>
         <span className="tnum">
@@ -529,7 +547,7 @@ function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-[14px]">
             <span className="inline-flex items-center gap-1.5">
-              <span className={`h-[7px] w-[7px] rounded-full ${published ? "bg-[#34c759]" : "bg-[#c7c7cc]"}`} />
+              <span className={`h-[7px] w-[7px] rounded-full ${published ? "bg-[#34c759]" : "bg-neutral"}`} />
               {published ? (live ? "Published - the receptionist is using this" : "Published version differs from this draft") : "Not published"}
             </span>
             {draft && (
@@ -948,5 +966,72 @@ function BusinessPanel({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
     </section>
+  );
+}
+
+function AppearancePanel() {
+  const [theme, choose] = useState<Theme>("system");
+  // Read after mount: the server render can't know this browser's choice.
+  useEffect(() => choose(getTheme()), []);
+  return (
+    <section className="pt-3">
+      <h2 className="section-title px-1">Appearance</h2>
+      <p className="footnote mb-3 mt-1 px-1">Applies to this browser only.</p>
+      <div className="card flex items-center justify-between gap-4 px-5 py-4">
+        <span className="text-[15px]">Theme</span>
+        <Segmented<Theme>
+          options={[
+            { value: "system", label: "Automatic" },
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+          ]}
+          value={theme}
+          onChange={(t) => {
+            choose(t);
+            setTheme(t);
+          }}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DigestTest({ disabled }: { disabled: boolean }) {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-hairline bg-surface px-5 py-4">
+      <input
+        className="input max-w-[260px]"
+        type="email"
+        placeholder="Send to (defaults to recipients)"
+        aria-label="Send a test digest to"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        disabled={disabled}
+      />
+      <button
+        className="btn-secondary"
+        disabled={disabled || busy}
+        onClick={async () => {
+          setBusy(true);
+          setMessage(null);
+          try {
+            await api.post("/settings/digest/test", { to: to.trim() });
+            setMessage({ ok: true, text: "Sent. Check the inbox." });
+          } catch (err) {
+            setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not send" });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy && <Spinner className="h-3.5 w-3.5" />}
+        Send a test
+      </button>
+      {disabled && <span className="text-[13px] text-muted">Save your changes first.</span>}
+      {message && <p className={`w-full text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
+    </div>
   );
 }

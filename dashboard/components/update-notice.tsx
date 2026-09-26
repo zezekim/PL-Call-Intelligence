@@ -35,7 +35,7 @@ export function UpdateNotice() {
 
   if (!latest) return null;
   return (
-    <div className="sticky top-0 z-30 border-b border-hairline bg-white/85 backdrop-blur-2xl" role="status">
+    <div className="sticky top-0 z-30 border-b border-hairline bg-surface/85 backdrop-blur-2xl" role="status">
       <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-4 px-4 py-2.5 sm:px-8 lg:px-10">
         <p className="text-[14px]">
           <span className="font-medium">A new version of PestLaunch is available</span>

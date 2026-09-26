@@ -23,7 +23,7 @@ from callsentry.intel import audio, followups, ingest, insights, jobs, overrides
 from callsentry.intel import leads as leads_service
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
-from callsentry.models import Call, CallAnalysis, FollowUp, Lead, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, FollowUp, Lead, ProcessingStatus, Rep, User
 
 router = APIRouter(prefix="/intel", tags=["call-intelligence"])
 
@@ -114,6 +114,13 @@ class FollowUpOut(BaseModel):
     customer: str | None = None
     rep: str | None = None
     ref: str | None = None
+    assignee_id: str | None = None
+    assignee: str | None = None
+
+
+class TeamMember(BaseModel):
+    id: str
+    email: str
 
 
 class CallDetailOut(CallRow):
@@ -650,6 +657,8 @@ def _follow_up_out(f: FollowUp, call: Call | None = None) -> FollowUpOut:
         customer=analysis.customer_name if analysis else None,
         rep=(call.rep.name if call and call.rep else None),
         ref=call.external_ref if call else None,
+        assignee_id=str(f.assignee_id) if f.assignee_id else None,
+        assignee=f.assignee.email if f.assignee else None,
     )
 
 
@@ -673,7 +682,18 @@ async def list_follow_ups(
 
 
 class FollowUpUpdate(BaseModel):
-    status: str
+    status: str | None = None
+    # A team member's id; "" unassigns.
+    assignee_id: str | None = None
+
+
+@router.get("/team", response_model=list[TeamMember])
+async def team(session: SessionDep, business: BusinessDep) -> list[TeamMember]:
+    """Who follow-ups can be assigned to."""
+    users = await session.scalars(
+        select(User).where(User.business_id == business.id).order_by(User.email)
+    )
+    return [TeamMember(id=str(u.id), email=u.email) for u in users]
 
 
 @router.patch("/follow-ups/{follow_up_id}", response_model=FollowUpOut)
@@ -684,12 +704,25 @@ async def update_follow_up(
     item = await session.get(FollowUp, follow_up_id)
     if item is None or item.business_id != business.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "follow-up not found")
-    if payload.status not in (followups.OPEN, followups.DONE):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "status must be open or done")
-    item.status = payload.status
-    item.done_at = datetime.now(UTC) if payload.status == followups.DONE else None
-    item.done_by = user.email if payload.status == followups.DONE else None
+    if payload.status is not None:
+        if payload.status not in (followups.OPEN, followups.DONE):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "status must be open or done")
+        item.status = payload.status
+        item.done_at = datetime.now(UTC) if payload.status == followups.DONE else None
+        item.done_by = user.email if payload.status == followups.DONE else None
+    if payload.assignee_id is not None:
+        if payload.assignee_id == "":
+            item.assignee_id = None
+        else:
+            try:
+                assignee = await session.get(User, uuid.UUID(payload.assignee_id))
+            except ValueError as exc:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid assignee_id") from exc
+            if assignee is None or assignee.business_id != business.id:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "team member not found")
+            item.assignee_id = assignee.id
     await session.commit()
+    await session.refresh(item, ["assignee"])
     return _follow_up_out(item)
 
 

@@ -251,7 +251,7 @@ function CallLog() {
                 {items.map((c) => (
                   <tr
                     key={c.id}
-                    className="cursor-pointer transition-colors hover:bg-[#fafafa]"
+                    className="cursor-pointer transition-colors hover:bg-surface-hover"
                     onClick={() => {
                       startProgress();
                       router.push(`/calls/${c.id}`);

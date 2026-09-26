@@ -3,6 +3,105 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light;
+    --ink: 29 29 31;
+    --muted: 110 110 115;
+    --faint: 112 112 117;
+    --subtle: 94 94 99;
+    --line: 229 229 234;
+    --canvas: 245 245 247;
+    --panel: 245 245 247;
+    --fill: 232 232 237;
+    --fill-hover: 222 222 227;
+    --fill-active: 213 213 218;
+    --surface: 255 255 255;
+    --surface-hover: 250 250 250;
+    --thumb: 255 255 255;
+    --bubble: 233 233 235;
+    --highlight: 255 229 143;
+    --neutral: 199 199 204;
+    --control: 210 210 215;
+    --accent: 0 113 227;
+    --link: 0 102 204;
+    --accent-soft: 232 241 253;
+    --good: 26 127 55;
+    --good-soft: 233 246 236;
+    --warn: 178 80 0;
+    --warn-soft: 255 244 229;
+    --bad: 201 0 30;
+    --bad-soft: 253 236 238;
+    --gold: 138 106 0;
+    --gold-soft: 251 245 226;
+    --hairline: rgba(0, 0, 0, 0.08);
+  }
+  /* Dark follows the system unless the viewer picked a theme (data-theme). */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ink: 245 245 247;
+      --muted: 161 161 166;
+      --faint: 152 152 157;
+      --subtle: 174 174 178;
+      --line: 56 56 58;
+      --canvas: 0 0 0;
+      --panel: 44 44 46;
+      --fill: 50 50 53;
+      --fill-hover: 62 62 66;
+      --fill-active: 72 72 76;
+      --surface: 28 28 30;
+      --surface-hover: 36 36 38;
+      --thumb: 99 99 102;
+      --bubble: 44 44 46;
+      --highlight: 92 74 0;
+      --neutral: 72 72 74;
+      --control: 72 72 74;
+      --accent: 0 113 227;
+      --link: 77 163 255;
+      --accent-soft: 16 42 71;
+      --good: 50 215 75;
+      --good-soft: 19 48 28;
+      --warn: 255 159 10;
+      --warn-soft: 58 42 18;
+      --bad: 255 105 97;
+      --bad-soft: 59 22 24;
+      --gold: 230 184 0;
+      --gold-soft: 51 43 15;
+      --hairline: rgba(255, 255, 255, 0.1);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: 245 245 247;
+    --muted: 161 161 166;
+    --faint: 152 152 157;
+    --subtle: 174 174 178;
+    --line: 56 56 58;
+    --canvas: 0 0 0;
+    --panel: 44 44 46;
+    --fill: 50 50 53;
+    --fill-hover: 62 62 66;
+    --fill-active: 72 72 76;
+    --surface: 28 28 30;
+    --surface-hover: 36 36 38;
+    --thumb: 99 99 102;
+    --bubble: 44 44 46;
+    --highlight: 92 74 0;
+    --neutral: 72 72 74;
+    --control: 72 72 74;
+    --accent: 0 113 227;
+    --link: 77 163 255;
+    --accent-soft: 16 42 71;
+    --good: 50 215 75;
+    --good-soft: 19 48 28;
+    --warn: 255 159 10;
+    --warn-soft: 58 42 18;
+    --bad: 255 105 97;
+    --bad-soft: 59 22 24;
+    --gold: 230 184 0;
+    --gold-soft: 51 43 15;
+    --hairline: rgba(255, 255, 255, 0.1);
+  }
   html {
     /* Same content width whether or not a page is tall enough to scroll. */
     scrollbar-gutter: stable;
@@ -27,13 +126,13 @@
 @layer components {
   /* Surfaces */
   .card {
-    @apply rounded-card border border-hairline bg-white shadow-card;
+    @apply rounded-card border border-hairline bg-surface shadow-card;
   }
   .card-accent {
     /* Kept for compatibility: emphasis comes from placement, not a stripe. */
   }
   .group-list {
-    @apply divide-y divide-line overflow-hidden rounded-2xl border border-hairline bg-white;
+    @apply divide-y divide-line overflow-hidden rounded-2xl border border-hairline bg-surface;
   }
   .group-row {
     @apply flex items-center gap-3 px-4 py-3;
@@ -61,7 +160,7 @@
     @apply btn bg-accent text-white hover:bg-[#0077ed] active:bg-[#006edb];
   }
   .btn-secondary {
-    @apply btn bg-fill text-ink hover:bg-[#dedee3] active:bg-[#d5d5da];
+    @apply btn bg-fill text-ink hover:bg-fill-hover active:bg-fill-active;
   }
   .btn-ghost {
     @apply btn text-link hover:bg-accent-soft/70;
@@ -70,7 +169,7 @@
     @apply btn text-bad hover:bg-bad-soft;
   }
   .input {
-    @apply w-full rounded-[10px] border border-[#d2d2d7] bg-white px-3 py-[7px] text-[15px] placeholder:text-faint transition-shadow focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/20;
+    @apply w-full rounded-[10px] border border-control bg-surface px-3 py-[7px] text-[15px] placeholder:text-faint transition-shadow focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/20;
   }
   .select {
     @apply input appearance-none bg-[length:14px] bg-[right_10px_center] bg-no-repeat pr-8;
@@ -134,5 +233,56 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+/* Printed call reports: always the light palette, no chrome, no shadows. */
+@media print {
+  /* The id selector outranks the dark-theme rules above. */
+  :root:not(#print) {
+    color-scheme: light;
+    --ink: 29 29 31;
+    --muted: 110 110 115;
+    --faint: 112 112 117;
+    --subtle: 94 94 99;
+    --line: 229 229 234;
+    --canvas: 245 245 247;
+    --panel: 245 245 247;
+    --fill: 232 232 237;
+    --fill-hover: 222 222 227;
+    --fill-active: 213 213 218;
+    --surface: 255 255 255;
+    --surface-hover: 250 250 250;
+    --thumb: 255 255 255;
+    --bubble: 233 233 235;
+    --highlight: 255 229 143;
+    --neutral: 199 199 204;
+    --control: 210 210 215;
+    --accent: 0 113 227;
+    --link: 0 102 204;
+    --accent-soft: 232 241 253;
+    --good: 26 127 55;
+    --good-soft: 233 246 236;
+    --warn: 178 80 0;
+    --warn-soft: 255 244 229;
+    --bad: 201 0 30;
+    --bad-soft: 253 236 238;
+    --gold: 138 106 0;
+    --gold-soft: 251 245 226;
+    --hairline: rgba(0, 0, 0, 0.08);
+  }
+  body {
+    background: #fff;
+    font-size: 12px;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .card {
+    box-shadow: none;
+  }
+  @page {
+    margin: 14mm;
   }
 }

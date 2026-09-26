@@ -44,6 +44,7 @@ BACKGROUND_INTERVAL_SECONDS = 60 * 30
 async def _background_loop() -> None:
     """Retention sweep + appointment reminders, every 30 minutes."""
     from callsentry.agents.booking_agent import send_due_reminders
+    from callsentry.services import digest
     from callsentry.services.retention import sweep
 
     while True:
@@ -55,6 +56,8 @@ async def _background_loop() -> None:
                 await session.commit()
                 if sent:
                     log.info("reminders.sent", count=sent)
+            async with get_sessionmaker()() as session:
+                await digest.maybe_send(session)
         except Exception as exc:  # noqa: BLE001 - a failed sweep must not kill the loop
             log.error("background.failed", error=str(exc))
 

@@ -104,7 +104,7 @@ export default function PipelinePage() {
                   setOver(null);
                 }}
                 className={`flex h-full w-[310px] shrink-0 flex-col rounded-card p-2.5 transition-colors ${
-                  over === stage.value ? "bg-accent-soft" : "bg-black/[0.035]"
+                  over === stage.value ? "bg-accent-soft" : "bg-ink/[0.035]"
                 }`}
                 aria-label={stage.label}
               >
@@ -113,7 +113,7 @@ export default function PipelinePage() {
                     <span className={`h-2 w-2 rounded-full ${STAGE_DOT[stage.value]}`} />
                     {stage.label}
                   </span>
-                  <span className="tnum rounded-full bg-white px-2 py-0.5 text-[12px] text-muted">
+                  <span className="tnum rounded-full bg-surface px-2 py-0.5 text-[12px] text-muted">
                     {cards.length}
                   </span>
                 </header>
@@ -129,7 +129,7 @@ export default function PipelinePage() {
                     />
                   ))}
                   {!cards.length && (
-                    <p className="px-2 py-6 text-center text-[13px] text-[#5e5e63]">No leads</p>
+                    <p className="px-2 py-6 text-center text-[13px] text-subtle">No leads</p>
                   )}
                 </div>
               </section>
@@ -161,9 +161,9 @@ function LeadCard({
         e.dataTransfer.effectAllowed = "move";
         onDragStart();
       }}
-      className={`rounded-[14px] border bg-white shadow-card transition-shadow ${
+      className={`rounded-[14px] border bg-surface shadow-card transition-shadow ${
         open
-          ? "border-[#d2d2d7] shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
+          ? "border-control shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
           : "border-hairline hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)]"
       }`}
     >

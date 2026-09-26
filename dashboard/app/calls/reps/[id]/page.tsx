@@ -160,16 +160,16 @@ function Trend({ points }: { points: RepDetail["trend"] }) {
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="Score percentage per call">
       {[0, 50, 100].map((v) => (
         <g key={v}>
-          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="#e5e5ea" />
-          <text x={pad.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#6e6e73">
+          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="rgb(var(--line))" />
+          <text x={pad.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="rgb(var(--muted))">
             {v}%
           </text>
         </g>
       ))}
-      <path d={path} fill="none" stroke="#0071e3" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path} fill="none" stroke="rgb(var(--accent))" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {data.map((p, i) => (
         <a key={p.call_id} href={`/calls/${p.call_id}`}>
-          <circle cx={x(i)} cy={y(p.pct as number)} r={4.5} fill="#0071e3" stroke="#fff" strokeWidth={2}>
+          <circle cx={x(i)} cy={y(p.pct as number)} r={4.5} fill="rgb(var(--accent))" stroke="rgb(var(--surface))" strokeWidth={2}>
             <title>{`${p.ref ?? "Call"}: ${p.pct}%`}</title>
           </circle>
           <circle cx={x(i)} cy={y(p.pct as number)} r={12} fill="transparent" />
@@ -177,7 +177,7 @@ function Trend({ points }: { points: RepDetail["trend"] }) {
       ))}
       {data.map((p, i) =>
         i === 0 || i === data.length - 1 ? (
-          <text key={`l${i}`} x={x(i)} y={h - 6} textAnchor={i ? "end" : "start"} fontSize="11" fill="#6e6e73">
+          <text key={`l${i}`} x={x(i)} y={h - 6} textAnchor={i ? "end" : "start"} fontSize="11" fill="rgb(var(--muted))">
             {p.ref ?? date(p.when)}
           </text>
         ) : null,

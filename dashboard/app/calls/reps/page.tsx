@@ -46,7 +46,7 @@ export default function RepsPage() {
         </thead>
         <tbody className="divide-y divide-line">
           {reps.map((r) => (
-            <tr key={r.id} className="transition-colors hover:bg-[#fafafa]">
+            <tr key={r.id} className="transition-colors hover:bg-surface-hover">
               <td className="px-6 py-3.5">
                 <Link href={`/calls/reps/${r.id}`} className="flex items-center gap-3 text-[15px] font-medium tracking-tightish hover:text-link">
                   <Avatar name={r.name} size={30} />

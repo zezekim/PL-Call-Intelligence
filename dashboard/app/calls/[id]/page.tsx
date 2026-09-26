@@ -27,6 +27,7 @@ import {
   PauseIcon,
   PlayIcon,
   QuoteIcon,
+  PrintIcon,
 } from "@/components/icons";
 import {
   Avatar,
@@ -59,7 +60,7 @@ export default function CallPage() {
 
   return (
     <div className="space-y-5">
-      <Link href="/calls/log" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
+      <Link href="/calls/log" className="-ml-1 inline-flex print:hidden items-center gap-0.5 text-[15px] text-link hover:underline">
         <BackIcon className="h-4 w-4" /> Call Log
       </Link>
 
@@ -79,7 +80,7 @@ export default function CallPage() {
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_372px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_372px] print:block print:space-y-5">
         <div className="min-w-0 space-y-5">
           {a && <Summary analysis={a} followUps={call.follow_ups} />}
           {a && a.items.length > 0 && <Coaching analysis={a} seek={audio.seek} />}
@@ -88,7 +89,7 @@ export default function CallPage() {
           )}
         </div>
 
-        <div className="no-scrollbar space-y-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-2">
+        <div className="no-scrollbar space-y-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-2 print:static print:max-h-none print:overflow-visible">
           {call.audio_url && <Player src={api.url(call.audio_url)} audio={audio} duration={call.duration_seconds} />}
           {expired && (
             <Card className="px-5 py-4">
@@ -165,7 +166,7 @@ function Header({
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
+      <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4 print:hidden">
         {a && (
           <RerunButton
             callId={call.id}
@@ -188,6 +189,10 @@ function Header({
           />
         )}
         {a && <ChangeType call={call} onDone={reload} />}
+        <button className="btn-secondary" onClick={() => window.print()} disabled={!a}>
+          <PrintIcon className="h-4 w-4" />
+          Print report
+        </button>
         <button className="btn-danger ml-auto" onClick={() => setConfirmDelete(true)}>
           Delete call
         </button>
@@ -491,7 +496,7 @@ function TypeDialog({
 function TypeCheck({ call, analysis, onDone }: { call: CallDetail; analysis: Analysis; onDone: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-[#ffd8a8] bg-warn-soft px-5 py-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-warn/25 bg-warn-soft px-5 py-4 print:hidden">
       <div className="flex items-start gap-2.5 text-[14px]">
         <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
         <p>
@@ -612,7 +617,7 @@ function Coaching({ analysis: a, seek }: { analysis: Analysis; seek: (t: number)
               {tip.start !== null && <TimeLink t={tip.start} seek={seek} />}
             </div>
             <p className="mt-1.5 text-[14px] leading-relaxed text-ink/80">{tip.what_happened}</p>
-            <div className="mt-3 rounded-xl border-l-[3px] border-accent bg-white px-4 py-3 text-[14px]">
+            <div className="mt-3 rounded-xl border-l-[3px] border-accent bg-surface px-4 py-3 text-[14px]">
               <div>
                 <p className="text-[12px] font-medium text-muted">Try saying</p>
                 <p className="mt-0.5 leading-relaxed [overflow-wrap:anywhere]">{tip.try_saying}</p>
@@ -723,7 +728,7 @@ function ItemRow({
   const split = item.agreement && /^[12]\/3$/.test(item.agreement);
   return (
     <li>
-      <button className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-black/[0.02]" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+      <button className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-ink/[0.02]" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         {item.awarded ? (
           <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[#34c759] text-white">
             <CheckIcon className="h-3 w-3" />
@@ -762,7 +767,7 @@ function ItemRow({
           <p className="text-ink/80">{item.reason}</p>
           <OverrideControls item={item} callId={callId} onChange={onChange} />
           {item.deliberation && (
-            <div className="space-y-2 rounded-xl bg-white p-3">
+            <div className="space-y-2 rounded-xl bg-surface p-3">
               <p className="text-xs font-medium text-muted">How the models deliberated</p>
               {item.deliberation.map((d) => (
                 <div key={d.model} className="text-xs">
@@ -780,7 +785,7 @@ function ItemRow({
             <button
               key={i}
               onClick={() => e.start !== null && seek(e.start)}
-              className="block w-full rounded-xl bg-white px-3 py-2 text-left transition-colors [overflow-wrap:anywhere] hover:bg-accent-soft"
+              className="block w-full rounded-xl bg-surface px-3 py-2 text-left transition-colors [overflow-wrap:anywhere] hover:bg-accent-soft"
               disabled={e.start === null}
             >
               <span className="tnum mr-2 text-[12px] font-medium text-link">{e.start !== null ? clock(e.start) : "-"}</span>
@@ -833,7 +838,7 @@ function Player({ src, audio, duration: total }: { src: string; audio: AudioCont
   const progress = length ? Math.min(100, (audio.time / length) * 100) : 0;
 
   return (
-    <Card className="px-4 py-3.5">
+    <Card className="px-4 py-3.5 print:hidden">
       <audio
         ref={audio.ref}
         src={src}
@@ -845,7 +850,7 @@ function Player({ src, audio, duration: total }: { src: string; audio: AudioCont
       />
       <div className="flex items-center gap-3">
         <button
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-white transition-colors hover:bg-black"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-canvas transition-opacity hover:opacity-85"
           onClick={audio.toggle}
           aria-label={audio.playing ? "Pause" : "Play"}
         >
@@ -861,7 +866,7 @@ function Player({ src, audio, duration: total }: { src: string; audio: AudioCont
             onChange={(e) => {
               if (audio.ref.current) audio.ref.current.currentTime = Number(e.target.value);
             }}
-            className="w-full accent-[#1d1d1f]"
+            className="w-full accent-ink"
             aria-label="Seek"
             style={{ backgroundSize: `${progress}% 100%` }}
           />
@@ -888,7 +893,7 @@ function Player({ src, audio, duration: total }: { src: string; audio: AudioCont
 
 function TimeLink({ t, seek }: { t: number; seek: (t: number) => void }) {
   return (
-    <button onClick={() => seek(t)} className="tnum inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[12px] font-medium text-link ring-1 ring-line transition-colors hover:bg-accent-soft">
+    <button onClick={() => seek(t)} className="tnum inline-flex shrink-0 items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[12px] font-medium text-link ring-1 ring-line transition-colors hover:bg-accent-soft">
       <PlayIcon className="h-2.5 w-2.5" />
       {clock(t)}
     </button>
@@ -944,7 +949,7 @@ function Transcript({
                 </p>
                 <div
                   className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left text-[15px] leading-[1.4] [overflow-wrap:anywhere] ${
-                    rep ? "bg-[#e9e9eb] text-ink" : "bg-[#0071e3] text-white"
+                    rep ? "bg-bubble text-ink" : "bg-accent text-white"
                   }`}
                 >
                   {turn.items.map((s) => (
@@ -952,7 +957,7 @@ function Transcript({
                       key={s.id}
                       onClick={() => seek(s.start)}
                       className={`cursor-pointer rounded px-0.5 transition-colors ${
-                        s.id === activeId ? (rep ? "bg-[#ffe58f]" : "bg-white/30") : rep ? "hover:bg-black/5" : "hover:bg-white/15"
+                        s.id === activeId ? (rep ? "bg-highlight" : "bg-white/30") : rep ? "hover:bg-ink/5" : "hover:bg-white/15"
                       }`}
                     >
                       {s.text}{" "}
@@ -997,7 +1002,7 @@ function OverrideControls({
   if (item.override) {
     const model = item.model_status === "met" ? "met" : "missed";
     return (
-      <div className="rounded-xl bg-white px-3 py-2.5 text-[13px]">
+      <div className="rounded-xl bg-surface px-3 py-2.5 text-[13px]">
         <p>
           <span className="font-medium">Changed to {item.override.status} by {item.override.by}</span>
           <span className="text-muted"> · {dateTime(item.override.at)} · scored {model} originally</span>
@@ -1019,7 +1024,7 @@ function OverrideControls({
     );
   }
   return (
-    <div className="space-y-2 rounded-xl bg-white p-3">
+    <div className="space-y-2 rounded-xl bg-surface p-3">
       <input
         className="input py-1.5 text-[13px]"
         placeholder="Why? (optional, shown to the team)"

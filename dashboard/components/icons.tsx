@@ -125,3 +125,8 @@ export const RefreshIcon = (p: IconProps) => (
     <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
   </Svg>
 );
+export const PrintIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 9V3h10v6M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" />
+  </Svg>
+);

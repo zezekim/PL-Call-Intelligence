@@ -278,7 +278,9 @@ async def overview(session: AsyncSession, business_id: uuid.UUID, days: int | No
              "customer": a.customer_name if a else None,
              "rep": c.rep.name if c.rep else None,
              "when": (c.occurred_at or c.created_at).isoformat(),
-             "action": f.action, "owner": f.owner, "due": f.due}
+             "action": f.action, "owner": f.owner, "due": f.due,
+             "assignee_id": str(f.assignee_id) if f.assignee_id else None,
+             "assignee": f.assignee.email if f.assignee else None}
             for f, c, a in open_follow_ups
         ],
         "review": [{**_ref(r), "call_type": r.analysis.call_type,

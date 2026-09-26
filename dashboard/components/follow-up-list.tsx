@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { titleCase } from "@/lib/format";
+import { useApi } from "@/lib/hooks";
 import { CheckIcon } from "./icons";
 
 export interface FollowUpItem {
@@ -15,7 +16,16 @@ export interface FollowUpItem {
   done_by?: string | null;
   call_id?: string;
   customer?: string | null;
+  assignee_id?: string | null;
+  assignee?: string | null;
 }
+
+interface TeamMember {
+  id: string;
+  email: string;
+}
+
+const firstName = (email: string) => titleCase(email.split("@")[0].split(/[._-]/)[0]);
 
 /**
  * A checklist of promises made on calls. Ticking one marks it done for the
@@ -32,7 +42,20 @@ export function FollowUpList({
   onChange?: () => void;
 }) {
   const [status, setStatus] = useState<Record<string, "open" | "done">>({});
+  const [assigned, setAssigned] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const team = useApi<TeamMember[]>("/intel/team");
+
+  async function assign(item: FollowUpItem, assigneeId: string) {
+    const previous = assigned[item.id] ?? item.assignee_id ?? "";
+    setAssigned((a) => ({ ...a, [item.id]: assigneeId }));
+    try {
+      await api.patch(`/intel/follow-ups/${item.id}`, { assignee_id: assigneeId });
+      onChange?.();
+    } catch {
+      setAssigned((a) => ({ ...a, [item.id]: previous }));
+    }
+  }
 
   async function toggle(item: FollowUpItem) {
     const current = status[item.id] ?? item.status ?? "open";
@@ -65,7 +88,7 @@ export function FollowUpList({
               disabled={busy === f.id}
               onClick={() => toggle(f)}
               className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors ${
-                done ? "border-[#34c759] bg-[#34c759] text-white" : "border-[#c7c7cc] hover:border-accent"
+                done ? "border-[#34c759] bg-[#34c759] text-white" : "border-neutral hover:border-accent"
               }`}
             >
               {done && <CheckIcon className="h-3 w-3" />}
@@ -81,12 +104,28 @@ export function FollowUpList({
               ) : (
                 <p className={`text-[14px] leading-snug ${done ? "text-muted line-through" : ""}`}>{f.action}</p>
               )}
-              {(meta || (done && f.done_by)) && (
-                <p className="mt-0.5 text-[12px] text-muted">
-                  {meta}
-                  {done && f.done_by && !status[f.id] ? ` · done by ${f.done_by}` : ""}
-                </p>
-              )}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[12px] text-muted">
+                {meta && <span>{meta}</span>}
+                {done && f.done_by && !status[f.id] && <span>· done by {f.done_by}</span>}
+                {(team.data?.length ?? 0) > 0 && (
+                  <>
+                    {(meta || (done && f.done_by)) && <span aria-hidden>·</span>}
+                    <select
+                      className="cursor-pointer appearance-none rounded bg-transparent text-[12px] text-link hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                      aria-label={`Assign "${f.action}"`}
+                      value={assigned[f.id] ?? f.assignee_id ?? ""}
+                      onChange={(e) => void assign(f, e.target.value)}
+                    >
+                      <option value="">Assign</option>
+                      {team.data!.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {firstName(u.email)}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
             </div>
           </li>
         );

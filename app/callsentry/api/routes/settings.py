@@ -530,3 +530,21 @@ async def unpublish_playbook(
         await session.delete(row)
         await session.flush()
     return await _playbook_out(session, business.id)
+
+
+class DigestTest(BaseModel):
+    to: str = Field(default="", max_length=320)
+
+
+@router.post("/digest/test", status_code=status.HTTP_204_NO_CONTENT)
+async def send_test_digest(
+    payload: DigestTest, session: SessionDep, business: BusinessDep, user: UserDep
+) -> None:
+    """Send this week's digest now, to one address or the configured recipients."""
+    _require_admin(user)
+    from callsentry.services import digest
+
+    try:
+        await digest.send(session, business, [payload.to] if payload.to else None)
+    except digest.DigestError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

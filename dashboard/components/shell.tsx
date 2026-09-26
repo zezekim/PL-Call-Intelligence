@@ -94,15 +94,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const company = me?.business_name || "PestLaunch";
 
   return (
-    <div className="min-h-screen overflow-x-clip lg:pl-[244px]">
+    <div className="min-h-screen overflow-x-clip lg:pl-[244px] print:!pl-0">
       <RouteProgress />
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col border-r border-hairline bg-[#f5f5f7]/80 px-3 pb-3 pt-5 backdrop-blur-2xl backdrop-saturate-150 transition-transform duration-300 lg:translate-x-0 ${
+        className={`print:hidden fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col border-r border-hairline bg-canvas/80 px-3 pb-3 pt-5 backdrop-blur-2xl backdrop-saturate-150 transition-transform duration-300 lg:translate-x-0 ${
           menuOpen ? "translate-x-0 shadow-pop" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center gap-2.5 px-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-ink text-[13px] font-semibold text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-ink text-[13px] font-semibold text-canvas">
             {company.slice(0, 1).toUpperCase()}
           </span>
           <div className="min-w-0 leading-tight">
@@ -135,7 +135,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 key={label}
                 href={href}
                 className={`flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] ${
-                  active ? "bg-black/[0.07] font-medium text-ink" : "text-ink hover:bg-black/[0.04]"
+                  active ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
                 }`}
               >
                 <Icon />
@@ -149,7 +149,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <Link
             href="/settings"
             className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] ${
-              pathname.startsWith("/settings") ? "bg-black/[0.07] font-medium text-ink" : "text-ink hover:bg-black/[0.04]"
+              pathname.startsWith("/settings") ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
             }`}
           >
             <SettingsIcon />
@@ -161,7 +161,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {BUILD_ID !== "local" && <span className="tnum"> ({BUILD_ID})</span>}
           </p>
           <button
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-black/[0.04] hover:text-ink"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-ink/[0.04] hover:text-ink"
             onClick={() => {
               clearToken();
               router.replace("/login");
@@ -177,7 +177,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={() => setMenuOpen(false)} />
       )}
 
-      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-hairline bg-white/80 px-4 py-2.5 backdrop-blur-2xl lg:hidden">
+      <header className="print:hidden sticky top-0 z-20 flex items-center gap-3 border-b border-hairline bg-surface/80 px-4 py-2.5 backdrop-blur-2xl lg:hidden">
         <button className="btn-ghost px-2" onClick={() => setMenuOpen(true)} aria-label="Open menu">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
             <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
@@ -186,7 +186,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <span className="text-[15px] font-semibold tracking-tightish">{company}</span>
       </header>
 
-      <UpdateNotice />
+      <div className="print:hidden">
+        <UpdateNotice />
+      </div>
       <main
         className={`mx-auto w-full min-w-0 max-w-[1120px] px-4 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
           wide ? "pb-4" : "pb-20"
@@ -233,9 +235,9 @@ function SearchBox() {
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search calls"
         aria-label="Search calls"
-        className="w-full rounded-[9px] border-0 bg-black/[0.05] py-[6px] pl-8 pr-10 text-[14px] placeholder:text-muted focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+        className="w-full rounded-[9px] border-0 bg-ink/[0.05] py-[6px] pl-8 pr-10 text-[14px] placeholder:text-muted focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/25"
       />
-      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-[#5e5e63]">
+      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-subtle">
         ⌘K
       </kbd>
     </form>

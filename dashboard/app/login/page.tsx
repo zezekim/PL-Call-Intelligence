@@ -35,7 +35,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-ink text-[20px] font-semibold text-white">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-ink text-[20px] font-semibold text-canvas">
             P
           </span>
           <h1 className="mt-5 text-[28px] font-semibold tracking-title">Sign in to PestLaunch</h1>

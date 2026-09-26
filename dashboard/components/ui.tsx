@@ -203,7 +203,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={`rounded-[7px] font-medium transition-all duration-150 ${
             size === "sm" ? "px-3 py-[3px] text-[12px]" : "px-4 py-[5px] text-[13px]"
-          } ${o.value === value ? "bg-white text-ink shadow-thumb" : "text-ink/70 hover:text-ink"}`}
+          } ${o.value === value ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"}`}
         >
           {o.label}
         </button>
@@ -229,7 +229,7 @@ export function GroupRow({
       {chevron && <ChevronIcon className="h-4 w-4 shrink-0 text-faint" />}
     </>
   );
-  const cls = "group-row w-full text-left transition-colors hover:bg-[#fafafa]";
+  const cls = "group-row w-full text-left transition-colors hover:bg-surface-hover";
   if (href) return <Link href={href} className={cls}>{inner}</Link>;
   if (onClick)
     return (
@@ -347,12 +347,12 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-[460px] rounded-[22px] bg-white/95 p-6 shadow-pop backdrop-blur-xl"
+        className="w-full max-w-[460px] rounded-[22px] bg-surface/95 p-6 shadow-pop backdrop-blur-xl"
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="text-[19px] font-semibold tracking-title">{title}</h2>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-fill text-[13px] text-muted hover:bg-[#dedee3]"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-fill text-[13px] text-muted hover:bg-fill-hover"
             onClick={onClose}
             aria-label="Close"
           >

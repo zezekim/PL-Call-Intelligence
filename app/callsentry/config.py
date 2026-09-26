@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     daily_spend_cap_usd: float = 20.0
     # Text callers a booking confirmation (needs an SMS-registered number).
     sms_confirmations: bool = False
+    # Weekly email digest. Off until SMTP is configured and it is switched on.
+    weekly_digest: bool = False
+    digest_recipients: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
     # Live calls use cloud speech first: local speech is too slow to converse.
     voice_prefer_cloud: bool = True
     # Recordings processed in parallel by the in-process job runner.
