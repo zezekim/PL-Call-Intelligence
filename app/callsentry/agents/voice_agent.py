@@ -364,7 +364,7 @@ async def _handle_booking(
         )
         return _ask(state, f"{opener}I can get a technician out to you. Can I get your name?")
     if not state.collected.get("address"):
-        return _ask(state, f"Thanks {name}. What's the address for the service?")
+        return _ask(state, f"Thanks {name.split()[0]}. What's the address for the service?")
     if not preferred:
         return _ask(state, "Got it. What day and time work best for the technician to come out?")
 
