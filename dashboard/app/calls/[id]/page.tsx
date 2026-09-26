@@ -423,7 +423,7 @@ function Summary({ analysis: a }: { analysis: Analysis }) {
           {details.map((d) => (
             <div key={d.label}>
               <dt className="text-[12px] text-muted">{d.label}</dt>
-              <dd className="mt-0.5 text-[14px] leading-snug">{d.value}</dd>
+              <dd className="mt-0.5 text-[14px] leading-snug [overflow-wrap:anywhere]">{d.value}</dd>
             </div>
           ))}
         </dl>
@@ -469,7 +469,7 @@ function Coaching({ analysis: a, seek }: { analysis: Analysis; seek: (t: number)
             <div className="mt-3 rounded-xl border-l-[3px] border-accent bg-white px-4 py-3 text-[14px]">
               <div>
                 <p className="text-[12px] font-medium text-muted">Try saying</p>
-                <p className="mt-0.5 leading-relaxed">{tip.try_saying}</p>
+                <p className="mt-0.5 leading-relaxed [overflow-wrap:anywhere]">{tip.try_saying}</p>
               </div>
             </div>
             {tip.why_it_matters && <p className="mt-2.5 text-[13px] text-muted">{tip.why_it_matters}</p>}
@@ -608,7 +608,7 @@ function ItemRow({ item, seek }: { item: ScoreItem; seek: (t: number) => void })
             <button
               key={i}
               onClick={() => e.start !== null && seek(e.start)}
-              className="block w-full rounded-xl bg-white px-3 py-2 text-left transition-colors hover:bg-accent-soft"
+              className="block w-full rounded-xl bg-white px-3 py-2 text-left transition-colors [overflow-wrap:anywhere] hover:bg-accent-soft"
               disabled={e.start === null}
             >
               <span className="tnum mr-2 text-[12px] font-medium text-link">{e.start !== null ? clock(e.start) : "-"}</span>
@@ -762,8 +762,8 @@ function Transcript({
         {turns.map((turn, i) => {
           const rep = turn.role === "rep";
           return (
-            <div key={i} className={`flex gap-3 ${rep ? "" : "flex-row-reverse"}`}>
-              <div className={`max-w-[85%] ${rep ? "" : "text-right"}`}>
+            <div key={i} className={`flex min-w-0 gap-3 ${rep ? "" : "flex-row-reverse"}`}>
+              <div className={`min-w-0 max-w-[85%] ${rep ? "" : "text-right"}`}>
                 <p className="mb-1 px-1 text-[12px] text-muted">
                   {rep ? repName ?? "Rep" : turn.role === "customer" ? "Customer" : "Speaker"}{" "}
                   <button className="tnum text-faint hover:text-link" onClick={() => seek(turn.items[0].start)}>
@@ -771,7 +771,7 @@ function Transcript({
                   </button>
                 </p>
                 <div
-                  className={`inline-block rounded-[18px] px-4 py-2.5 text-left text-[15px] leading-[1.4] ${
+                  className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left text-[15px] leading-[1.4] [overflow-wrap:anywhere] ${
                     rep ? "bg-[#e9e9eb] text-ink" : "bg-[#0a84ff] text-white"
                   }`}
                 >

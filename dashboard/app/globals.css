@@ -10,6 +10,8 @@
   }
   body {
     @apply bg-canvas font-sans text-[15px] leading-[1.47] tracking-tightish text-ink;
+    /* Spelled-out emails and long IDs from transcripts must wrap, not overflow. */
+    overflow-wrap: break-word;
     font-feature-settings: "cv11", "ss01", "ss03";
   }
   :focus-visible {
