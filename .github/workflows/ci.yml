@@ -54,7 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and start
-        run: docker compose --env-file /opt/pestlaunch/.env up -d --build --remove-orphans
+        run: |
+          export APP_VERSION="$(cat VERSION)" BUILD_ID="${GITHUB_SHA::7}"
+          docker compose --env-file /opt/pestlaunch/.env up -d --build --remove-orphans
       - name: Reload proxy config
         run: docker compose --env-file /opt/pestlaunch/.env exec -T caddy caddy reload --config /etc/caddy/Caddyfile
       - name: Wait for the API

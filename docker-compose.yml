@@ -120,6 +120,8 @@ services:
       context: ./dashboard
       args:
         NEXT_PUBLIC_API_URL: /api
+        APP_VERSION: ${APP_VERSION:-dev}
+        BUILD_ID: ${BUILD_ID:-local}
     restart: unless-stopped
     depends_on:
       - app

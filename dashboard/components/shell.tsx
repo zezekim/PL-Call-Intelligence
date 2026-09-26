@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken, type Me } from "@/lib/api";
+import { APP_VERSION, BUILD_ID } from "@/lib/version";
 import { EnvironmentPrompt } from "./environment";
+import { UpdateNotice } from "./update-notice";
 import {
   AssistantIcon,
   FinancialsIcon,
@@ -37,6 +39,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const bare = pathname.startsWith("/login");
+  // The pipeline board uses the full width and scrolls sideways on its own.
+  const wide = pathname.startsWith("/calls/pipeline");
 
   useEffect(() => {
     if (bare) {
@@ -121,6 +125,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             Settings
           </Link>
           {me && <p className="truncate px-2.5 pb-1 pt-1 text-[12px] text-muted">{me.email}</p>}
+          <p className="px-2.5 pb-1 text-[11px] text-faint" title={`Build ${BUILD_ID}`}>
+            Version {APP_VERSION}
+            {BUILD_ID !== "local" && <span className="tnum"> ({BUILD_ID})</span>}
+          </p>
           <button
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-black/[0.04] hover:text-ink"
             onClick={() => {
@@ -147,7 +155,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <span className="text-[15px] font-semibold tracking-tightish">{company}</span>
       </header>
 
-      <main className="mx-auto w-full max-w-[1120px] px-4 pb-20 pt-6 sm:px-8 lg:px-10 lg:pt-10">
+      <UpdateNotice />
+      <main
+        className={`mx-auto w-full min-w-0 px-4 pb-20 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
+          wide ? "max-w-none" : "max-w-[1120px]"
+        }`}
+      >
         {children}
       </main>
       <EnvironmentPrompt />
