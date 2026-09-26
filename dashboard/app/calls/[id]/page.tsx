@@ -1028,6 +1028,7 @@ function OverrideControls({
       <input
         className="input py-1.5 text-[13px]"
         placeholder="Why? (optional, shown to the team)"
+        aria-label="Reason for the change"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         maxLength={500}

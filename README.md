@@ -99,7 +99,27 @@ majority per step; only the first run writes coaching, which keeps output
 tokens down. **Enhanced** scoring has the scoring model and a second-opinion
 model from the other provider grade independently, then shows each the other's
 verdict and evidence on every step they disagree on. Steps still disputed
-after that second round are marked *Disputed* and not awarded.
+after that second round are marked *Disputed* and not awarded; they appear
+under **Needs attention** until a manager rules on them.
+
+### Reviewing calls
+
+- **Overrides.** A manager can mark any step met or missed, with a note; the
+  total and grade are recomputed and the change survives re-scoring.
+- **Rep and date.** Either can be corrected on the call page. A rep set by hand
+  stays set when the call is re-scored.
+- **Follow-ups** promised on calls become a checklist, and each can be assigned
+  to a team member.
+- **Call Log** sorts by date, score, length, rep or type and pages through
+  large histories. Uploading a recording that is already in the system is
+  detected and skipped, so nothing is scored (or paid for) twice.
+- **Print report** on a call gives a clean one-call report, or a PDF via the
+  browser's print dialog.
+- **Weekly digest.** With an SMTP server set in Settings, a Monday-morning email
+  sums up the week: scores, open follow-ups, disputed steps and what to coach on.
+- Times are shown in the business's time zone (Settings → Business). The
+  dashboard follows the system light or dark appearance, or a choice made in
+  Settings.
 
 ### The AI receptionist
 
@@ -119,6 +139,10 @@ after that second round are marked *Disputed* and not awarded.
 5. Call the number. Live calls always use cloud speech (Deepgram) and Claude,
    because local speech on a CPU is too slow for conversation. Appointments are
    booked into two-hour arrival windows within business hours.
+6. With a **transfer number** set (Settings → Business), a caller who asks for a
+   person is put through. The person answering first hears who is calling and
+   why; if no one picks up, the caller is told someone will call back and a
+   follow-up is created.
 
 ### Deploying
 
@@ -138,9 +162,16 @@ its configuration in `/opt/pestlaunch/.env`.
   kept for 7 days. The install script prints the restore command.
 - **Health.** `.github/workflows/health.yml` checks the API and dashboard every 15
   minutes; GitHub emails the repository owner when a run fails.
-- **Browser tests.** Every push signs in, opens each page and checks a wrong
-  password is refused, against a real API and database (`dashboard/e2e`). A
-  deploy only happens after they pass.
+- **Browser tests.** Every push signs in, opens each page, checks a wrong
+  password is refused, and walks through reviewing a synthetic call (settling a
+  disputed step, ticking off a follow-up) against a real API and database
+  (`dashboard/e2e`). A deploy only happens after they pass.
+- **Errors.** Set `SENTRY_DSN` to send API and dashboard errors to Sentry.
+  Request bodies, local variables and personal data are never included.
+  Dependabot proposes dependency updates weekly.
+- **Security headers.** Caddy sends HSTS, a content security policy, and
+  frame, referrer and permissions policies. The API schema and docs are not
+  served on a public deployment.
 - **Sign-in protection.** Five wrong passwords lock that account for 15
   minutes; twenty from one address lock the address.
 - **Retention.** Recordings are stamped with an expiry at upload
@@ -201,7 +232,7 @@ the shape of every structured-output schema, and that every route is mounted.
 
 - Pull calls, reps and customers straight from the CRM (FieldRoutes, GorillaDesk,
   PestPac) instead of uploading, so dates, reps and accounts are exact.
-- Assign follow-ups to people and feed them into PestLaunch Tasks.
+- Feed assigned follow-ups into PestLaunch Tasks.
 - Use managers' step overrides to tune the rubric per company.
 - Trends over time per rep and per step once there is enough call history.
 - Company-specific scripts and pricing as scoring context.

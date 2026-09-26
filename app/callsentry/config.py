@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://callsentry:callsentry@postgres:5432/callsentry"
     redis_url: str = "redis://redis:6379/0"
     log_level: str = "INFO"
+    # Error reporting. Empty: nothing leaves the server.
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
 
     encryption_key: str = Field(..., alias="ENCRYPTION_KEY")
     jwt_secret: str = Field(..., alias="JWT_SECRET")

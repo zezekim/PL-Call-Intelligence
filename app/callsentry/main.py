@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from typing import Any
@@ -12,6 +13,7 @@ import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from callsentry import logging as app_logging
 from callsentry.api.deps import UserDep
@@ -115,6 +117,26 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 await task
 
 
+def _init_error_reporting() -> None:
+    dsn = get_settings().sentry_dsn
+    if not dsn:
+        return
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=get_settings().sentry_environment,
+        release=os.getenv("APP_VERSION") or None,
+        # Calls carry customer conversations: keep them out of error reports.
+        send_default_pii=False,
+        max_request_body_size="never",
+        include_local_variables=False,
+        traces_sample_rate=0,
+    )
+
+
+_init_error_reporting()
+
 # Interactive API docs are for development; a public deployment (served over
 # https) keeps its schema to itself.
 _public = get_settings().public_base_url.startswith("https://")
@@ -195,6 +217,31 @@ async def health_deep(_: UserDep) -> dict[str, Any]:
         "database": database,
         "providers": await get_registry().snapshot(refresh=True),
     }
+
+
+class ClientError(BaseModel):
+    message: str = Field(max_length=1000)
+    source: str = Field(default="", max_length=300)
+    path: str = Field(default="", max_length=300)
+
+
+@app.post("/client-errors", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+async def client_error(payload: ClientError, request: Request) -> None:
+    """A dashboard error, forwarded to the logs and, when configured, Sentry."""
+    from callsentry.services import ratelimit
+
+    # Unauthenticated (errors happen on the sign-in page too), so capped per address.
+    if not await ratelimit.allow(f"client-errors:{ratelimit.client_ip(request)}", 30, 60):
+        return
+    log.warning("dashboard.error", message=payload.message, source=payload.source,
+                path=payload.path)
+    if get_settings().sentry_dsn:
+        import sentry_sdk
+
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("origin", "dashboard")
+            scope.set_context("page", {"path": payload.path, "source": payload.source})
+            sentry_sdk.capture_message(payload.message, level="error")
 
 
 for router in (

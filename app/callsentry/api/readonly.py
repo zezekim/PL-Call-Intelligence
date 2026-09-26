@@ -17,7 +17,7 @@ HIDDEN_PREFIXES = ("/settings", "/admin")
 VISIBLE_EXCEPTIONS = ("/settings/providers",)
 
 # Non-GET requests that are harmless.
-ALLOWED_WRITES = frozenset({"/auth/logout"})
+ALLOWED_WRITES = frozenset({"/auth/logout", "/client-errors"})
 
 
 def viewer_allowed(method: str, path: str) -> bool:

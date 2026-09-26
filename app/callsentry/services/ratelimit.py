@@ -51,3 +51,15 @@ async def clear(ip: str, email: str) -> None:
         await _redis().delete(_keys(ip, email)[1])
     except Exception:  # noqa: BLE001
         return
+
+
+async def allow(key: str, limit: int, window_seconds: int) -> bool:
+    """A fixed-window counter: True while `key` has been hit fewer than `limit` times."""
+    try:
+        pipe = _redis().pipeline()
+        pipe.incr(f"rl:{key}")
+        pipe.expire(f"rl:{key}", window_seconds, nx=True)
+        count, _ = await pipe.execute()
+    except Exception:  # noqa: BLE001 - a Redis outage must not break the caller
+        return True
+    return int(count) <= limit
