@@ -43,7 +43,9 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # The directory, not the file: a checkout replaces the file, and a
+      # single-file mount would keep serving the old one.
+      - ./caddy:/etc/caddy:ro
       - caddydata:/data
       - caddyconfig:/config
     depends_on:

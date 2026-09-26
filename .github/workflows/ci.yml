@@ -55,6 +55,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and start
         run: docker compose --env-file /opt/pestlaunch/.env up -d --build --remove-orphans
+      - name: Reload proxy config
+        run: docker compose --env-file /opt/pestlaunch/.env exec -T caddy caddy reload --config /etc/caddy/Caddyfile
       - name: Wait for the API
         run: |
           for i in $(seq 1 30); do
