@@ -514,7 +514,7 @@ async def _handle_faq(
 
     if result.answered:
         return TurnResponse(
-            text=speakable(result.text),
+            text=speakable(result.text, max_sentences=2),
             outcome=CallOutcome.ANSWERED,
             metadata={"kb_sources": result.sources, "kb_confidence": round(result.confidence, 3)},
         )
