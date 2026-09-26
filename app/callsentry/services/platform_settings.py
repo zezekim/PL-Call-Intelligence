@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
 from callsentry.core.providers import get_registry
-from callsentry.core.security import DecryptionError, decrypt_secret, encrypt_secret, mask
+from callsentry.core.security import DecryptionError, decrypt_secret, encrypt_secret
 from callsentry.models import PlatformSetting
 
 log = structlog.get_logger(__name__)
@@ -65,7 +65,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "TWILIO_ACCOUNT_SID",
         "telephony",
         "Twilio account SID",
-        "text",
+        "secret",
         "Starts with AC. Found on the Twilio console home page.",
     ),
     FieldSpec(
@@ -80,9 +80,9 @@ FIELDS: tuple[FieldSpec, ...] = (
         "twilio_phone_number",
         "TWILIO_PHONE_NUMBER",
         "telephony",
-        "Default sending number",
+        "Receptionist phone number",
         "text",
-        "E.164 format. SMS is sent from this number when a business has no number of its own.",
+        "The number callers dial, in E.164 format, e.g. +13853360152.",
     ),
     FieldSpec(
         "claude_api_key",
@@ -90,7 +90,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "llm",
         "Claude API key",
         "secret",
-        "Cloud fallback for the language model. Ignored in local-only mode.",
+        "Scores every call and runs the receptionist's conversation.",
     ),
     FieldSpec(
         "claude_model",
@@ -99,6 +99,40 @@ FIELDS: tuple[FieldSpec, ...] = (
         "Claude model",
         "text",
         "Model identifier used for the cloud fallback.",
+    ),
+    FieldSpec(
+        "call_intel_model",
+        "CALL_INTEL_MODEL",
+        "llm",
+        "Call scoring model",
+        "text",
+        "Claude model that classifies and scores recorded calls.",
+    ),
+    FieldSpec(
+        "call_stt_engine",
+        "CALL_STT_ENGINE",
+        "speech",
+        "Default transcription",
+        "text",
+        "auto (Deepgram, falling back to local), deepgram, or local.",
+    ),
+    FieldSpec(
+        "daily_spend_cap_usd",
+        "DAILY_SPEND_CAP_USD",
+        "spending",
+        "Daily spending cap (USD)",
+        "float",
+        "Paid services stop for the rest of the UTC day once today's spend reaches this. "
+        "0 turns the cap off.",
+    ),
+    FieldSpec(
+        "sms_confirmations",
+        "SMS_CONFIRMATIONS",
+        "telephony",
+        "Text booking confirmations",
+        "bool",
+        "Needs an SMS-registered Twilio number. When off, the receptionist confirms "
+        "bookings by voice only.",
     ),
     FieldSpec(
         "ollama_base_url",
@@ -122,7 +156,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "speech",
         "Deepgram API key",
         "secret",
-        "Cloud fallback for speech to text.",
+        "Transcribes calls in the Cloud environment and gives the receptionist its voice.",
     ),
     FieldSpec(
         "elevenlabs_api_key",
@@ -264,6 +298,7 @@ BY_KEY: dict[str, FieldSpec] = {f.key: f for f in FIELDS}
 
 GROUPS: tuple[tuple[str, str], ...] = (
     ("mode", "Operating mode"),
+    ("spending", "Spending"),
     ("telephony", "Telephony (Twilio)"),
     ("llm", "Language model"),
     ("speech", "Speech"),
@@ -315,12 +350,16 @@ def coerce(spec: FieldSpec, raw: str) -> Any:
                 raise ValueError("must be a number") from exc
             if spec.key == "kb_confidence_threshold" and not 0.0 <= number <= 1.0:
                 raise ValueError("must be between 0 and 1")
+            if number < 0:
+                raise ValueError("must not be negative")
             return number
         case "url":
             if not text.startswith(("http://", "https://", "ws://", "wss://")):
                 raise ValueError("must start with http://, https://, ws:// or wss://")
             return text.rstrip("/")
         case "text" | "secret":
+            if spec.key == "call_stt_engine" and text not in {"auto", "deepgram", "local"}:
+                raise ValueError("must be auto, deepgram or local")
             if spec.key == "log_level" and text.upper() not in {
                 "DEBUG",
                 "INFO",
@@ -457,7 +496,8 @@ async def update(session: AsyncSession, values: dict[str, str | None]) -> None:
 def _display(spec: FieldSpec, value: Any) -> str:
     text = serialize(value) if value is not None and value != "" else ""
     if spec.kind == "secret":
-        return mask(text) if text else ""
+        # Write-only: a stored secret is never sent back, not even in part.
+        return ""
     return text
 
 

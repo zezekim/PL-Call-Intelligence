@@ -10,10 +10,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from callsentry.api.deps import BusinessDep, OperatorDep, SessionDep, UserDep
+from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
 from callsentry.core.providers import get_registry
-from callsentry.core.security import hash_password, mask
+from callsentry.core.security import hash_password
 from callsentry.models import User, UserRole
 from callsentry.services import platform_settings
 from callsentry.services.calcom import CalComError, CalComService
@@ -34,7 +34,7 @@ class SettingsOut(BaseModel):
     twilio_number: str | None
     voice_id: str
     cal_com_event_type_id: str | None
-    # Never the value itself - only whether one is set, and a masked tail.
+    # Never the value itself - only whether one is set.
     cal_com_api_key: str
     local_only: bool
 
@@ -77,7 +77,8 @@ def _out(business: Any) -> SettingsOut:
         twilio_number=business.twilio_number,
         voice_id=business.voice_id,
         cal_com_event_type_id=business.cal_com_event_type_id,
-        cal_com_api_key=mask(read_credential(business, "cal_com_api_key_enc")),
+        # Write-only: report that a key is stored, never any part of it.
+        cal_com_api_key="set" if read_credential(business, "cal_com_api_key_enc") else "",
         local_only=get_settings().local_only,
     )
 
@@ -299,7 +300,7 @@ class PlatformSettingsUpdate(BaseModel):
 
 async def _platform_out(session: Any, user: User) -> PlatformSettingsOut:
     return PlatformSettingsOut(
-        can_edit=user.role == UserRole.OPERATOR,
+        can_edit=user.role in (UserRole.OPERATOR, UserRole.ADMIN),
         groups=[{"id": gid, "label": label} for gid, label in platform_settings.GROUPS],
         fields=await platform_settings.describe(session),
     )
@@ -307,16 +308,77 @@ async def _platform_out(session: Any, user: User) -> PlatformSettingsOut:
 
 @router.get("/platform", response_model=PlatformSettingsOut)
 async def read_platform_settings(session: SessionDep, user: UserDep) -> PlatformSettingsOut:
-    """Effective platform configuration. Secrets are masked; admins see, operators edit."""
+    """Effective platform configuration. Secrets are write-only: never returned."""
     return await _platform_out(session, user)
 
 
 @router.put("/platform", response_model=PlatformSettingsOut)
 async def update_platform_settings(
-    payload: PlatformSettingsUpdate, session: SessionDep, user: OperatorDep
+    payload: PlatformSettingsUpdate, session: SessionDep, user: UserDep
 ) -> PlatformSettingsOut:
+    if user.role not in (UserRole.OPERATOR, UserRole.ADMIN):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin role required")
     try:
         await platform_settings.update(session, payload.values)
     except platform_settings.SettingsValidationError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return await _platform_out(session, user)
+
+
+@router.get("/spend")
+async def spend_today(_: UserDep) -> dict[str, float]:
+    from callsentry.services import spend
+
+    return {"spent_today_usd": spend.spent_today(), "cap_usd": spend.cap()}
+
+
+class TwilioConnectOut(BaseModel):
+    phone_number: str
+    voice_url: str
+    status_callback: str
+
+
+@router.post("/twilio/connect", response_model=TwilioConnectOut)
+async def connect_twilio(
+    session: SessionDep, business: BusinessDep, user: UserDep
+) -> TwilioConnectOut:
+    """Point the configured Twilio number at this deployment and bind it to the business."""
+    if user.role not in (UserRole.OPERATOR, UserRole.ADMIN):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin role required")
+    settings = get_settings()
+    number = (settings.twilio_phone_number or "").strip()
+    if not (settings.twilio_account_sid and settings.twilio_auth_token and number):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Set the Twilio account SID, auth token and phone number first.",
+        )
+
+    from twilio.base.exceptions import TwilioRestException
+    from twilio.rest import Client
+
+    base = settings.public_base_url.rstrip("/")
+    voice_url = f"{base}/webhooks/twilio"
+    status_url = f"{base}/webhooks/twilio/status"
+
+    def _apply() -> None:
+        client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+        matches = client.incoming_phone_numbers.list(phone_number=number, limit=1)
+        if not matches:
+            raise LookupError(f"{number} is not a number on this Twilio account")
+        client.incoming_phone_numbers(matches[0].sid).update(
+            voice_url=voice_url, voice_method="POST",
+            status_callback=status_url, status_callback_method="POST",
+        )
+
+    import asyncio
+
+    try:
+        await asyncio.to_thread(_apply)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except TwilioRestException as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Twilio: {exc.msg}") from exc
+
+    business.twilio_number = number
+    await session.flush()
+    return TwilioConnectOut(phone_number=number, voice_url=voice_url, status_callback=status_url)

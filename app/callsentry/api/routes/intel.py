@@ -21,7 +21,7 @@ from callsentry.intel import audio, ingest, insights, jobs, pipeline
 from callsentry.intel import leads as leads_service
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
-from callsentry.models import Call, CallAnalysis, CallSource, Lead, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, Lead, ProcessingStatus, Rep
 
 router = APIRouter(prefix="/intel", tags=["call-intelligence"])
 
@@ -33,6 +33,7 @@ AUDIO_URL_TTL_SECONDS = 60 * 60
 
 class CallRow(BaseModel):
     id: str
+    source: str
     external_ref: str | None
     original_filename: str | None
     occurred_at: datetime | None
@@ -141,6 +142,7 @@ def _row(call: Call) -> CallRow:
     analysis = call.analysis
     return CallRow(
         id=str(call.id),
+        source=call.source,
         external_ref=call.external_ref,
         original_filename=call.original_filename,
         occurred_at=call.occurred_at,
@@ -204,13 +206,14 @@ async def _owned_call(session: SessionDep, business_id: uuid.UUID, call_id: uuid
         .options(selectinload(Call.analysis), selectinload(Call.rep))
     )
     # Same 404 for missing and foreign rows, so other tenants' ids don't leak.
-    if call is None or call.business_id != business_id or call.source != CallSource.UPLOAD:
+    if call is None or call.business_id != business_id or not call.audio_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
     return call
 
 
 def _base_query(business_id: uuid.UUID) -> Select[Any]:
-    return select(Call).where(Call.business_id == business_id, Call.source == CallSource.UPLOAD)
+    # Every call with a recording: uploads and calls the AI receptionist took.
+    return select(Call).where(Call.business_id == business_id, Call.audio_path.isnot(None))
 
 
 # --- Routes --------------------------------------------------------------------
@@ -263,11 +266,14 @@ async def list_calls(
     grade: str | None = None,
     status_: Annotated[str | None, Query(alias="status")] = None,
     q: str | None = None,
+    source: str | None = None,
     review: bool = False,
     limit: Annotated[int, Query(le=200)] = 50,
     offset: int = 0,
 ) -> CallPage:
     stmt = _base_query(business.id)
+    if source:
+        stmt = stmt.where(Call.source == source)
     if review:
         stmt = stmt.join(CallAnalysis, CallAnalysis.call_id == Call.id).where(
             Call.call_type_override.is_(None),
@@ -397,7 +403,9 @@ async def overview(
     session: SessionDep, business: BusinessDep, days: int | None = None
 ) -> dict[str, Any]:
     """Scorecard, the sales / retention / service lenses, and what to train on."""
-    return await insights.overview(session, business.id, days)
+    data = await insights.overview(session, business.id, days)
+    data["receptionist_number"] = business.twilio_number
+    return data
 
 
 @router.get("/reps")

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
+import { askForEnvironmentNext } from "@/components/environment";
 import { ErrorNote, Spinner } from "@/components/ui";
 
 export default function LoginPage() {
@@ -19,6 +20,7 @@ export default function LoginPage() {
     try {
       const result = await api.post<{ access_token: string }>("/auth/login", { email, password });
       setToken(result.access_token);
+      askForEnvironmentNext();
       router.replace("/calls");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");

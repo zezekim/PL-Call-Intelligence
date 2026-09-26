@@ -82,6 +82,7 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-5">
+      {data.receptionist_number && <ReceptionistCard number={data.receptionist_number} />}
       <Card accent className="p-6">
         <CardHeader
           title="Scorecard"
@@ -277,6 +278,39 @@ export default function OverviewPage() {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+function formatPhone(number: string): string {
+  const digits = number.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return number;
+}
+
+function ReceptionistCard({ number }: { number: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-card bg-ink px-6 py-5 text-white shadow-card">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/60">
+          Try the AI receptionist
+        </p>
+        <p className="mt-1 text-xl font-semibold tracking-tight">
+          Call{" "}
+          <a href={`tel:${number}`} className="tnum underline decoration-white/30 underline-offset-4 hover:decoration-white">
+            {formatPhone(number)}
+          </a>
+        </p>
+        <p className="mt-1 text-sm text-white/70">
+          Ask about pricing or book an inspection. About a minute after you hang up, the call
+          appears in the Call Log - transcribed, scored and coached like any other.
+        </p>
+      </div>
+      <Link href="/calls/log?source=twilio" className="btn shrink-0 rounded-full bg-white px-4 text-ink hover:bg-white/90">
+        Receptionist calls →
+      </Link>
     </div>
   );
 }

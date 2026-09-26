@@ -22,6 +22,7 @@ from callsentry.models import (
     Call,
     CallAnalysis,
     CallOutcome,
+    CallSource,
     CostCategory,
     ProcessingStatus,
     Rep,
@@ -29,6 +30,8 @@ from callsentry.models import (
 from callsentry.services import costs
 
 log = structlog.get_logger(__name__)
+
+AI_REP_NAME = "AI Receptionist"
 
 # Status for a call whose transcript is kept and only the analysis re-runs.
 QUEUED_ANALYSIS = "queued_analysis"
@@ -55,10 +58,13 @@ def rep_key(name: str) -> str:
 async def get_or_create_rep(
     session: AsyncSession, business_id: uuid.UUID, name: str
 ) -> Rep | None:
-    key = rep_key(name)
-    if not key:
-        return None
-    display = name.strip().split()[0].capitalize()
+    if name == AI_REP_NAME:
+        key, display = "ai-receptionist", AI_REP_NAME
+    else:
+        key = rep_key(name)
+        if not key:
+            return None
+        display = name.strip().split()[0].capitalize()
     # ON CONFLICT so two workers finishing calls for the same new rep at once
     # don't collide on the unique index.
     await session.execute(
@@ -74,6 +80,11 @@ async def get_or_create_rep(
 def _friendly_error(exc: Exception) -> str:
     if isinstance(exc, ProviderUnavailable):
         text = str(exc)
+        if "daily spending cap" in text:
+            return (
+                "Today's spending cap has been reached. "
+                "Retry tomorrow or raise the cap in Settings."
+            )
         if "Claude API key not set" in text or "claude: disabled" in text:
             return "Claude is not configured, so the call could not be scored."
         if "stt" in text:
@@ -156,6 +167,9 @@ async def _transcribe(session: AsyncSession, call: Call) -> list[Segment]:
 async def _store(
     session: AsyncSession, call: Call, segments: list[Segment], result: Analysis
 ) -> None:
+    if call.source == CallSource.TWILIO:
+        # Answered by the AI receptionist, which introduces itself without a name.
+        result.rep_name = AI_REP_NAME
     rep = await get_or_create_rep(session, call.business_id, result.rep_name or "")
 
     call.segments = [s.to_dict() for s in segments]

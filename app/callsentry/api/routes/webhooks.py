@@ -77,6 +77,15 @@ async def twilio_voice(
     from_number = str(form.get("From", "unknown"))
     to_number = str(form.get("To", ""))
 
+    from callsentry.services import spend
+
+    if spend.exceeded():
+        log.warning("twilio.spend_cap_reached", spent=spend.spent_today())
+        return _twiml(
+            "<Say>Thanks for calling. The demo has reached its limit for today. "
+            "Please try again tomorrow.</Say><Hangup/>"
+        )
+
     business = await session.scalar(select(Business).where(Business.twilio_number == to_number))
     if business is None:
         # Fall back to the only tenant in a single-business deployment, which

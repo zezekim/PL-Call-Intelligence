@@ -9,13 +9,15 @@ from __future__ import annotations
 import uuid
 
 import structlog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel
 
 from callsentry.agents import voice_agent
 from callsentry.api.deps import InternalDep, SessionDep
-from callsentry.models import Business, Call, CallOutcome
-from callsentry.services import callstate
+from callsentry.config import get_settings
+from callsentry.intel import jobs, pipeline
+from callsentry.models import Business, Call, CallOutcome, CostCategory, ProcessingStatus
+from callsentry.services import callstate, costs
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=False)
@@ -102,9 +104,14 @@ async def hangup(payload: HangupRequest, session: SessionDep, _: InternalDep) ->
     if call.outcome == CallOutcome.ANSWERED and not payload.transcript.strip():
         call.outcome = CallOutcome.ABANDONED
 
-    await voice_agent.finalize_call(
-        session, call=call, business=business, transcript=payload.transcript
-    )
+    if call.audio_path:
+        # Recorded: call intelligence transcribes and scores it, so the older
+        # transcript-only analysis would only duplicate the work and the cost.
+        call.transcript = call.transcript or payload.transcript
+    else:
+        await voice_agent.finalize_call(
+            session, call=call, business=business, transcript=payload.transcript
+        )
     await callstate.clear(payload.call_id)
 
 
@@ -120,3 +127,78 @@ async def call_context(call_id: str, session: SessionDep, _: InternalDep) -> dic
         "after_hours": after_hours,
         "caller_number": call.caller_number,
     }
+
+
+class SpeakRequest(BaseModel):
+    call_id: str
+    text: str
+    voice: str = "af_heart"
+
+
+@router.post("/stt")
+async def speech_to_text(
+    session: SessionDep,
+    _: InternalDep,
+    call_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, str]:
+    """One caller utterance to text, through the provider chain."""
+    from callsentry.services.transcription import get_transcription
+
+    call, _business = await _load(session, call_id)
+    result = await get_transcription().transcribe(
+        await file.read(), filename="turn.wav", prefer_cloud=get_settings().voice_prefer_cloud
+    )
+    await costs.record(
+        session, business_id=call.business_id, call_id=call.id, category=CostCategory.STT,
+        provider=result.provider, tier=result.tier, units=result.duration_seconds / 60,
+        unit_name="audio_minute", cost_usd=result.cost_usd,
+    )
+    text = "" if result.tier == "mock" else result.text
+    return {"text": text, "provider": result.provider}
+
+
+@router.post("/tts")
+async def text_to_speech(payload: SpeakRequest, session: SessionDep, _: InternalDep) -> Response:
+    """A line to say, as WAV audio, through the provider chain."""
+    from callsentry.services.tts import get_tts
+
+    call, _business = await _load(session, payload.call_id)
+    result = await get_tts().synthesize(
+        payload.text, voice=payload.voice, prefer_cloud=get_settings().voice_prefer_cloud
+    )
+    await costs.record(
+        session, business_id=call.business_id, call_id=call.id, category=CostCategory.TTS,
+        provider=result.provider, tier=result.tier, units=result.characters / 1000,
+        unit_name="1k_chars", cost_usd=result.cost_usd,
+    )
+    return Response(content=result.audio, media_type=result.mime_type,
+                    headers={"X-Provider": result.provider})
+
+
+@router.post("/recording", status_code=status.HTTP_204_NO_CONTENT)
+async def recording(
+    session: SessionDep,
+    _: InternalDep,
+    call_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> None:
+    """Stereo recording of a finished call (agent left, caller right).
+
+    Stored like an upload and queued for call intelligence, so a call to the
+    AI receptionist is transcribed and scored like any other call.
+    """
+    call, _business = await _load(session, call_id)
+    data = await file.read()
+    if not data:
+        return
+    directory = pipeline.upload_root() / str(call.business_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{call.id}.wav").write_bytes(data)
+    call.audio_path = f"{call.business_id}/{call.id}.wav"
+    call.audio_channels = 2
+    call.original_filename = "AI receptionist call"
+    call.stt_engine = "deepgram" if get_settings().deepgram_api_key else "local"
+    call.processing_status = ProcessingStatus.QUEUED
+    await session.commit()
+    jobs.notify()

@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     # Independent scoring runs per call; each item takes the majority verdict.
     intel_scoring_runs: int = 3
+    # Paid provider spend allowed per UTC day; 0 disables the cap.
+    daily_spend_cap_usd: float = 20.0
+    # Text callers a booking confirmation (needs an SMS-registered number).
+    sms_confirmations: bool = False
+    # Live calls use cloud speech first: local speech is too slow to converse.
+    voice_prefer_cloud: bool = True
     # Recordings processed in parallel by the in-process job runner.
     intel_workers: int = 2
 

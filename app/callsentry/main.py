@@ -75,6 +75,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:  # noqa: BLE001 - a missing table must not block boot
         log.warning("platform_settings.unavailable", error=str(exc))
 
+    from callsentry.services import spend
+
+    try:
+        async with get_sessionmaker()() as session:
+            spent = await spend.refresh(session)
+        log.info("spend.loaded", spent_today_usd=round(spent, 2), cap_usd=spend.cap())
+    except Exception as exc:  # noqa: BLE001 - a missing table must not block boot
+        log.warning("spend.unavailable", error=str(exc))
+
     snapshot = await get_registry().snapshot(refresh=True)
     for component, providers in snapshot.items():
         serving = next((p["provider"] for p in providers if p["healthy"]), "none")

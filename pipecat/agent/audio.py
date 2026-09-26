@@ -115,11 +115,11 @@ def wav_to_mulaw_frames(wav_bytes: bytes) -> list[bytes]:
     ]
 
 
-def pcm_to_wav(samples: np.ndarray, sample_rate: int) -> bytes:
-    """int16 samples -> a WAV file the worker's STT endpoint accepts."""
+def pcm_to_wav(samples: np.ndarray, sample_rate: int, *, channels: int = 1) -> bytes:
+    """int16 samples (interleaved when channels > 1) -> a 16-bit PCM WAV file."""
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as out:
-        out.setnchannels(1)
+        out.setnchannels(channels)
         out.setsampwidth(2)
         out.setframerate(sample_rate)
         out.writeframes(np.asarray(samples, dtype=np.int16).tobytes())

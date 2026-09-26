@@ -11,6 +11,10 @@ Two guards keep this from fabricating:
 
 Prices are additionally gated: quoting a number that isn't in the documents
 is the single most damaging thing a receptionist can do.
+
+A small knowledge base (a typical FAQ) is given to the model whole instead of
+retrieved: nothing can be missed by a weak retrieval, and no embedding model
+is needed. The abstention rule is the guard in both modes.
 """
 
 from __future__ import annotations
@@ -69,6 +73,10 @@ async def answer(
     import uuid as _uuid
 
     settings = get_settings()
+    whole = await _small_kb(session, _uuid.UUID(business_id))
+    if whole is not None:
+        return await _answer_from(whole, business_name=business_name, question=question)
+
     hits = await kb.search(session, business_id=_uuid.UUID(business_id), query=question, limit=4)
 
     if not hits:
@@ -102,3 +110,39 @@ async def answer(
         sources=sorted({h.filename for h in usable}),
         llm=result,
     )
+
+
+# Up to roughly 3k tokens of reference text goes in whole.
+WHOLE_KB_MAX_CHARS = 12_000
+
+
+async def _small_kb(session: AsyncSession, business_id: object) -> list[tuple[str, str]] | None:
+    from sqlalchemy import select
+
+    from callsentry.models import KBDocument
+
+    docs = (
+        await session.execute(
+            select(KBDocument.filename, KBDocument.content).where(
+                KBDocument.business_id == business_id
+            )
+        )
+    ).all()
+    if not docs or sum(len(c or "") for _, c in docs) > WHOLE_KB_MAX_CHARS:
+        return None
+    return [(f, c) for f, c in docs]
+
+
+async def _answer_from(
+    docs: list[tuple[str, str]], *, business_name: str, question: str
+) -> KBAnswer:
+    context = "\n\n---\n\n".join(f"[{name}]\n{content}" for name, content in docs)
+    system = SYSTEM_TEMPLATE.format(business_name=business_name, abstain=ABSTAIN, context=context)
+    result = await get_llm().complete(
+        system, [{"role": "user", "content": question}], realtime=True, max_tokens=200
+    )
+    text = result.text.strip()
+    sources = sorted(name for name, _ in docs)
+    if not text or ABSTAIN in text.upper() or result.refused:
+        return KBAnswer(False, "", 0.0, sources=sources, llm=result)
+    return KBAnswer(answered=True, text=text, confidence=1.0, sources=sources, llm=result)

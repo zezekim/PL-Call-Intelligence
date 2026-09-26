@@ -18,7 +18,9 @@ import structlog
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from callsentry.config import get_settings
 from callsentry.models import Appointment, AppointmentStatus, Business
+from callsentry.services import schedule
 from callsentry.services.calcom import BookingResult, CalComError, CalComService, Slot
 from callsentry.services.credentials import read_credential
 from callsentry.services.sms import get_sms
@@ -70,12 +72,19 @@ def _service_for(business: Business) -> CalComService:
     )
 
 
-async def propose(business: Business, *, preferred_time: str) -> SlotProposal:
+async def propose(
+    business: Business, *, preferred_time: str, session: AsyncSession | None = None
+) -> SlotProposal:
     service = _service_for(business)
-    if not service.configured:
-        return SlotProposal(False, error="calendar_not_configured")
-
     wanted = parse_preferred_time(preferred_time, timezone=business.timezone)
+    if not service.configured:
+        if session is None:
+            return SlotProposal(False, error="calendar_not_configured")
+        slot = await schedule.find_slot(session, business, preferred=wanted)
+        if slot is None:
+            return SlotProposal(False, error="no_availability")
+        return SlotProposal(True, slot=slot, spoken=slot.human(business.timezone))
+
     try:
         slot = await service.find_slot(preferred=wanted, timezone=business.timezone)
     except CalComError as exc:
@@ -105,16 +114,20 @@ async def confirm(
     # number so the booking is still traceable back to the caller.
     booking_email = email or f"{phone.lstrip('+') or 'caller'}@callsentry.invalid"
 
-    result: BookingResult = await service.book(
-        start=slot.start,
-        name=name or "Phone caller",
-        email=booking_email,
-        phone=phone,
-        reason=reason,
-        timezone=business.timezone,
-    )
-    if not result.ok:
-        return False, None, "booking_rejected"
+    if service.configured:
+        result: BookingResult = await service.book(
+            start=slot.start,
+            name=name or "Phone caller",
+            email=booking_email,
+            phone=phone,
+            reason=reason,
+            timezone=business.timezone,
+        )
+        if not result.ok:
+            return False, None, "booking_rejected"
+    else:
+        # Built-in schedule: the appointment row is the booking.
+        result = BookingResult(ok=True, event_id=None, start=slot.start)
 
     appointment = Appointment(
         business_id=business.id,
@@ -132,21 +145,22 @@ async def confirm(
     await session.flush()
 
     spoken = slot.human(business.timezone)
-    sms = await get_sms().send(
-        to=phone,
-        body=(
-            f"{business.name}: your appointment is confirmed for {spoken}. "
-            f"Reply to this message or call us if you need to change it."
-        ),
-        from_=business.twilio_number,
-    )
-    appointment.confirmation_sent = sms.sent
+    if get_settings().sms_confirmations:
+        sms = await get_sms().send(
+            to=phone,
+            body=(
+                f"{business.name}: your appointment is confirmed for {spoken}. "
+                f"Reply to this message or call us if you need to change it."
+            ),
+            from_=business.twilio_number,
+        )
+        appointment.confirmation_sent = sms.sent
 
     log.info(
         "booking.confirmed",
         appointment_id=str(appointment.id),
         cal_event=result.event_id,
-        sms_sent=sms.sent,
+        sms_sent=appointment.confirmation_sent,
     )
     return True, appointment, spoken
 

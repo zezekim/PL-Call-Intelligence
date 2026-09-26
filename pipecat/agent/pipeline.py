@@ -1,4 +1,4 @@
-"""The voice pipeline: endpointing, STT, turn dispatch, TTS, playback.
+"""The voice pipeline: endpointing, STT, turn dispatch, TTS, playback, recording.
 
 One `CallPipeline` instance per live call. It owns no conversation logic -
 every caller utterance is posted to the API's /internal/turn endpoint, which
@@ -56,6 +56,50 @@ class CallContext:
     @property
     def duration_seconds(self) -> int:
         return int(time.monotonic() - self.started_at)
+
+
+class Recorder:
+    """Two-track call recording: agent on the left channel, caller on the right.
+
+    Twilio sends a caller frame every 20 ms whether or not anyone is talking,
+    so the caller track doubles as the call's clock. Agent frames are laid on
+    that clock as they are sent (playback is paced at real time), which keeps
+    both voices aligned without timestamps from Twilio.
+    """
+
+    def __init__(self) -> None:
+        self.caller: list[np.ndarray] = []
+        self.caller_samples = 0
+        self.agent = np.zeros(0, dtype=np.int16)
+        self._cursor = 0
+
+    def on_caller(self, samples: np.ndarray) -> None:
+        self.caller.append(samples)
+        self.caller_samples += samples.size
+
+    def start_utterance(self) -> None:
+        self._cursor = max(self._cursor, self.caller_samples)
+
+    def on_agent(self, samples: np.ndarray) -> None:
+        end = self._cursor + samples.size
+        if end > self.agent.size:
+            self.agent = np.concatenate(
+                [self.agent, np.zeros(end - self.agent.size, dtype=np.int16)]
+            )
+        self.agent[self._cursor : end] = samples
+        self._cursor = end
+
+    def wav(self) -> bytes:
+        caller = (
+            np.concatenate(self.caller) if self.caller else np.zeros(0, dtype=np.int16)
+        )
+        length = max(caller.size, self.agent.size)
+        if length == 0:
+            return b""
+        stereo = np.zeros((length, 2), dtype=np.int16)
+        stereo[: self.agent.size, 0] = self.agent
+        stereo[: caller.size, 1] = caller
+        return audio.pcm_to_wav(stereo, audio.TWILIO_SAMPLE_RATE, channels=2)
 
 
 class Endpointer:
@@ -122,6 +166,7 @@ class CallPipeline:
         self.internal_token = internal_token
 
         self.endpointer = Endpointer()
+        self.recorder = Recorder()
         self.speaking = False
         self.should_hangup = False
         self.transfer_to: str | None = None
@@ -138,6 +183,7 @@ class CallPipeline:
     async def on_media(self, payload: str) -> None:
         """One 20 ms mu-law frame from the caller."""
         samples = audio.mulaw_decode(base64.b64decode(payload))
+        self.recorder.on_caller(samples)
 
         if self.speaking:
             # Barge-in: if the caller talks over us, stop and listen.
@@ -193,8 +239,10 @@ class CallPipeline:
         wav = audio.pcm_to_wav(samples, audio.TWILIO_SAMPLE_RATE)
         try:
             resp = await self._client.post(
-                f"{self.worker_base_url}/stt",
+                f"{self.app_base_url}/internal/stt",
+                data={"call_id": self.ctx.call_id},
                 files={"file": ("turn.wav", wav, "audio/wav")},
+                headers={"X-Internal-Token": self.internal_token},
             )
             resp.raise_for_status()
             return str(resp.json().get("text", "")).strip()
@@ -225,8 +273,10 @@ class CallPipeline:
 
         try:
             resp = await self._client.post(
-                f"{self.worker_base_url}/tts",
-                json={"text": text, "voice": voice or self.ctx.voice},
+                f"{self.app_base_url}/internal/tts",
+                json={"call_id": self.ctx.call_id, "text": text,
+                      "voice": voice or self.ctx.voice},
+                headers={"X-Internal-Token": self.internal_token},
             )
             resp.raise_for_status()
             frames = audio.wav_to_mulaw_frames(resp.content)
@@ -241,8 +291,10 @@ class CallPipeline:
         self.speaking = True
         self._barge_frames = 0
         self.endpointer.reset()
+        self.recorder.start_utterance()
         try:
             for i, frame in enumerate(frames):
+                self.recorder.on_agent(audio.mulaw_decode(frame))
                 await self.send_json(
                     {
                         "event": "media",
@@ -277,7 +329,19 @@ class CallPipeline:
     # -- lifecycle ----------------------------------------------------------
 
     async def finish(self) -> None:
-        """Report the completed call back to the API for analysis."""
+        """Hand over the recording, then report the completed call."""
+        recording = self.recorder.wav()
+        if recording:
+            try:
+                await self._client.post(
+                    f"{self.app_base_url}/internal/recording",
+                    data={"call_id": self.ctx.call_id},
+                    files={"file": ("call.wav", recording, "audio/wav")},
+                    headers={"X-Internal-Token": self.internal_token},
+                    timeout=60.0,
+                )
+            except httpx.HTTPError as exc:
+                log.error("recording upload failed call_id=%s error=%s", self.ctx.call_id, exc)
         try:
             await self._client.post(
                 f"{self.app_base_url}/internal/hangup",

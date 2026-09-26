@@ -102,3 +102,38 @@ def test_transcript_accumulates_in_order():
     assert ctx.full_transcript == (
         "Assistant: Thanks for calling.\nCaller: I'd like an appointment."
     )
+
+
+def test_recorder_aligns_agent_speech_on_the_caller_clock():
+    import io
+    import wave
+
+    import numpy as np
+
+    from agent.pipeline import Recorder
+
+    rec = Recorder()
+    frame = np.full(160, 1000, dtype=np.int16)
+    silence = np.zeros(160, dtype=np.int16)
+    for _ in range(10):
+        rec.on_caller(silence)
+    rec.start_utterance()
+    for _ in range(3):
+        rec.on_agent(frame)
+    for _ in range(5):
+        rec.on_caller(frame)
+
+    with wave.open(io.BytesIO(rec.wav()), "rb") as w:
+        assert w.getnchannels() == 2 and w.getframerate() == 8000
+        data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).reshape(-1, 2)
+    # Agent speech starts where the caller track was when it began speaking.
+    assert data[:1600, 0].max() == 0
+    assert (data[1600:2080, 0] == 1000).all()
+    # The caller's own audio stays on the right channel.
+    assert (data[1600:2400, 1] == 1000).all()
+
+
+def test_empty_recorder_produces_nothing():
+    from agent.pipeline import Recorder
+
+    assert Recorder().wav() == b""

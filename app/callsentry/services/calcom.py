@@ -31,6 +31,13 @@ class Slot:
         from zoneinfo import ZoneInfo
 
         local = self.start.astimezone(ZoneInfo(tz))
+        if self.end - self.start >= timedelta(minutes=90):
+            # An arrival window, spoken the way a dispatcher says it.
+            until = self.end.astimezone(ZoneInfo(tz))
+            return (
+                f"{local.strftime('%A %B %-d')} between "
+                f"{local.strftime('%-I %p')} and {until.strftime('%-I %p')}"
+            )
         return local.strftime("%A %B %-d at %-I:%M %p")
 
 

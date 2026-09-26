@@ -125,3 +125,33 @@ async def test_local_only_does_not_block_telephony():
 
     ok, _ = registry._configured(_spec(Component.TELEPHONY, "twilio"))
     assert ok
+
+
+async def test_spending_cap_blocks_cloud_but_not_local(monkeypatch):
+    from callsentry.services import spend
+
+    registry = ProviderRegistry()
+    _force_health(registry, **{"ollama": False, "claude": True, "mock-llm": True})
+    monkeypatch.setattr(spend, "exceeded", lambda: True)
+
+    async def cloud(_: ProviderSpec) -> str:
+        return "cloud"
+
+    async def mock(_: ProviderSpec) -> str:
+        return "mock"
+
+    result, _ = await registry.run(Component.LLM, {"claude": cloud, "mock-llm": mock})
+    assert result == "mock"
+
+
+def test_spend_counter_rolls_over_and_caps(monkeypatch):
+    from callsentry.services import spend
+
+    monkeypatch.setattr(spend, "_spent", 0.0)
+    monkeypatch.setattr(spend, "cap", lambda: 20.0)
+    spend.add(19.5)
+    assert not spend.exceeded()
+    spend.add(0.6)
+    assert spend.exceeded()
+    monkeypatch.setattr(spend, "cap", lambda: 0.0)
+    assert not spend.exceeded()

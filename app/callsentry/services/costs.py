@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.models import Call, CostCategory, CostEntry
+from callsentry.services import spend
 
 log = structlog.get_logger(__name__)
 
@@ -43,6 +44,8 @@ async def record(
     )
     session.add(entry)
     await session.flush()
+    if tier == "cloud":
+        spend.add(cost_usd)
     return entry
 
 

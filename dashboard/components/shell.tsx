@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken, type Me } from "@/lib/api";
+import { EnvironmentPrompt } from "./environment";
 import {
   AssistantIcon,
   FinancialsIcon,
@@ -12,6 +13,7 @@ import {
   LogoutIcon,
   PhoneIcon,
   SearchIcon,
+  SettingsIcon,
   TasksIcon,
   TeamIcon,
 } from "./icons";
@@ -109,6 +111,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="border-t border-line pt-3">
+          <Link
+            href="/settings"
+            className={`mb-1 flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium ${
+              pathname.startsWith("/settings") ? "bg-accent-soft text-accent" : "text-ink hover:bg-panel"
+            }`}
+          >
+            <SettingsIcon />
+            Settings
+          </Link>
           {me && <p className="truncate px-3 pb-1 text-xs text-muted">{me.email}</p>}
           <button
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted hover:bg-panel hover:text-ink"
@@ -139,6 +150,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <main className="mx-auto w-full max-w-[1180px] px-4 pb-16 pt-5 sm:px-6 lg:px-8 lg:pt-7">
         {children}
       </main>
+      <EnvironmentPrompt />
     </div>
   );
 }

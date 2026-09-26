@@ -213,10 +213,18 @@ class LLMService:
         async def mock(_: ProviderSpec) -> LLMResult:
             return await self._via_mock(json_schema)
 
+        # On a live call a small local model is slower than the round trip to
+        # Claude on this hardware, so conversation prefers the cloud tier.
+        order = (
+            ["claude", "ollama", "mock-llm"]
+            if realtime and self.settings.voice_prefer_cloud
+            else None
+        )
         result, _spec = await self.registry.run(
             Component.LLM,
             {"ollama": ollama, "claude": claude, "mock-llm": mock},
             attempts=attempts,
+            order=order,
         )
         result.attempts = attempts
         return result

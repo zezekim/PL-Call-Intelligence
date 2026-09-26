@@ -61,6 +61,7 @@ function CallLog() {
     grade: "grade",
     status: "status",
     review: "review",
+    source: "source",
   };
   Object.entries(map).forEach(([ui, key]) => {
     const v = params.get(ui);
@@ -77,7 +78,7 @@ function CallLog() {
     if (refreshKey) void reload();
   }, [refreshKey, reload]);
 
-  const activeFilters = ["type", "lens", "rep", "grade", "status", "review", "q"].filter((k) =>
+  const activeFilters = ["type", "lens", "rep", "grade", "status", "review", "source", "q"].filter((k) =>
     params.get(k),
   );
 
@@ -195,7 +196,7 @@ function CallLog() {
                           {c.customer_name ?? c.external_ref ?? c.original_filename}
                         </span>
                         <span className="block truncate text-xs text-muted">
-                          {c.external_ref ?? c.original_filename}
+                          {c.source === "twilio" ? "AI receptionist call" : c.external_ref ?? c.original_filename}
                         </span>
                       </Link>
                     </td>

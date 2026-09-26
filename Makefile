@@ -30,6 +30,10 @@ down: ## Stop everything
 seed: ## Create the business and first admin user
 	set -a; . ./.env; set +a; $(COMPOSE) exec -e SEED_BUSINESS_NAME -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD app python -m callsentry.scripts.seed
 
+.PHONY: receptionist
+receptionist: ## Configure the AI receptionist (hours, FAQ) for the demo business
+	$(COMPOSE) exec app python -m callsentry.scripts.receptionist_demo
+
 .PHONY: import
 import: ## Queue a folder of recordings: make import dir=/path/to/recordings
 	@test -n "$(dir)" || { echo "usage: make import dir=/path/to/recordings"; exit 1; }

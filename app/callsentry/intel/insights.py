@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE
-from callsentry.models import Call, CallAnalysis, CallSource, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, ProcessingStatus, Rep
 
 # Below this the classifier's call type is shown as "needs review".
 REVIEW_CONFIDENCE = 0.7
@@ -48,7 +48,7 @@ async def load(
     stmt = (
         select(Call, CallAnalysis)
         .join(CallAnalysis, CallAnalysis.call_id == Call.id)
-        .where(Call.business_id == business_id, Call.source == CallSource.UPLOAD,
+        .where(Call.business_id == business_id, Call.audio_path.isnot(None),
                Call.processing_status == ProcessingStatus.DONE)
         .options(selectinload(Call.rep))
     )
@@ -228,7 +228,7 @@ async def overview(session: AsyncSession, business_id: uuid.UUID, days: int | No
         (
             await session.execute(
                 select(Call.processing_status, func.count(Call.id))
-                .where(Call.business_id == business_id, Call.source == CallSource.UPLOAD)
+                .where(Call.business_id == business_id, Call.audio_path.isnot(None))
                 .group_by(Call.processing_status)
             )
         ).all()

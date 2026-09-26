@@ -101,6 +101,9 @@ CATALOGUE: dict[Component, list[ProviderSpec]] = {
     ],
     Component.TTS: [
         ProviderSpec("kokoro", Tier.LOCAL, Component.TTS, unit="1k_chars"),
+        ProviderSpec(
+            "deepgram-tts", Tier.CLOUD, Component.TTS, unit="1k_chars", cost_per_unit=0.030
+        ),
         ProviderSpec("elevenlabs", Tier.CLOUD, Component.TTS, unit="1k_chars", cost_per_unit=0.30),
         ProviderSpec("mock-tts", Tier.MOCK, Component.TTS, unit="1k_chars"),
     ],
@@ -145,8 +148,12 @@ class ProviderRegistry:
         if spec.tier is Tier.CLOUD and spec.component is not Component.TELEPHONY:
             if s.local_only:
                 return False, "disabled by local-only mode"
+            from callsentry.services import spend
+
+            if spend.exceeded():
+                return False, "daily spending cap reached"
         match spec.name:
-            case "deepgram":
+            case "deepgram" | "deepgram-tts":
                 return bool(s.deepgram_api_key), "Deepgram API key not set"
             case "claude":
                 return bool(s.claude_api_key), "Claude API key not set"
@@ -197,6 +204,12 @@ class ProviderRegistry:
         self._health.clear()
 
     async def status(self, spec: ProviderSpec, *, refresh: bool = False) -> ProviderStatus:
+        if spec.tier is Tier.CLOUD and spec.component is not Component.TELEPHONY:
+            from callsentry.services import spend
+
+            # Checked live, not cached: the cap must bite on the very next call.
+            if spend.exceeded():
+                return ProviderStatus(spec, False, "daily spending cap reached")
         cached = self._health.get(spec.name)
         fresh = cached and (time.time() - cached.checked_at) < _HEALTH_TTL_SECONDS
         if cached and fresh and not refresh:

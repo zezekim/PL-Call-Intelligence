@@ -6,7 +6,7 @@ x-app-env: &app-env
   OLLAMA_BASE_URL: http://ollama:11434
   WORKER_BASE_URL: http://worker:8100
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
-  PUBLIC_WS_URL: ${PUBLIC_WS_URL:-ws://pipecat:8080}
+  PUBLIC_WS_URL: ${PUBLIC_WS_URL:-wss://localhost}
   CALLSENTRY_LOCAL_ONLY: ${CALLSENTRY_LOCAL_ONLY:-0}
   DEMO_VIEWER_EMAIL: ${DEMO_VIEWER_EMAIL:-}
   ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env - run "make env"}
@@ -23,6 +23,8 @@ x-app-env: &app-env
   UPLOAD_DIR: /data/uploads
   INTEL_WORKERS: ${INTEL_WORKERS:-2}
   INTEL_SCORING_RUNS: ${INTEL_SCORING_RUNS:-3}
+  DAILY_SPEND_CAP_USD: ${DAILY_SPEND_CAP_USD:-20}
+  SMS_CONFIRMATIONS: ${SMS_CONFIRMATIONS:-0}
   ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
   RETELL_API_KEY: ${RETELL_API_KEY:-}
@@ -47,6 +49,7 @@ services:
     depends_on:
       - app
       - dashboard
+      - pipecat
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -119,24 +122,24 @@ services:
     depends_on:
       - app
 
-  # Live voice receptionist. Not needed for call intelligence:
-  #   docker compose --profile receptionist up -d
-  ollama:
-    image: ollama/ollama:latest
-    profiles: ["receptionist"]
-    volumes:
-      - ollamadata:/root/.ollama
-
+  # AI receptionist: Twilio media streams. Speech and conversation go
+  # through the API, which prefers cloud providers on live calls.
   pipecat:
     build:
       context: ./pipecat
-    profiles: ["receptionist"]
+    restart: unless-stopped
     environment:
       <<: *app-env
       APP_BASE_URL: http://app:8000
     depends_on:
       - app
-      - worker
+
+  # Optional local language model:  docker compose --profile local-llm up -d
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    volumes:
+      - ollamadata:/root/.ollama
 
 volumes:
   pgdata:

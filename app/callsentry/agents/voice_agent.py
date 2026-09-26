@@ -298,21 +298,27 @@ async def _handle_booking(
                     "Let me find you another option - what else works?"
                 )
             )
-        await costs.record(
-            session,
-            business_id=business.id,
-            call_id=call.id,
-            category=CostCategory.TELEPHONY,
-            provider="twilio",
-            tier="cloud",
-            units=1,
-            unit_name="sms",
-            cost_usd=0.0079,
-        )
+        if appointment is not None and appointment.confirmation_sent:
+            await costs.record(
+                session,
+                business_id=business.id,
+                call_id=call.id,
+                category=CostCategory.TELEPHONY,
+                provider="twilio",
+                tier="cloud",
+                units=1,
+                unit_name="sms",
+                cost_usd=0.0079,
+            )
         return TurnResponse(
             text=(
                 f"Perfect, you're booked for {spoken}. "
-                "You'll get a confirmation text shortly. Anything else?"
+                + (
+                    "You'll get a confirmation text shortly. "
+                    if appointment is not None and appointment.confirmation_sent
+                    else ""
+                )
+                + "Is there anything else I can help with?"
             ),
             outcome=CallOutcome.BOOKED,
             metadata={"appointment_id": str(appointment.id) if appointment else None},
@@ -323,7 +329,7 @@ async def _handle_booking(
     if not preferred:
         return _ask(state, f"Thanks {name}. What day and time works best for you?")
 
-    proposal = await booking_agent.propose(business, preferred_time=preferred)
+    proposal = await booking_agent.propose(business, preferred_time=preferred, session=session)
     if not proposal.ok:
         if proposal.error == "no_availability":
             return _ask(

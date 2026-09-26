@@ -6,6 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type CallRow } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
+import {
+  ENGINE_FOR,
+  ENVIRONMENTS,
+  EnvironmentDialog,
+  useEnvironment,
+} from "@/components/environment";
 import { UploadIcon } from "@/components/icons";
 import { ErrorNote, Modal, Segmented, Spinner } from "@/components/ui";
 
@@ -25,6 +31,8 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
   const [range, setRange] = useState<Range>("all");
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
+  const { env } = useEnvironment();
   const [asOf, setAsOf] = useState(() => new Date().toISOString());
 
   useEffect(() => {
@@ -61,6 +69,14 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
           <div className="flex flex-wrap items-end justify-between gap-4">
             <h1 className="text-[32px] font-bold leading-none tracking-tight">Calls</h1>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setEnvOpen(true)}
+                className="chip bg-white px-3 py-1.5 text-xs ring-1 ring-line hover:bg-panel"
+                title="Change environment"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${env === "local" ? "bg-warn" : "bg-good"}`} />
+                {ENVIRONMENTS.find((e) => e.value === env)?.label} environment
+              </button>
               <span className="hidden text-xs text-muted sm:inline">
                 {range === "all" ? "All time" : `Last ${range} days`}
               </span>
@@ -109,20 +125,15 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
       )}
       {children}
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
     </CallsContext.Provider>
   );
 }
 
-const ENGINES = [
-  { value: "auto", label: "Automatic", hint: "Deepgram, falling back to local if unavailable" },
-  { value: "deepgram", label: "Deepgram", hint: "Cloud transcription, best speaker separation" },
-  { value: "local", label: "Local", hint: "Runs on this server; audio never leaves it" },
-];
-
 function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
-  const [engine, setEngine] = useState("auto");
+  const { env, choose } = useEnvironment();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -144,7 +155,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
     setError(null);
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
-    form.append("engine", engine);
+    form.append("engine", ENGINE_FOR[env]);
     try {
       await api.form<CallRow[]>("/intel/uploads", form);
       reset();
@@ -213,28 +224,22 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         )}
 
         <fieldset>
-          <legend className="mb-2 text-sm font-medium">Transcription</legend>
-          <div className="space-y-1.5">
-            {ENGINES.map((e) => (
-              <label
+          <legend className="mb-2 text-sm font-medium">Environment</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {ENVIRONMENTS.map((e) => (
+              <button
                 key={e.value}
-                className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 ${
-                  engine === e.value ? "border-accent bg-accent-soft/60" : "border-line"
+                type="button"
+                onClick={() => choose(e.value)}
+                className={`rounded-xl border px-3 py-2 text-left ${
+                  env === e.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel"
                 }`}
               >
-                <input
-                  type="radio"
-                  name="engine"
-                  value={e.value}
-                  checked={engine === e.value}
-                  onChange={() => setEngine(e.value)}
-                  className="mt-1 accent-[#1f6feb]"
-                />
-                <span>
-                  <span className="block text-sm font-medium">{e.label}</span>
-                  <span className="block text-xs text-muted">{e.hint}</span>
+                <span className="block text-sm font-medium">{e.label}</span>
+                <span className={`block text-xs ${e.value === "local" ? "text-warn" : "text-muted"}`}>
+                  {e.summary}
                 </span>
-              </label>
+              </button>
             ))}
           </div>
         </fieldset>

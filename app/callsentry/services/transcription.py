@@ -53,7 +53,11 @@ class TranscriptionService:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
                 "https://api.deepgram.com/v1/listen",
-                params={"model": "nova-2", "smart_format": "true", "punctuate": "true"},
+                params={
+                    "model": self.settings.deepgram_model,
+                    "smart_format": "true",
+                    "punctuate": "true",
+                },
                 headers={
                     "Authorization": f"Token {self.settings.deepgram_api_key}",
                     "Content-Type": "audio/wav",
@@ -73,7 +77,9 @@ class TranscriptionService:
             cost_usd=round(duration / 60 * 0.0043, 6),
         )
 
-    async def transcribe(self, audio: bytes, *, filename: str = "call.wav") -> TranscriptResult:
+    async def transcribe(
+        self, audio: bytes, *, filename: str = "call.wav", prefer_cloud: bool = False
+    ) -> TranscriptResult:
         attempts: list[Attempt] = []
 
         async def whisper(_: ProviderSpec) -> TranscriptResult:
@@ -93,6 +99,7 @@ class TranscriptionService:
             Component.STT,
             {"whisper.cpp": whisper, "deepgram": deepgram, "mock-stt": mock},
             attempts=attempts,
+            order=["deepgram", "whisper.cpp", "mock-stt"] if prefer_cloud else None,
         )
         result.attempts = attempts
         return result

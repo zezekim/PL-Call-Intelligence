@@ -72,3 +72,33 @@ def test_platform_secret_cannot_be_read_as_a_tenant_credential(business):
 def test_baseline_reflects_environment():
     # conftest sets CALLSENTRY_LOCAL_ONLY=1, so that is what clearing restores.
     assert ps.baseline("callsentry_local_only") is True
+
+
+async def test_secrets_are_never_returned(monkeypatch):
+    from callsentry.config import get_settings
+    from callsentry.services import platform_settings as ps
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "claude_api_key", "sk-ant-secret-value-1234")
+
+    class _Empty:
+        async def execute(self, *_a, **_k):
+            class R:
+                def scalars(self):
+                    return self
+
+                def all(self):
+                    return []
+
+            return R()
+
+    monkeypatch.setattr(ps, "_rows", lambda _s: _async({}))
+    fields = await ps.describe(_Empty())
+    claude = next(f for f in fields if f["key"] == "claude_api_key")
+    assert claude["is_set"] is True
+    assert claude["value"] == "" and claude["env_value"] == ""
+    assert not any("1234" in str(f["value"]) + str(f["env_value"]) for f in fields)
+
+
+async def _async(value):
+    return value

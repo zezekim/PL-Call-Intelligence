@@ -36,3 +36,26 @@ def test_slot_human_renders_in_business_timezone():
     spoken = Slot(start=start, end=start + timedelta(minutes=30)).human("America/New_York")
     assert "10:30 AM" in spoken
     assert "Thursday" in spoken
+
+
+def test_builtin_windows_follow_business_hours():
+    import uuid
+    from datetime import UTC, datetime
+
+    from callsentry.models import Business
+    from callsentry.services import schedule
+
+    business = Business(
+        id=uuid.uuid4(), name="ABC Pest Control", timezone="America/Denver",
+        business_hours={"mon": ["08:00", "18:00"], "tue": ["08:00", "18:00"],
+                        "wed": None, "thu": None, "fri": None,
+                        "sat": ["09:00", "14:00"], "sun": None},
+    )
+    # Monday 2026-09-28, 06:00 local.
+    after = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    slots = schedule.windows(business, after=after, days=6)
+    local = [s.start.astimezone(schedule.ZoneInfo("America/Denver")) for s in slots]
+    assert {d.strftime("%a") for d in local} == {"Mon", "Tue", "Sat"}
+    # Saturday closes at 14:00: only the 10:00-12:00 window fits after opening at 09:00.
+    assert [d.hour for d in local if d.strftime("%a") == "Sat"] == [10]
+    assert slots[0].human("America/Denver").endswith("between 8 AM and 10 AM")

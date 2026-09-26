@@ -11,6 +11,10 @@ Upload a pest control company's call recordings and get, for every call:
 And across all calls: close rate, saves, resolution, what to train on, a sales
 pipeline that fills itself, and a breakdown by rep.
 
+It also includes an **AI receptionist**. Call the demo number, ask a question or
+book an inspection; when you hang up, the recording goes through the same
+pipeline and appears in the Call Log, graded against the same scorecard.
+
 ---
 
 ## How it works
@@ -72,6 +76,32 @@ Upload recordings from the **Upload calls** button, or queue a folder:
 make import dir=/path/to/recordings
 ```
 
+### Settings, environments and spending
+
+- **Settings** holds the API keys (Claude, Deepgram, Twilio), the scoring model,
+  the default transcription engine and the daily spending cap. Keys are stored
+  encrypted and are write-only: the dashboard shows whether a key is set, never
+  the key. Values saved here override the server's `.env`.
+- **Environments.** After signing in you choose **Cloud** (Deepgram
+  transcription, seconds per call) or **Local** (Whisper on the server; the audio
+  is never sent to a transcription service, and transcription takes about a
+  fifth of the call's length). Scoring uses Claude in both.
+- **Spending cap.** Every paid interaction is written to a cost ledger. Once
+  today's total reaches `DAILY_SPEND_CAP_USD` ($20 by default), paid providers
+  are refused until the next UTC day and the receptionist politely declines
+  calls.
+
+### The AI receptionist
+
+1. In **Settings**, add the Twilio account SID, auth token and phone number, save,
+   then press **Connect number**. That points the number's webhooks at this site.
+2. `make receptionist` loads business hours and a short FAQ built only from facts
+   in the call manuals. The receptionist answers from that FAQ or offers to take a
+   message; it never improvises prices or policies.
+3. Call the number. Live calls always use cloud speech (Deepgram) and Claude,
+   because local speech on a CPU is too slow for conversation. Appointments are
+   booked into two-hour arrival windows within business hours.
+
 ### Deploying
 
 Set `SITE_DOMAIN` to a hostname that points at the server; Caddy obtains the
@@ -96,15 +126,16 @@ app/          FastAPI - API, job runner, analysis
     jobs.py         database-backed queue
     insights.py     overview, reps, training aggregates
     leads.py        sales pipeline
-dashboard/    Next.js - Calls: Overview, Pipeline, Reps, Call Log, call detail
+dashboard/    Next.js - Calls (Overview, Pipeline, Reps, Call Log, call detail), Settings
+pipecat/      AI receptionist voice pipeline
 worker/       Whisper transcription over HTTP
 caddy/        reverse proxy and TLS
 ```
 
-The repository also contains a live AI voice receptionist (Twilio media
-streams in `pipecat/`, conversation logic in `app/callsentry/agents/`). It is
-not needed for call intelligence and stays off unless started with
-`docker compose --profile receptionist up -d`.
+The AI receptionist lives in `pipecat/` (Twilio media streams, turn detection,
+stereo call recording) and `app/callsentry/agents/` (conversation, knowledge
+base, booking). Speech and language go through the API's provider registry, so
+the spending cap and cost ledger cover live calls too.
 
 ---
 
