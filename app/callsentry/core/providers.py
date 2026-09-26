@@ -97,6 +97,9 @@ CATALOGUE: dict[Component, list[ProviderSpec]] = {
         # Claude Sonnet 5: $3.00 / MTok in, $15.00 / MTok out. We bill the
         # blended figure per 1k tokens and split in/out in services/llm.py.
         ProviderSpec("claude", Tier.CLOUD, Component.LLM, unit="1k_tokens", cost_per_unit=0.003),
+        # Offline call scoring only (a selectable model and the second opinion
+        # in enhanced scoring). Live conversation stays on Claude.
+        ProviderSpec("openai", Tier.CLOUD, Component.LLM, unit="1k_tokens"),
         ProviderSpec("mock-llm", Tier.MOCK, Component.LLM, unit="1k_tokens"),
     ],
     Component.TTS: [
@@ -159,7 +162,7 @@ class ProviderRegistry:
                 return bool(s.claude_api_key), "Claude API key not set"
             case "elevenlabs":
                 return bool(s.elevenlabs_api_key), "ElevenLabs API key not set"
-            case "openai-embed":
+            case "openai-embed" | "openai":
                 return bool(s.openai_api_key), "OpenAI API key not set"
             case "twilio":
                 return (

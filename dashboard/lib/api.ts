@@ -144,6 +144,7 @@ export interface ScoreItem {
   reason: string;
   evidence: Evidence[];
   agreement: string | null;
+  deliberation?: { model: string; first: string; final: string; reason: string }[] | null;
 }
 
 export interface Moment {
@@ -195,6 +196,7 @@ export interface Triage {
 
 export interface Analysis {
   model: string;
+  scoring_mode: "standard" | "enhanced";
   updated_at: string;
   call_type: string;
   call_type_label: string;

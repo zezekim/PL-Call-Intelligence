@@ -21,6 +21,7 @@ dependencies = [
     "cryptography>=44.0",
     "twilio>=9.3",
     "anthropic>=0.40",
+    "openai>=1.60",
     "pypdf>=5.1",
     "python-docx>=1.1",
     "python-dateutil>=2.9",

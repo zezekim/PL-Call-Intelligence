@@ -163,6 +163,18 @@ function Header({
             callId={call.id}
             label="Re-score"
             transcript="keep"
+            mode="standard"
+            onDone={reload}
+            disabled={IN_PROGRESS.has(call.processing_status)}
+          />
+        )}
+        {a && (
+          <RerunButton
+            callId={call.id}
+            label="Enhanced re-score"
+            transcript="keep"
+            mode="enhanced"
+            title="Claude and OpenAI grade independently, then deliberate on disagreements"
             onDone={reload}
             disabled={IN_PROGRESS.has(call.processing_status)}
           />
@@ -203,26 +215,37 @@ function RerunButton({
   callId,
   label,
   transcript,
+  mode,
+  title,
   onDone,
   disabled,
 }: {
   callId: string;
   label: string;
   transcript: "keep" | "redo";
+  mode?: "standard" | "enhanced";
+  title?: string;
   onDone: () => Promise<void>;
   disabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <button
       className="btn-secondary"
       disabled={busy || disabled}
-      title="Grade this call again from its transcript"
+      title={error ?? title ?? "Grade this call again from its transcript"}
       onClick={async () => {
         setBusy(true);
+        setError(null);
         try {
-          await api.post(`/intel/calls/${callId}/reprocess`, { transcript });
+          await api.post(`/intel/calls/${callId}/reprocess`, {
+            transcript,
+            ...(mode ? { scoring_mode: mode } : {}),
+          });
           await onDone();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not re-score");
         } finally {
           setBusy(false);
         }
@@ -518,11 +541,14 @@ function Scorecard({ analysis: a, seek }: { analysis: Analysis; seek: (t: number
           );
         })}
       </div>
-      {a.evidence_verified_pct !== null && (
-        <p className="mt-4 text-xs text-muted">
-          {a.evidence_verified_pct.toFixed(0)}% of quoted evidence found word-for-word in the transcript.
+      <div className="mt-4 space-y-1 text-xs text-muted">
+        {a.evidence_verified_pct !== null && (
+          <p>{a.evidence_verified_pct.toFixed(0)}% of quoted evidence found word-for-word in the transcript.</p>
+        )}
+        <p>
+          {a.scoring_mode === "enhanced" ? "Enhanced scoring" : "Standard scoring"} · {a.model}
         </p>
-      )}
+      </div>
     </Card>
   );
 }
@@ -549,11 +575,36 @@ function ItemRow({ item, seek }: { item: ScoreItem; seek: (t: number) => void })
             Borderline
           </span>
         )}
+        {item.agreement === "settled" && !item.auto_awarded && (
+          <span className="chip bg-accent-soft text-accent" title="The two models disagreed, then agreed after deliberating">
+            Settled
+          </span>
+        )}
+        {item.agreement === "disputed" && !item.auto_awarded && (
+          <span className="chip bg-warn-soft text-warn" title="The two models still disagreed after deliberating; not awarded">
+            Disputed
+          </span>
+        )}
         <ChevronIcon className={`h-4 w-4 shrink-0 text-faint transition ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
         <div className="space-y-2 px-3 pb-3 pl-10 text-sm">
           <p className="text-ink/80">{item.reason}</p>
+          {item.deliberation && (
+            <div className="space-y-1.5 rounded-xl border border-line p-2.5">
+              <p className="text-xs font-medium text-muted">How the models deliberated</p>
+              {item.deliberation.map((d) => (
+                <div key={d.model} className="text-xs">
+                  <span className="font-medium">{d.model}</span>
+                  <span className="text-muted">
+                    {" "}
+                    · {d.first === d.final ? `held ${d.final}` : `${d.first} → ${d.final}`}
+                  </span>
+                  <p className="mt-0.5 text-ink/80">{d.reason}</p>
+                </div>
+              ))}
+            </div>
+          )}
           {item.evidence.map((e, i) => (
             <button
               key={i}

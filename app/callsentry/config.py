@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Model that classifies and scores recorded calls. Offline, so accuracy
     # wins over latency.
     call_intel_model: str = "claude-sonnet-5"
+    # standard: one model, several runs, majority vote.
+    # enhanced: the model above and a second-opinion model from the other
+    # provider grade independently, then deliberate on disagreements.
+    scoring_mode: str = "standard"
+    enhanced_second_model: str = ""
     # Default transcription engine for uploads: auto | deepgram | local.
     call_stt_engine: str = "auto"
     deepgram_model: str = "nova-3"

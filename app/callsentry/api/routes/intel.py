@@ -63,6 +63,7 @@ class CallPage(BaseModel):
 
 class AnalysisOut(BaseModel):
     model: str
+    scoring_mode: str
     prompt_version: str
     updated_at: datetime
     call_type: str
@@ -102,6 +103,8 @@ class ReprocessRequest(BaseModel):
     engine: str | None = None
     # A manager's correction of the call type; "" clears a previous one.
     call_type: str | None = None
+    # standard | enhanced for this re-score; omitted keeps the call's setting.
+    scoring_mode: str | None = None
 
 
 class LeadOut(BaseModel):
@@ -174,6 +177,7 @@ def _analysis_out(a: CallAnalysis) -> AnalysisOut:
     scorecard = SCORECARDS.get(a.scorecard_key or "")
     return AnalysisOut(
         model=a.model,
+        scoring_mode=a.scoring_mode,
         prompt_version=a.prompt_version,
         updated_at=a.updated_at,
         call_type=a.call_type,
@@ -225,7 +229,10 @@ async def upload(
     business: BusinessDep,
     files: Annotated[list[UploadFile], File(description="One or more call recordings")],
     engine: Annotated[str, Form()] = "",
+    scoring: Annotated[str, Form()] = "",
 ) -> list[CallRow]:
+    if scoring and scoring not in {"standard", "enhanced"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "scoring must be standard or enhanced")
     engine = engine or get_settings().call_stt_engine
     if engine not in {e.value for e in Engine}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "engine must be auto, deepgram or local")
@@ -240,6 +247,7 @@ async def upload(
                 data=await upload_file.read(),
                 engine=engine,
             )
+            call.scoring_mode = scoring or None
         except ingest.RejectedUpload as exc:
             # The whole batch is rolled back; don't leave its files behind.
             for earlier in created:
@@ -360,6 +368,10 @@ async def reprocess(
             # Confirming the type it already has: nothing to re-grade.
             await session.commit()
             return _row(call)
+    if payload.scoring_mode is not None:
+        if payload.scoring_mode not in {"standard", "enhanced"}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown scoring mode")
+        call.scoring_mode = payload.scoring_mode
     if payload.engine is not None:
         if payload.engine not in {e.value for e in Engine}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown engine")

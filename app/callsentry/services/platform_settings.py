@@ -109,6 +109,24 @@ FIELDS: tuple[FieldSpec, ...] = (
         "Claude model that classifies and scores recorded calls.",
     ),
     FieldSpec(
+        "scoring_mode",
+        "SCORING_MODE",
+        "llm",
+        "Scoring mode",
+        "text",
+        "standard: the scoring model grades each call three times and takes the majority. "
+        "enhanced: the scoring model and a second-opinion model grade independently, then "
+        "deliberate on any step they disagree on. Enhanced costs about twice as much.",
+    ),
+    FieldSpec(
+        "enhanced_second_model",
+        "ENHANCED_SECOND_MODEL",
+        "llm",
+        "Second-opinion model",
+        "text",
+        "Used by enhanced scoring. Pick a model from the other provider.",
+    ),
+    FieldSpec(
         "call_stt_engine",
         "CALL_STT_ENGINE",
         "speech",
@@ -185,10 +203,10 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec(
         "openai_api_key",
         "OPENAI_API_KEY",
-        "embeddings",
+        "llm",
         "OpenAI API key",
         "secret",
-        "Cloud fallback for knowledge base embeddings.",
+        "OpenAI models for scoring and the second opinion in enhanced scoring.",
     ),
     FieldSpec(
         "ollama_embed_model",
@@ -360,6 +378,8 @@ def coerce(spec: FieldSpec, raw: str) -> Any:
         case "text" | "secret":
             if spec.key == "call_stt_engine" and text not in {"auto", "deepgram", "local"}:
                 raise ValueError("must be auto, deepgram or local")
+            if spec.key == "scoring_mode" and text not in {"standard", "enhanced"}:
+                raise ValueError("must be standard or enhanced")
             if spec.key == "log_level" and text.upper() not in {
                 "DEBUG",
                 "INFO",

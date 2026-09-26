@@ -38,7 +38,7 @@ from callsentry.services.llm import LLMResult, get_llm
 log = structlog.get_logger(__name__)
 
 # Bump when a prompt or schema changes, so re-scored calls can be told apart.
-PROMPT_VERSION = "2026-09-26.3"
+PROMPT_VERSION = "2026-09-27.1"
 
 SOLUTION_BANK = [
     "free_reservice",
@@ -275,7 +275,27 @@ the scorecard item keys it addresses.
 - Never invent company policy, prices or offers that the scripts and call do not contain."""
 
 
-def _scoring_schema(scorecard: Scorecard) -> dict[str, Any]:
+def _scoring_schema(
+    scorecard: Scorecard, *, coaching: bool = True, keys: list[str] | None = None
+) -> dict[str, Any]:
+    """Per-step verdicts, plus coaching when `coaching` is set.
+
+    Only one run per call needs to write coaching; the other runs return
+    verdicts alone, which is most of the saving in output tokens.
+    """
+    keys = keys or [i.key for i in scorecard.items]
+    schema = _full_scoring_schema(scorecard)
+    item_props = schema["properties"]["items"]["items"]["properties"]
+    item_props["key"] = _enum(*keys)
+    schema["properties"]["items"]["description"] = (
+        f"Exactly one entry for each of these {len(keys)} scorecard steps."
+    )
+    if not coaching:
+        schema = _obj({"items": schema["properties"]["items"]})
+    return schema
+
+
+def _full_scoring_schema(scorecard: Scorecard) -> dict[str, Any]:
     return _obj(
         {
             "items": {
@@ -357,7 +377,13 @@ class Analysis:
     items: list[dict[str, Any]] = field(default_factory=list)
     coaching: dict[str, Any] = field(default_factory=dict)
     evidence_verified_pct: float | None = None
+    scoring_mode: str = "standard"
     llm_results: list[LLMResult] = field(default_factory=list)
+
+    @property
+    def models(self) -> str:
+        """Models that took part, in order of first use."""
+        return " + ".join(dict.fromkeys(r.model for r in self.llm_results if r.model))
 
     @property
     def cost_usd(self) -> float:
@@ -430,7 +456,11 @@ def apply_manual_rules(
 
 
 async def analyse(
-    segments: list[Segment], *, diarized: bool, forced_type: str | None = None
+    segments: list[Segment],
+    *,
+    diarized: bool,
+    forced_type: str | None = None,
+    mode: str = "standard",
 ) -> Analysis:
     """`forced_type` is a manager's correction of the call type: triage still
     extracts the details, but the call is graded on that type's scorecard."""
@@ -473,33 +503,14 @@ async def analyse(
         return analysis
 
     context = _call_context(call_type, triage)
-    runs = max(1, get_settings().intel_scoring_runs)
-    outcomes = await asyncio.gather(
-        *(
-            llm.analyse_json(
-                SCORING_SYSTEM + "\n\n" + _scorecard_text(scorecard),
-                f"{context}\n\nTranscript:\n\n{render(segments, by_role=True)}",
-                _scoring_schema(scorecard),
-                effort="high",
-            )
-            for _ in range(runs)
-        ),
-        return_exceptions=True,
-    )
-    scorings: list[dict[str, Any]] = []
-    for outcome in outcomes:
-        if isinstance(outcome, BaseException):
-            log.warning("intel.scoring_run_failed", error=str(outcome))
-            continue
-        scored_run, run_llm = outcome
-        analysis.llm_results.append(run_llm)
-        if scored_run and scored_run.get("items"):
-            scorings.append(scored_run)
-    # A majority needs more than half the requested runs to have answered.
-    if len(scorings) * 2 <= runs:
-        raise AnalysisFailed(f"scoring returned {len(scorings)} of {runs} results")
+    system = SCORING_SYSTEM + "\n\n" + _scorecard_text(scorecard)
+    user = f"{context}\n\nTranscript:\n\n{render(segments, by_role=True)}"
+    analysis.scoring_mode = mode
+    if mode == "enhanced":
+        judgements, scored = await _enhanced(analysis, system, user, scorecard)
+    else:
+        judgements, scored = await _standard(analysis, system, user, scorecard)
 
-    judgements, scored = consensus(scorings)
     apply_manual_rules(call_type, judgements, triage)
     items, score = rubrics.tally(scorecard, judgements)
 
@@ -522,6 +533,7 @@ async def analyse(
                 "reason": item.reason,
                 "evidence": evidence,
                 "agreement": judgements.get(item.key, {}).get("agreement"),
+                "deliberation": judgements.get(item.key, {}).get("deliberation"),
             }
         )
 
@@ -576,6 +588,154 @@ def consensus(
             source = next(run[key] for run in per_run if run.get(key, {}).get("status") == status)
         judgements[key] = {**source, "status": status, "agreement": agreement[key]}
     return judgements, scorings[best]
+
+
+async def _run_all(
+    analysis: Analysis, calls: list[Any]
+) -> list[dict[str, Any] | None]:
+    """Run scoring requests in parallel; a failed one comes back as None."""
+    outcomes = await asyncio.gather(*calls, return_exceptions=True)
+    results: list[dict[str, Any] | None] = []
+    for outcome in outcomes:
+        if isinstance(outcome, BaseException):
+            log.warning("intel.scoring_run_failed", error=str(outcome))
+            results.append(None)
+            continue
+        scored_run, run_llm = outcome
+        analysis.llm_results.append(run_llm)
+        results.append(scored_run if scored_run and scored_run.get("items") else None)
+    return results
+
+
+async def _standard(
+    analysis: Analysis, system: str, user: str, scorecard: Scorecard
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """One model, several independent runs, majority per step."""
+    llm = get_llm()
+    runs = max(1, get_settings().intel_scoring_runs)
+    results = await _run_all(
+        analysis,
+        [
+            llm.analyse_json(system, user, _scoring_schema(scorecard, coaching=i == 0),
+                             effort="high")
+            for i in range(runs)
+        ],
+    )
+    scorings = [r for r in results if r]
+    # A majority needs more than half the requested runs to have answered.
+    if len(scorings) * 2 <= runs:
+        raise AnalysisFailed(f"scoring returned {len(scorings)} of {runs} results")
+    judgements, _best = consensus(scorings)
+    # Coaching comes from the one run that wrote it.
+    return judgements, results[0] or {}
+
+
+DELIBERATION_BRIEF = """## Second round
+Two independent reviewers graded this call and disagreed on the steps listed
+below. For each one you see both verdicts, their reasons and the lines they
+cited. Re-read the transcript. Change your verdict only if the other reviewer's
+evidence is convincing; otherwise keep yours. Answer for the listed steps only."""
+
+
+async def _enhanced(
+    analysis: Analysis, system: str, user: str, scorecard: Scorecard
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Two models from different providers grade independently, then
+    deliberate on the steps where they disagree.
+
+    A step both agree on stands. A disputed step goes back to both with the
+    other's argument; if they then agree, that verdict stands, and if they
+    still disagree the step is marked disputed and not awarded - a point has
+    to be earned, and a manager can listen to that moment.
+    """
+    settings = get_settings()
+    llm = get_llm()
+    primary = settings.call_intel_model
+    second = (settings.enhanced_second_model or "").strip()
+    if not second:
+        raise AnalysisFailed("choose a second-opinion model in Settings for enhanced scoring")
+    names = {primary: model_label(primary), second: model_label(second)}
+
+    first, other = await _run_all(
+        analysis,
+        [
+            llm.analyse_json(system, user, _scoring_schema(scorecard), effort="high",
+                             model=primary),
+            llm.analyse_json(system, user, _scoring_schema(scorecard, coaching=False),
+                             effort="high", model=second),
+        ],
+    )
+    if not first or not other:
+        raise AnalysisFailed("enhanced scoring needs both models to answer")
+
+    a = {str(j.get("key")): dict(j) for j in first["items"]}
+    b = {str(j.get("key")): dict(j) for j in other["items"]}
+    keys = [i.key for i in scorecard.items]
+    disputed = [k for k in keys if a.get(k, {}).get("status") != b.get(k, {}).get("status")]
+
+    judgements: dict[str, dict[str, Any]] = {}
+    for key in keys:
+        if key not in disputed and key in a:
+            judgements[key] = {**a[key], "agreement": "both"}
+
+    if disputed:
+        brief = _deliberation_brief(scorecard, disputed, a, b, names[primary], names[second])
+        schema = _scoring_schema(scorecard, coaching=False, keys=disputed)
+        final_a, final_b = await _run_all(
+            analysis,
+            [
+                llm.analyse_json(system, f"{user}\n\n{brief}", schema, effort="high",
+                                 model=primary),
+                llm.analyse_json(system, f"{user}\n\n{brief}", schema, effort="high",
+                                 model=second),
+            ],
+        )
+        fa = {str(j.get("key")): dict(j) for j in (final_a or {}).get("items") or []}
+        fb = {str(j.get("key")): dict(j) for j in (final_b or {}).get("items") or []}
+        for key in disputed:
+            va, vb = fa.get(key, a.get(key, {})), fb.get(key, b.get(key, {}))
+            settled = va.get("status") == vb.get("status")
+            source = va if settled else (va if va.get("status") == "missed" else vb)
+            judgements[key] = {
+                **source,
+                "status": va.get("status") if settled else "missed",
+                "agreement": "settled" if settled else "disputed",
+                "deliberation": [
+                    {"model": names[primary], "first": a.get(key, {}).get("status"),
+                     "final": va.get("status"), "reason": va.get("reason", "")},
+                    {"model": names[second], "first": b.get(key, {}).get("status"),
+                     "final": vb.get("status"), "reason": vb.get("reason", "")},
+                ],
+            }
+    return judgements, first
+
+
+def _deliberation_brief(
+    scorecard: Scorecard,
+    disputed: list[str],
+    a: dict[str, dict[str, Any]],
+    b: dict[str, dict[str, Any]],
+    name_a: str,
+    name_b: str,
+) -> str:
+    lines = [DELIBERATION_BRIEF]
+    for key in disputed:
+        item = scorecard.item(key)
+        lines.append(f"\n### `{key}` - {item.label if item else key}")
+        for name, verdict in ((name_a, a.get(key, {})), (name_b, b.get(key, {}))):
+            quotes = "; ".join(
+                f'[{e.get("segment_id")}] "{e.get("quote", "")}"'
+                for e in verdict.get("evidence") or []
+            )
+            lines.append(
+                f"- {name}: {verdict.get('status', 'missed')} - {verdict.get('reason', '')}"
+                + (f" Cited: {quotes}" if quotes else "")
+            )
+    return "\n".join(lines)
+
+
+def model_label(model: str) -> str:
+    return ("Claude " if model.startswith("claude") else "OpenAI ") + model
 
 
 def _call_context(call_type: str, triage: dict[str, Any]) -> str:

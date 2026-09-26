@@ -29,8 +29,16 @@ interface Spend {
 const SECTIONS: { title: string; description: string; keys: string[] }[] = [
   {
     title: "Call scoring",
-    description: "Claude classifies every call, grades it against the scorecard and writes the coaching.",
-    keys: ["claude_api_key", "call_intel_model"],
+    description:
+      "The scoring model classifies every call, grades it against the scorecard and writes the coaching. " +
+      "Enhanced scoring adds a second model from the other provider; they deliberate on any step they disagree on.",
+    keys: [
+      "claude_api_key",
+      "openai_api_key",
+      "call_intel_model",
+      "scoring_mode",
+      "enhanced_second_model",
+    ],
   },
   {
     title: "Transcription",
@@ -49,6 +57,17 @@ const SECTIONS: { title: string; description: string; keys: string[] }[] = [
   },
 ];
 
+const MODE_CHOICES = [
+  { value: "standard", label: "Standard - one model, three runs, majority vote" },
+  { value: "enhanced", label: "Enhanced - two models deliberate (about 2x the cost)" },
+];
+
+interface ModelList {
+  anthropic: { id: string; name: string }[];
+  openai: { id: string; name: string }[];
+  errors: Record<string, string>;
+}
+
 const ENGINE_CHOICES = [
   { value: "auto", label: "Automatic (Deepgram, local fallback)" },
   { value: "deepgram", label: "Deepgram" },
@@ -58,6 +77,7 @@ const ENGINE_CHOICES = [
 export default function SettingsPage() {
   const { data, error, loading, setData } = useApi<Platform>("/settings/platform");
   const spend = useApi<Spend>("/settings/spend");
+  const models = useApi<ModelList>("/settings/models");
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -147,6 +167,7 @@ export default function SettingsPage() {
                   edit={edits[key]}
                   onEdit={(v) => setEdit(key, v)}
                   disabled={!data.can_edit}
+                  models={models.data}
                 />
               ) : null,
             )}
@@ -200,11 +221,13 @@ function FieldRow({
   edit,
   onEdit,
   disabled,
+  models,
 }: {
   field: Field;
   edit: string | undefined;
   onEdit: (value: string | null) => void;
   disabled: boolean;
+  models: ModelList | null;
 }) {
   const [replacing, setReplacing] = useState(false);
   const editing = edit !== undefined;
@@ -263,6 +286,23 @@ function FieldRow({
         {current ? "On" : "Off"}
       </label>
     );
+  } else if (field.key === "call_intel_model" || field.key === "enhanced_second_model") {
+    control = <ModelPicker field={field} edit={edit} onEdit={onEdit} disabled={disabled} models={models} />;
+  } else if (field.key === "scoring_mode") {
+    control = (
+      <select
+        className="select max-w-md"
+        value={edit ?? field.value}
+        onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
+        disabled={disabled}
+      >
+        {MODE_CHOICES.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    );
   } else if (field.key === "call_stt_engine") {
     control = (
       <select
@@ -297,6 +337,65 @@ function FieldRow({
         {field.help && <p className="mt-0.5 text-xs text-muted">{field.help}</p>}
       </div>
       <div className="self-center">{control}</div>
+    </div>
+  );
+}
+
+function ModelPicker({
+  field,
+  edit,
+  onEdit,
+  disabled,
+  models,
+}: {
+  field: Field;
+  edit: string | undefined;
+  onEdit: (value: string | null) => void;
+  disabled: boolean;
+  models: ModelList | null;
+}) {
+  const value = edit ?? field.value;
+  const known = new Set([...(models?.anthropic ?? []), ...(models?.openai ?? [])].map((m) => m.id));
+  const errors = Object.entries(models?.errors ?? {});
+  return (
+    <div className="max-w-md space-y-1.5">
+      <select
+        className="select"
+        value={value}
+        onChange={(e) => onEdit(e.target.value === field.value ? null : e.target.value)}
+        disabled={disabled || !models}
+      >
+        {!models && <option value={value}>{value || "Loading models"}</option>}
+        {field.key === "enhanced_second_model" && <option value="">Not set</option>}
+        {value && models && !known.has(value) && <option value={value}>{value} (current)</option>}
+        {models && models.anthropic.length > 0 && (
+          <optgroup label="Anthropic">
+            {models.anthropic.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} ({m.id})
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {models && models.openai.length > 0 && (
+          <optgroup label="OpenAI">
+            {models.openai.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      <p className="text-xs text-muted">
+        Listed live from each provider, newest first.
+        {models && !models.openai.length && !models.errors.openai && " Add an OpenAI key to list OpenAI models."}
+      </p>
+      {errors.map(([provider, message]) => (
+        <p key={provider} className="text-xs text-bad">
+          {provider === "openai" ? "OpenAI" : "Anthropic"}: {message}
+        </p>
+      ))}
     </div>
   );
 }

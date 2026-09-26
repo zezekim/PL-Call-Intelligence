@@ -382,3 +382,11 @@ async def connect_twilio(
     business.twilio_number = number
     await session.flush()
     return TwilioConnectOut(phone_number=number, voice_url=voice_url, status_callback=status_url)
+
+
+@router.get("/models")
+async def available_models(_: UserDep) -> dict[str, Any]:
+    """Models the configured providers offer, fetched live from their APIs."""
+    from callsentry.services.llm import get_llm
+
+    return await get_llm().list_models()

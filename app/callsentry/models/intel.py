@@ -106,7 +106,11 @@ class CallAnalysis(Base, TimestampMixin):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Every model that took part, e.g. "claude-sonnet-5 + gpt-5".
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    scoring_mode: Mapped[str] = mapped_column(
+        String(16), default="standard", server_default="standard", nullable=False
+    )
     prompt_version: Mapped[str] = mapped_column(String(16), nullable=False)
 
     call_type: Mapped[str] = mapped_column(String(24), nullable=False)

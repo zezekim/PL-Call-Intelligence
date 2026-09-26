@@ -50,6 +50,7 @@ class LLMResult:
     output_tokens: int = 0
     cost_usd: float = 0.0
     refused: bool = False
+    model: str = ""
     attempts: list[Attempt] = field(default_factory=list)
 
     @property
@@ -62,6 +63,7 @@ class LLMService:
         self.settings = get_settings()
         self.registry = get_registry()
         self._anthropic: Any = None
+        self._openai_client: Any = None
 
     def _claude(self) -> Any:
         if self._anthropic is None:
@@ -260,27 +262,37 @@ class LLMService:
         *,
         effort: str = "high",
         max_tokens: int = 32_000,
+        model: str | None = None,
     ) -> tuple[dict[str, Any], LLMResult]:
-        """Schema-constrained offline analysis on the call-intelligence model.
+        """Schema-constrained offline analysis on a Claude or OpenAI model.
 
-        Claude only. A small local model grading a twenty-minute sales call
+        Cloud only. A small local model grading a twenty-minute sales call
         produces plausible, wrong scores - worse than no score - so there is
-        no local or mock tier: if Claude is unavailable this raises
+        no local or mock tier: if the provider is unavailable this raises
         ProviderUnavailable and the caller marks the call as failed.
 
         Streams because long transcripts with adaptive thinking can outlast a
         non-streaming HTTP timeout.
         """
         attempts: list[Attempt] = []
+        model = model or self.settings.call_intel_model
+        provider = provider_for(model)
 
         async def claude(_: ProviderSpec) -> LLMResult:
             return await self._claude_analysis(
-                system, user, schema, effort=effort, max_tokens=max_tokens
+                system, user, schema, effort=effort, max_tokens=max_tokens, model=model
             )
 
+        async def openai(_: ProviderSpec) -> LLMResult:
+            return await self._openai_analysis(
+                system, user, schema, effort=effort, max_tokens=max_tokens, model=model
+            )
+
+        handlers = {"claude": claude, "openai": openai}
         result, _spec = await self.registry.run(
-            Component.LLM, {"claude": claude}, attempts=attempts, order=["claude"]
+            Component.LLM, {provider: handlers[provider]}, attempts=attempts, order=[provider]
         )
+        result.model = model
         result.attempts = attempts
         if result.refused:
             return {}, result
@@ -299,8 +311,8 @@ class LLMService:
         *,
         effort: str,
         max_tokens: int,
+        model: str,
     ) -> LLMResult:
-        model = self.settings.call_intel_model
         extra: dict[str, Any] = {}
         if model.startswith(("claude-opus-5", "claude-fable-5")):
             # Re-run on a fallback model if a safety classifier declines.
@@ -348,6 +360,133 @@ class LLMService:
             output_tokens=usage.output_tokens,
             cost_usd=round(cost, 6),
         )
+
+
+    def _openai(self) -> Any:
+        if self._openai_client is None:
+            from openai import AsyncOpenAI
+
+            self._openai_client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+        return self._openai_client
+
+    async def _openai_analysis(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        effort: str,
+        max_tokens: int,
+        model: str,
+    ) -> LLMResult:
+        from openai import BadRequestError
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "analysis", "strict": True, "schema": schema},
+            },
+            "max_completion_tokens": max_tokens,
+            "reasoning_effort": OPENAI_EFFORT.get(effort, "medium"),
+        }
+        try:
+            resp = await self._openai().chat.completions.create(**kwargs)
+        except BadRequestError as exc:
+            # Non-reasoning models reject the effort parameter; retry without it.
+            if "reasoning_effort" not in str(exc):
+                raise
+            kwargs.pop("reasoning_effort")
+            resp = await self._openai().chat.completions.create(**kwargs)
+
+        choice = resp.choices[0]
+        usage = resp.usage
+        tokens_in = usage.prompt_tokens if usage else 0
+        tokens_out = usage.completion_tokens if usage else 0
+        price_in, price_out = openai_price(model)
+        cost = tokens_in / 1_000_000 * price_in + tokens_out / 1_000_000 * price_out
+        refused = bool(getattr(choice.message, "refusal", None))
+        if choice.finish_reason == "length":
+            raise RuntimeError("analysis hit max_tokens before finishing")
+        return LLMResult(
+            text="" if refused else (choice.message.content or "").strip(),
+            provider="openai",
+            tier="cloud",
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+            cost_usd=round(cost, 6),
+            refused=refused,
+        )
+
+    async def list_models(self) -> dict[str, Any]:
+        """Models each configured provider offers right now, newest first."""
+        out: dict[str, Any] = {"anthropic": [], "openai": [], "errors": {}}
+        if self.settings.claude_api_key:
+            try:
+                page = await self._claude().models.list(limit=100)
+                models = [m async for m in page]
+                models.sort(key=lambda m: m.created_at, reverse=True)
+                out["anthropic"] = [{"id": m.id, "name": m.display_name} for m in models]
+            except Exception as exc:  # noqa: BLE001 - shown next to the picker
+                out["errors"]["anthropic"] = str(exc)[:200]
+        if self.settings.openai_api_key:
+            try:
+                page = await self._openai().models.list()
+                models = [m async for m in page if is_openai_text_model(m.id)]
+                models.sort(key=lambda m: m.created, reverse=True)
+                out["openai"] = [{"id": m.id, "name": m.id} for m in models]
+            except Exception as exc:  # noqa: BLE001
+                out["errors"]["openai"] = str(exc)[:200]
+        return out
+
+
+def provider_for(model: str) -> str:
+    """Anthropic model ids start with "claude"; everything else is OpenAI."""
+    return "claude" if model.startswith("claude") else "openai"
+
+
+_OPENAI_EXCLUDE = (
+    "audio", "realtime", "transcribe", "tts", "image", "embedding", "search",
+    "moderation", "dall-e", "whisper", "davinci", "babbage", "instruct", "codex",
+    "computer-use", "deep-research", "live",
+)
+
+
+def is_openai_text_model(model_id: str) -> bool:
+    lowered = model_id.lower()
+    if any(word in lowered for word in _OPENAI_EXCLUDE):
+        return False
+    return lowered.startswith(("gpt-", "chatgpt-")) or (
+        len(lowered) > 1 and lowered[0] == "o" and lowered[1].isdigit()
+    )
+
+
+OPENAI_EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
+
+# USD per million tokens (input, output). Unlisted models are costed at a
+# deliberately high rate so the spending cap errs on the safe side.
+OPENAI_PRICES: dict[str, tuple[float, float]] = {
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5-nano": (0.05, 0.40),
+    "gpt-5": (1.25, 10.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+}
+OPENAI_FALLBACK_PRICE = (5.00, 30.00)
+
+
+def openai_price(model: str) -> tuple[float, float]:
+    # Longest matching prefix, so "gpt-5-mini-2026..." is not priced as "gpt-5".
+    for prefix in sorted(OPENAI_PRICES, key=len, reverse=True):
+        if model.startswith(prefix):
+            return OPENAI_PRICES[prefix]
+    return OPENAI_FALLBACK_PRICE
 
 
 # USD per million tokens (input, output) for the call-intelligence model.

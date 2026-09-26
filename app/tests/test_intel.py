@@ -387,3 +387,105 @@ def test_consensus_tie_is_a_miss():
 def test_unanimous_single_run():
     judgements, _ = analyze.consensus([_run({"validate": "met"}, "a")])
     assert judgements["validate"]["agreement"] == "1/1"
+
+
+# --- Enhanced scoring --------------------------------------------------------------
+
+
+def test_verdict_only_schema_is_strict_and_can_be_limited_to_disputed_keys():
+    schema = analyze._scoring_schema(SALES, coaching=False, keys=["validate", "close"])
+    _check_strict(schema)
+    assert set(schema["properties"]) == {"items"}
+    assert schema["properties"]["items"]["items"]["properties"]["key"]["enum"] == [
+        "validate", "close"]
+    full = analyze._scoring_schema(SALES)
+    assert {"coaching", "strengths", "overall_feedback"} <= set(full["properties"])
+
+
+class _FakeLLM:
+    """Answers scoring requests per model, recording what it was asked."""
+
+    def __init__(self, answers):
+        self.answers = answers
+        self.calls = []
+
+    async def analyse_json(self, system, user, schema, *, effort, model=None, **_):
+        from callsentry.services.llm import LLMResult
+
+        self.calls.append((model, "Second round" in user))
+        round_ = "final" if "Second round" in user else "first"
+        items = [{"key": k, "status": v, "reason": f"{model}:{round_}:{k}", "evidence": []}
+                 for k, v in self.answers[(model, round_)].items()]
+        out = {"items": items}
+        if "coaching" in schema["properties"]:
+            out.update({"coaching": [], "strengths": [], "overall_feedback": model})
+        return out, LLMResult(text="", provider="x", tier="cloud", model=model)
+
+
+async def test_enhanced_scoring_deliberates_only_on_disagreements(monkeypatch):
+    from callsentry.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "call_intel_model", "claude-a")
+    monkeypatch.setattr(settings, "enhanced_second_model", "gpt-b")
+    card = ALL_CALLS
+    base = {i.key: "met" for i in card.items}
+    b_first = {**base, "validate": "missed", "summary_statement": "missed"}
+    fake = _FakeLLM({
+        ("claude-a", "first"): base,
+        ("gpt-b", "first"): b_first,
+        # Validate: B is persuaded. Summary: both hold their ground.
+        ("claude-a", "final"): {"validate": "met", "summary_statement": "met"},
+        ("gpt-b", "final"): {"validate": "met", "summary_statement": "missed"},
+    })
+    monkeypatch.setattr(analyze, "get_llm", lambda: fake)
+    result = analyze.Analysis(call_type="scheduling", call_type_confidence=1, lens="service",
+                              outcome=None, rep_name=None, customer_name=None, summary="",
+                              triage={})
+    judgements, coached = await analyze._enhanced(result, "sys", "user", card)
+
+    assert judgements["close"]["agreement"] == "both"
+    assert judgements["validate"]["status"] == "met"
+    assert judgements["validate"]["agreement"] == "settled"
+    # Still split after deliberation: not awarded, and both positions kept.
+    assert judgements["summary_statement"]["status"] == "missed"
+    assert judgements["summary_statement"]["agreement"] == "disputed"
+    assert [p["final"] for p in judgements["summary_statement"]["deliberation"]] == [
+        "met", "missed"]
+    # Coaching comes from the primary model; second round only for the two disputes.
+    assert coached["overall_feedback"] == "claude-a"
+    assert sum(1 for _, second in fake.calls if second) == 2
+    assert result.models == "claude-a + gpt-b"
+
+
+async def test_enhanced_scoring_needs_a_second_model(monkeypatch):
+    from callsentry.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "enhanced_second_model", "")
+    result = analyze.Analysis(call_type="sales", call_type_confidence=1, lens="sales",
+                              outcome=None, rep_name=None, customer_name=None, summary="",
+                              triage={})
+    with pytest.raises(analyze.AnalysisFailed):
+        await analyze._enhanced(result, "sys", "user", SALES)
+
+
+@pytest.mark.parametrize(
+    ("model", "keep"),
+    [("gpt-5", True), ("gpt-4.1-mini", True), ("o3", True), ("gpt-4o-audio-preview", False),
+     ("text-embedding-3-large", False), ("gpt-realtime", False), ("dall-e-3", False),
+     ("gpt-4o-transcribe", False), ("gpt-live-1", False)],
+)
+def test_openai_model_filter(model, keep):
+    from callsentry.services.llm import is_openai_text_model
+
+    assert is_openai_text_model(model) is keep
+
+
+def test_openai_price_uses_longest_prefix_and_safe_fallback():
+    from callsentry.services.llm import OPENAI_FALLBACK_PRICE, openai_price, provider_for
+
+    assert openai_price("gpt-5-mini-2026-01-01") == (0.25, 2.00)
+    assert openai_price("gpt-5") == (1.25, 10.00)
+    assert openai_price("some-future-model") == OPENAI_FALLBACK_PRICE
+    assert provider_for("claude-sonnet-5") == "claude"
+    assert provider_for("gpt-5") == "openai"

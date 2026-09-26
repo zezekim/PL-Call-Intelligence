@@ -134,6 +134,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const { env, choose } = useEnvironment();
+  const [scoring, setScoring] = useState<"standard" | "enhanced">("standard");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -156,6 +157,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
     form.append("engine", ENGINE_FOR[env]);
+    form.append("scoring", scoring);
     try {
       await api.form<CallRow[]>("/intel/uploads", form);
       reset();
@@ -239,6 +241,30 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
                 <span className={`block text-xs ${e.value === "local" ? "text-warn" : "text-muted"}`}>
                   {e.summary}
                 </span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium">Scoring</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                { value: "standard", label: "Standard", hint: "One model, majority of three runs" },
+                { value: "enhanced", label: "Enhanced", hint: "Claude and OpenAI deliberate. About 2x cost." },
+              ] as const
+            ).map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setScoring(o.value)}
+                className={`rounded-xl border px-3 py-2 text-left ${
+                  scoring === o.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel"
+                }`}
+              >
+                <span className="block text-sm font-medium">{o.label}</span>
+                <span className="block text-xs text-muted">{o.hint}</span>
               </button>
             ))}
           </div>

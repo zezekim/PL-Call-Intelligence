@@ -103,6 +103,8 @@ class Call(Base, TimestampMixin):
     )
     processing_error: Mapped[str | None] = mapped_column(Text)
     stt_engine: Mapped[str | None] = mapped_column(String(16))
+    # standard | enhanced; None means the platform default at processing time.
+    scoring_mode: Mapped[str | None] = mapped_column(String(16))
     stt_provider: Mapped[str | None] = mapped_column(String(32))
     # [{id, start, end, text, speaker, role}] - see intel.transcript.Segment.
     segments: Mapped[list[dict[str, Any]]] = mapped_column(

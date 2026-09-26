@@ -116,7 +116,10 @@ async def process(session: AsyncSession, call_id: uuid.UUID, *, reuse_transcript
         await session.commit()
 
         result = await analyze.analyse(
-            segments, diarized=diarized, forced_type=call.call_type_override
+            segments,
+            diarized=diarized,
+            forced_type=call.call_type_override,
+            mode=call.scoring_mode or get_settings().scoring_mode,
         )
         await _store(session, call, segments, result)
         call.processing_status = ProcessingStatus.DONE
@@ -194,7 +197,8 @@ async def _store(
         row = CallAnalysis(call_id=call.id, business_id=call.business_id)
         session.add(row)
     row.updated_at = datetime.now(UTC)
-    row.model = get_settings().call_intel_model
+    row.model = (result.models or get_settings().call_intel_model)[:160]
+    row.scoring_mode = result.scoring_mode
     row.prompt_version = analyze.PROMPT_VERSION
     row.call_type = result.call_type
     row.call_type_confidence = result.call_type_confidence
