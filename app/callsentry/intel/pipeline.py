@@ -33,6 +33,14 @@ log = structlog.get_logger(__name__)
 
 AI_REP_NAME = "AI Receptionist"
 
+# The receptionist records itself on the left channel and the caller on the right.
+RECEPTIONIST_ROLES = {"ch0": "rep", "ch1": "customer"}
+
+
+def _is_receptionist_recording(call: Call, segments: list[Segment]) -> bool:
+    return call.source == CallSource.TWILIO and all(s.speaker in RECEPTIONIST_ROLES
+                                                    for s in segments)
+
 # Status for a call whose transcript is kept and only the analysis re-runs.
 QUEUED_ANALYSIS = "queued_analysis"
 
@@ -120,6 +128,7 @@ async def process(session: AsyncSession, call_id: uuid.UUID, *, reuse_transcript
             diarized=diarized,
             forced_type=call.call_type_override,
             mode=call.scoring_mode or get_settings().scoring_mode,
+            fixed_roles=RECEPTIONIST_ROLES if _is_receptionist_recording(call, segments) else None,
         )
         await _store(session, call, segments, result)
         call.processing_status = ProcessingStatus.DONE

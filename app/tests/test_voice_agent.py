@@ -95,3 +95,57 @@ def test_merge_entities_does_not_overwrite_known_values():
     state.merge_entities({"name": "", "email": "alice@example.com"})
     # A later blank must not erase a name we already captured.
     assert state.collected == {"name": "Alice", "email": "alice@example.com"}
+
+
+def test_spoken_hours_groups_days_and_says_times_naturally(business):
+    business.business_hours = {
+        "mon": ["08:00", "18:00"], "tue": ["08:00", "18:00"], "wed": ["08:00", "18:00"],
+        "thu": ["08:00", "18:00"], "fri": ["08:00", "18:00"], "sat": ["09:00", "14:00"],
+        "sun": None,
+    }
+    assert spoken_hours(business) == (
+        "Monday through Friday, 8 AM to 6 PM, and Saturday, 9 AM to 2 PM"
+    )
+
+
+def test_spoken_hours_minutes_and_single_day(business):
+    business.business_hours = {"mon": ["07:30", "12:15"]}
+    assert spoken_hours(business) == "Monday, 7:30 AM to 12:15 PM"
+
+
+def test_welcome_back_comes_right_after_the_greeting(business):
+    line = opening_line(business, after_hours=False, returning_name="Bianca Lee")
+    assert line.startswith(f"Hi, thanks for calling {business.name}. Welcome back, Bianca.")
+    assert "AI assistant" in line
+
+
+def test_repeating_the_same_line_ends_the_call_instead_of_looping(business):
+    from callsentry.agents.voice_agent import TurnResponse, _finish
+
+    state = CallState(call_id="c", business_id="b", caller_number="+1")
+    state.remember("assistant", "I'll have someone call you back.")
+    state.remember("user", "Okay.")
+    result = _finish(state, TurnResponse(text="I'll have someone call you back."))
+    assert result.end_call is True
+    assert "goodbye" in result.text.lower()
+
+
+async def test_unanswerable_request_takes_a_message_once(business):
+    from callsentry.agents import voice_agent
+
+    business.escalation_phone = None
+    state = CallState(call_id="c", business_id="b", caller_number="+1")
+    state.collected["name"] = "Bianca"
+    first = await voice_agent._escalate(business, state, reason="no KB answer")
+    assert state.taking_message is True
+    assert "transfer" not in first.text.lower()
+    assert "pass along" in first.text
+
+
+def test_call_state_round_trips_booking_and_message_flags():
+    from callsentry.services import callstate
+
+    state = CallState(call_id="c", business_id="b", caller_number="+1",
+                      booked="Monday between 8 AM and 10 AM", taking_message=True)
+    loaded = callstate._load(callstate._dump(state))
+    assert loaded.booked == state.booked and loaded.taking_message is True

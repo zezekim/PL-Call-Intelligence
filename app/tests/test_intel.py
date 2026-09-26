@@ -489,3 +489,26 @@ def test_openai_price_uses_longest_prefix_and_safe_fallback():
     assert openai_price("some-future-model") == OPENAI_FALLBACK_PRICE
     assert provider_for("claude-sonnet-5") == "claude"
     assert provider_for("gpt-5") == "openai"
+
+
+@pytest.mark.parametrize("label", ["SPEAKER ch0", "ch0", "channel 0", "0", "Speaker 0"])
+def test_channel_labels_are_matched_in_any_form(label):
+    segs = _segments()
+    for s in segs:
+        s.speaker = "ch0" if s.role == REP else "ch1"
+        s.role = "unknown"
+    analyze.assign_roles(segs, {"speaker_roles": [{"speaker": label, "role": "rep"},
+                                                  {"speaker": "ch1", "role": "customer"}]},
+                         diarized=True)
+    assert [s.role for s in segs] == [REP, CUSTOMER, REP]
+
+
+def test_no_rep_named_falls_back_to_whoever_answered():
+    segs = _segments()
+    for s in segs:
+        s.role = "unknown"
+    triage = {"speaker_roles": [{"speaker": "0", "role": "other"},
+                                {"speaker": "1", "role": "customer"}]}
+    analyze.assign_roles(segs, triage, diarized=True)
+    assert [s.role for s in segs] == [REP, CUSTOMER, REP]
+    assert triage["roles_guessed"] is True

@@ -66,6 +66,10 @@ class CallState:
     turns: int = 0
     # Set when this number has called the receptionist before.
     returning_note: str = ""
+    # Spoken slot booked on this call; a call books at most one visit.
+    booked: str = ""
+    # The caller has been asked what message to pass on.
+    taking_message: bool = False
 
     def remember(self, role: str, content: str) -> None:
         self.history.append({"role": role, "content": content})
@@ -99,30 +103,59 @@ def is_open(business: Business, *, at: datetime | None = None) -> bool:
     return start_h * 60 + start_m <= minutes < end_h * 60 + end_m
 
 
+def _clock(value: str) -> str:
+    """"08:00" -> "8 AM", "18:30" -> "6:30 PM" - the way it is said aloud."""
+    try:
+        hour, minute = (int(x) for x in str(value).split(":"))
+    except (ValueError, TypeError):
+        return str(value)
+    suffix = "AM" if hour < 12 else "PM"
+    hour12 = hour % 12 or 12
+    return f"{hour12} {suffix}" if minute == 0 else f"{hour12}:{minute:02d} {suffix}"
+
+
 def spoken_hours(business: Business) -> str:
+    """Opening hours as a receptionist would say them, grouping days that match."""
     hours = business.business_hours or {}
     labels = {
         "mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday",
         "fri": "Friday", "sat": "Saturday", "sun": "Sunday",
     }
-    open_days = [(labels[d], hours[d]) for d in _DAYS if hours.get(d)]
-    if not open_days:
+    groups: list[tuple[list[str], tuple[str, str]]] = []
+    for day in _DAYS:
+        window = hours.get(day)
+        if not window:
+            continue
+        key = (str(window[0]), str(window[1]))
+        previous = groups[-1] if groups else None
+        consecutive = previous and _DAYS.index(previous[0][-1]) == _DAYS.index(day) - 1
+        if previous and previous[1] == key and consecutive:
+            previous[0].append(day)
+        else:
+            groups.append(([day], key))
+    if not groups:
         return "by appointment only"
-    first, last = open_days[0], open_days[-1]
-    span = first[0] if len(open_days) == 1 else f"{first[0]} through {last[0]}"
-    return f"{span}, {first[1][0]} to {first[1][1]}"
+    parts = []
+    for days, (start, end) in groups:
+        first, last = labels[days[0]], labels[days[-1]]
+        span = first if len(days) == 1 else f"{first} through {last}"
+        parts.append(f"{span}, {_clock(start)} to {_clock(end)}")
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + ", and " + parts[-1]
 
 
 # --- Openings --------------------------------------------------------------
 
 
-def opening_line(business: Business, *, after_hours: bool) -> str:
+def opening_line(
+    business: Business, *, after_hours: bool, returning_name: str = ""
+) -> str:
     """Templated, never model-generated: this line carries the compliance load."""
     if business.greeting_override:
         return business.greeting_override
 
+    welcome = f" Welcome back, {returning_name.split()[0]}." if returning_name.strip() else ""
     disclosure = (
-        f"Hi, thanks for calling {business.name}. I'm an AI assistant, "
+        f"Hi, thanks for calling {business.name}.{welcome} I'm an AI assistant, "
         "and this call is recorded."
     )
     if after_hours:
@@ -177,6 +210,12 @@ def _persona(business: Business, *, playbook: str = "", state: CallState | None 
         )
     if state is not None and state.returning_note:
         extra += f"\nAbout this caller: {state.returning_note}"
+    if state is not None and state.booked:
+        extra += (
+            f"\nThis caller is already booked on this call for {state.booked}. Do not offer "
+            "to book another visit; if they want a different time, say the office will call "
+            "to change it."
+        )
     return PERSONA.format(business_name=business.name, extra=extra)
 
 
@@ -203,6 +242,23 @@ async def handle_turn(
     """Process one caller utterance and decide what to say next."""
     state.turns += 1
     state.remember("user", utterance)
+
+    if state.taking_message:
+        # The caller was asked what to pass on; this utterance is the message.
+        state.taking_message = False
+        note = state.collected.get("message", "")
+        state.collected["message"] = f"{note} {utterance}".strip()
+        return _finish(
+            state,
+            TurnResponse(
+                text=(
+                    "Got it, I've passed that along and someone from the team will call you "
+                    "back. Is there anything else I can help with?"
+                ),
+                outcome=CallOutcome.ESCALATED,
+                escalation_reason=f"message for callback: {state.collected['message'][:200]}",
+            ),
+        )
 
     intent = await detect(utterance, history=state.history[:-1])
     state.merge_entities(intent.entities)
@@ -270,6 +326,21 @@ async def handle_turn(
 
 
 def _finish(state: CallState, response: TurnResponse) -> TurnResponse:
+    last = next(
+        (m["content"] for m in reversed(state.history[:-1]) if m["role"] == "assistant"), ""
+    )
+    if response.text and response.text.strip() == last.strip() and not response.end_call:
+        # Saying the same line twice means the conversation is stuck. Close it
+        # politely rather than loop.
+        response = TurnResponse(
+            text=(
+                "I've made a note of everything, and someone from the team will call you back. "
+                "Thanks for calling, goodbye."
+            ),
+            end_call=True,
+            outcome=response.outcome or CallOutcome.ESCALATED,
+            escalation_reason=response.escalation_reason or "conversation repeated itself",
+        )
     if response.text:
         state.remember("assistant", response.text)
     return response
@@ -284,15 +355,16 @@ async def _escalate(business: Business, state: CallState, *, reason: str) -> Tur
             escalation_reason=reason,
         )
 
+    state.taking_message = True
     name = state.collected.get("name")
-    ask = "" if name else " Can I get your name?"
+    who = "" if name else " and your name"
     return TurnResponse(
         text=(
-            "I'm not able to transfer you right now, but I'll take a message and have "
-            f"someone call you back as soon as possible.{ask}"
+            "I'll have someone from the team call you back about that. "
+            f"What would you like me to pass along{who}?"
         ),
         outcome=CallOutcome.ESCALATED,
-        escalation_reason=f"{reason}; no escalation number configured",
+        escalation_reason=f"{reason}; callback requested",
     )
 
 
@@ -305,6 +377,14 @@ async def _handle_booking(
 ) -> TurnResponse:
     name = state.collected.get("name", "")
     preferred = state.collected.get("preferred_time", "")
+
+    if state.booked and state.pending_slot is None:
+        return TurnResponse(
+            text=(
+                f"You're already all set for {state.booked}. If you need a different time, "
+                "I'll have the office call you to change it. Is there anything else?"
+            )
+        )
 
     # Caller is confirming a slot we already offered.
     if state.pending_slot is not None and _is_affirmative(state.history[-1]["content"]):
@@ -324,6 +404,8 @@ async def _handle_booking(
             ) or None,
         )
         state.pending_slot = None
+        if ok:
+            state.booked = spoken
         if not ok:
             return TurnResponse(
                 text=(

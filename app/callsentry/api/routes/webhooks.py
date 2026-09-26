@@ -118,7 +118,6 @@ async def twilio_voice(
         await session.flush()
 
     after_hours = not is_open(business)
-    greeting = opening_line(business, after_hours=after_hours)
     state = CallState(
         call_id=str(call.id),
         business_id=str(business.id),
@@ -128,8 +127,8 @@ async def twilio_voice(
     known_name, note = await _caller_history(session, business.id, from_number, call.id)
     if known_name:
         state.collected["name"] = known_name
-        greeting = f"{greeting} Welcome back, {known_name.split()[0]}."
     state.returning_note = note
+    greeting = opening_line(business, after_hours=after_hours, returning_name=known_name)
     await callstate.save(state)
 
     ws_url = f"{settings.public_ws_url.rstrip('/')}/ws/call/{call.id}"

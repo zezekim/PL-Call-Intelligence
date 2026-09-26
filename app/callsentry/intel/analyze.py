@@ -29,7 +29,6 @@ from callsentry.intel.transcript import (
     REP,
     UNKNOWN,
     Segment,
-    apply_roles,
     render,
     resolve_evidence,
 )
@@ -181,7 +180,10 @@ misheard; words may be dropped. Each line is `[segment id] mm:ss SPEAKER: text`.
 ## Who is who
 - The rep works for the pest control company and usually answers with a greeting like \
 "<Company>, this is <name>". The customer is the caller (or the person the rep calls).
-- An automated menu, hold message or voicemail greeting is role "other".
+- An automated menu, hold message or voicemail greeting is role "other". An AI
+  receptionist that holds a real conversation with the caller is the rep.
+- If lines are already labelled REP and CUSTOMER, leave `speaker_roles` and
+  `rep_segment_ids` empty.
 - Lines labelled SPEAKER chN come from separate recording channels, one person each: map \
 every label in `speaker_roles` and leave `rep_segment_ids` empty.
 - Otherwise (lines labelled VOICE x? or ?), the voice labels are unreliable hints from \
@@ -397,16 +399,31 @@ class AnalysisFailed(RuntimeError):
 # --- Passes ------------------------------------------------------------------
 
 
+def _label_key(label: str) -> str:
+    """"SPEAKER ch0", "channel 0", "ch0" and "0" all name the same speaker."""
+    text = re.sub(r"(?i)^speaker\s*", "", str(label)).strip().lower()
+    match = re.fullmatch(r"(?:ch(?:annel)?\s*)?(\d+)\??", text)
+    return match.group(1) if match else text
+
+
 def assign_roles(segments: list[Segment], triage: dict[str, Any], *, diarized: bool) -> None:
     """Resolve speaker labels (or unlabeled segments) to rep/customer."""
     if diarized:
-        roles = {}
+        roles: dict[str, str] = {}
         for entry in triage.get("speaker_roles") or []:
             role = entry.get("role")
-            # The model may echo the label as rendered ("SPEAKER 0") or bare ("0").
-            label = re.sub(r"(?i)^speaker\s*", "", str(entry.get("speaker", ""))).strip()
-            roles[label] = REP if role == "rep" else CUSTOMER if role == "customer" else UNKNOWN
-        apply_roles(segments, roles)
+            roles[_label_key(entry.get("speaker", ""))] = (
+                REP if role == "rep" else CUSTOMER if role == "customer" else UNKNOWN
+            )
+        for s in segments:
+            s.role = roles.get(_label_key(s.speaker), UNKNOWN)
+        if not any(s.role == REP for s in segments) and segments:
+            # The model named no rep (e.g. it filed an unfamiliar voice as
+            # "other"). Whoever answers the phone is almost always the rep.
+            first = _label_key(segments[0].speaker)
+            for s in segments:
+                s.role = REP if _label_key(s.speaker) == first else CUSTOMER
+            triage["roles_guessed"] = True
         return
     rep_ids = {int(i) for i in triage.get("rep_segment_ids") or [] if isinstance(i, int)}
     for s in segments:
@@ -461,21 +478,29 @@ async def analyse(
     diarized: bool,
     forced_type: str | None = None,
     mode: str = "standard",
+    fixed_roles: dict[str, str] | None = None,
 ) -> Analysis:
     """`forced_type` is a manager's correction of the call type: triage still
     extracts the details, but the call is graded on that type's scorecard."""
     llm = get_llm()
 
+    if fixed_roles:
+        # Roles known from how the call was recorded (the receptionist's own
+        # calls: agent on one channel, caller on the other).
+        for s in segments:
+            s.role = fixed_roles.get(s.speaker, UNKNOWN)
+
     triage, triage_llm = await llm.analyse_json(
         TRIAGE_SYSTEM,
-        "Transcript:\n\n" + render(segments, by_role=False),
+        "Transcript:\n\n" + render(segments, by_role=bool(fixed_roles)),
         TRIAGE_SCHEMA,
         effort="high",
     )
     if not triage or "call_type" not in triage:
         raise AnalysisFailed("call classification returned no result")
 
-    assign_roles(segments, triage, diarized=diarized)
+    if not fixed_roles:
+        assign_roles(segments, triage, diarized=diarized)
     if not any(s.role == REP for s in segments):
         raise AnalysisFailed("could not tell which speaker is the rep")
 
