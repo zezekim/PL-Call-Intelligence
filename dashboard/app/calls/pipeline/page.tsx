@@ -84,7 +84,7 @@ export default function PipelinePage() {
       {/* The board fills the window: it scrolls sideways, each column scrolls
           down, so the horizontal scrollbar stays in view however tall the
           expanded cards get. The page itself never scrolls sideways. */}
-      <div className="-mx-4 h-[calc(100dvh-16.5rem)] min-h-[420px] overflow-x-auto overflow-y-hidden px-4 pb-3 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
+      <div className="bleed h-[calc(100dvh-16.5rem)] min-h-[420px] overflow-x-auto overflow-y-hidden px-4 pb-3 sm:px-8 lg:px-10">
         <div className="flex h-full w-max items-stretch gap-4">
           {STAGES.map((stage) => {
             const cards = leads.filter((l) => l.stage === stage.value);

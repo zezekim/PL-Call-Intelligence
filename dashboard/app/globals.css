@@ -4,6 +4,8 @@
 
 @layer base {
   html {
+    /* Same content width whether or not a page is tall enough to scroll. */
+    scrollbar-gutter: stable;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -89,10 +91,48 @@
 }
 
 @layer utilities {
+  /* Content that runs to the edges of the window while the page keeps its
+     width: the pipeline board. Mirrors <main>'s padding and max width. */
+  .bleed {
+    margin-inline: -1rem;
+  }
+  @media (min-width: 640px) {
+    .bleed {
+      margin-inline: -2rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .bleed {
+      /* --scrollbar is the space the always-reserved scrollbar takes (set by the shell). */
+      margin-inline: min(
+        -2.5rem,
+        calc((1120px - (100vw - var(--scrollbar, 0px) - 244px)) / 2 - 2.5rem)
+      );
+    }
+  }
+  .animate-page-in {
+    animation: page-in 220ms ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-page-in {
+      animation: none;
+    }
+  }
   .no-scrollbar {
     scrollbar-width: none;
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Opacity only: animating transform would make the page the containing block
+   for its fixed-position dialogs, shifting them off-centre. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

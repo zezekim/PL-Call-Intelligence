@@ -7,6 +7,7 @@ import type { CallPage, CallRow, RepSummary } from "@/lib/api";
 import { CALL_TYPES, date, duration } from "@/lib/format";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
+import { startProgress } from "@/components/route-progress";
 import { SearchIcon } from "@/components/icons";
 import {
   Avatar,
@@ -189,7 +190,10 @@ function CallLog() {
                   <tr
                     key={c.id}
                     className="cursor-pointer transition-colors hover:bg-[#fafafa]"
-                    onClick={() => router.push(`/calls/${c.id}`)}
+                    onClick={() => {
+                      startProgress();
+                      router.push(`/calls/${c.id}`);
+                    }}
                   >
                     <td className="max-w-[280px] px-6 py-3.5">
                       <Link href={`/calls/${c.id}`} className="block" onClick={(e) => e.stopPropagation()}>

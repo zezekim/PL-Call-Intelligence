@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type CallRow } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
+import { startProgress } from "@/components/route-progress";
 import {
   ENGINE_FOR,
   ENVIRONMENTS,
@@ -128,7 +129,9 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       )}
-      {children}
+      <div key={pathname} className="animate-page-in">
+        {children}
+      </div>
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
     </CallsContext.Provider>
@@ -169,6 +172,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
       await api.form<CallRow[]>("/intel/uploads", form);
       reset();
       onClose();
+      startProgress();
       router.push("/calls/log");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");

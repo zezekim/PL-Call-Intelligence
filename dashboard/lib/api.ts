@@ -30,7 +30,11 @@ export function setToken(token: string): void {
   window.localStorage.setItem(TOKEN_KEY, token);
 }
 
+/** Last response per API path, so a page seen before renders instantly. */
+export const responseCache = new Map<string, unknown>();
+
 export function clearToken(): void {
+  responseCache.clear();
   try {
     window.localStorage.removeItem(TOKEN_KEY);
   } catch {

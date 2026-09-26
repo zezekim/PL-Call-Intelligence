@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken, type Me } from "@/lib/api";
 import { APP_VERSION, BUILD_ID } from "@/lib/version";
 import { EnvironmentPrompt } from "./environment";
+import { RouteProgress, startProgress } from "./route-progress";
 import { UpdateNotice } from "./update-notice";
 import {
   AssistantIcon,
@@ -39,8 +40,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const bare = pathname.startsWith("/login");
-  // The pipeline board uses the full width and scrolls sideways on its own.
+  // The pipeline board fills the window height, so it needs less padding below.
   const wide = pathname.startsWith("/calls/pipeline");
+  // Top-level area, e.g. "calls" or "settings": crossing between them fades in.
+  const section = pathname.split("/")[1] ?? "";
 
   useEffect(() => {
     if (bare) {
@@ -60,13 +63,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
-  if (bare) return <>{children}</>;
+  // 100vw includes the scrollbar; full-bleed layouts subtract it.
+  useEffect(() => {
+    const measure = () =>
+      document.documentElement.style.setProperty(
+        "--scrollbar",
+        `${window.innerWidth - document.documentElement.clientWidth}px`,
+      );
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  if (bare) {
+    return (
+      <>
+        <RouteProgress />
+        {children}
+      </>
+    );
+  }
   if (!ready) return null;
 
   const company = me?.business_name || "PestLaunch";
 
   return (
-    <div className="min-h-screen lg:pl-[244px]">
+    <div className="min-h-screen overflow-x-clip lg:pl-[244px]">
+      <RouteProgress />
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col border-r border-hairline bg-[#f5f5f7]/80 px-3 pb-3 pt-5 backdrop-blur-2xl backdrop-saturate-150 transition-transform duration-300 lg:translate-x-0 ${
           menuOpen ? "translate-x-0 shadow-pop" : "-translate-x-full"
@@ -157,11 +180,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <UpdateNotice />
       <main
-        className={`mx-auto w-full min-w-0 px-4 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
-          wide ? "max-w-none pb-4" : "max-w-[1120px] pb-20"
+        className={`mx-auto w-full min-w-0 max-w-[1120px] px-4 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
+          wide ? "pb-4" : "pb-20"
         }`}
       >
-        {children}
+        <div key={section} className="animate-page-in">
+          {children}
+        </div>
       </main>
       <EnvironmentPrompt />
     </div>
@@ -189,6 +214,7 @@ function SearchBox() {
       className="relative mt-5"
       onSubmit={(e) => {
         e.preventDefault();
+        startProgress();
         router.push(`/calls/log${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
       }}
     >
