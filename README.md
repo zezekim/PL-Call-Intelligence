@@ -131,6 +131,22 @@ its configuration in `/opt/pestlaunch/.env`.
 
 ---
 
+## Operations
+
+- **Backups.** `ops/install-backup.sh` (run once on the server) installs a nightly
+  03:15 UTC backup of the database and recordings to `/var/backups/pestlaunch`,
+  kept for 7 days. The install script prints the restore command.
+- **Health.** `.github/workflows/health.yml` checks the API and dashboard every 15
+  minutes; GitHub emails the repository owner when a run fails.
+- **Browser tests.** Every push signs in, opens each page and checks a wrong
+  password is refused, against a real API and database (`dashboard/e2e`). A
+  deploy only happens after they pass.
+- **Sign-in protection.** Five wrong passwords lock that account for 15
+  minutes; twenty from one address lock the address.
+- **Retention.** Recordings are stamped with an expiry at upload
+  (`RECORDING_RETENTION_DAYS`, 90 by default). The sweep deletes the audio file
+  and keeps the transcript and score until the transcript's own expiry.
+
 ## Layout
 
 ```
@@ -185,7 +201,7 @@ the shape of every structured-output schema, and that every route is mounted.
 
 - Pull calls, reps and customers straight from the CRM (FieldRoutes, GorillaDesk,
   PestPac) instead of uploading, so dates, reps and accounts are exact.
-- Turn follow-ups into assignable tasks in PestLaunch Tasks.
-- Let managers dispute a step; use disputes to tune the rubric per company.
+- Assign follow-ups to people and feed them into PestLaunch Tasks.
+- Use managers' step overrides to tune the rubric per company.
 - Trends over time per rep and per step once there is enough call history.
 - Company-specific scripts and pricing as scoring context.

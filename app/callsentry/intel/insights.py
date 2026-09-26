@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE
-from callsentry.models import Call, CallAnalysis, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, FollowUp, ProcessingStatus, Rep
 
 # Below this the classifier's call type is shown as "needs review".
 REVIEW_CONFIDENCE = 0.7
@@ -48,7 +48,8 @@ async def load(
     stmt = (
         select(Call, CallAnalysis)
         .join(CallAnalysis, CallAnalysis.call_id == Call.id)
-        .where(Call.business_id == business_id, Call.audio_path.isnot(None),
+        .where(Call.business_id == business_id,
+               or_(Call.audio_path.isnot(None), Call.stt_provider.isnot(None)),
                Call.processing_status == ProcessingStatus.DONE)
         .options(selectinload(Call.rep))
     )
@@ -228,13 +229,24 @@ async def overview(session: AsyncSession, business_id: uuid.UUID, days: int | No
         (
             await session.execute(
                 select(Call.processing_status, func.count(Call.id))
-                .where(Call.business_id == business_id, Call.audio_path.isnot(None))
+                .where(Call.business_id == business_id,
+                       or_(Call.audio_path.isnot(None), Call.stt_provider.isnot(None)))
                 .group_by(Call.processing_status)
             )
         ).all()
     )
     in_progress = sum(v for k, v in status_counts.items()
                       if k not in (ProcessingStatus.DONE, ProcessingStatus.FAILED))
+    open_follow_ups = (
+        await session.execute(
+            select(FollowUp, Call, CallAnalysis)
+            .join(Call, Call.id == FollowUp.call_id)
+            .outerjoin(CallAnalysis, CallAnalysis.call_id == Call.id)
+            .where(FollowUp.business_id == business_id, FollowUp.status == "open")
+            .options(selectinload(Call.rep))
+            .order_by(FollowUp.created_at.desc())
+        )
+    ).all()
     return {
         "as_of": datetime.now(UTC).isoformat(),
         "days": days,
@@ -251,7 +263,14 @@ async def overview(session: AsyncSession, business_id: uuid.UUID, days: int | No
         "retention": retention_lens(rows),
         "service": service_lens(rows),
         "training": missed_steps(scored, limit=6),
-        "follow_ups": follow_ups(rows),
+        "follow_ups": [
+            {"id": str(f.id), "call_id": str(c.id), "ref": c.external_ref,
+             "customer": a.customer_name if a else None,
+             "rep": c.rep.name if c.rep else None,
+             "when": (c.occurred_at or c.created_at).isoformat(),
+             "action": f.action, "owner": f.owner, "due": f.due}
+            for f, c, a in open_follow_ups
+        ],
         "review": [{**_ref(r), "call_type": r.analysis.call_type,
                     "confidence": float(r.analysis.call_type_confidence or 0)}
                    for r in rows if needs_review(r)],

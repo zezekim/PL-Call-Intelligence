@@ -44,4 +44,11 @@ export function useApi<T>(
   return { data, error, loading, reload: load, setData };
 }
 
+/** Sets the browser tab title for a page. */
+export function useTitle(title: string | null | undefined) {
+  useEffect(() => {
+    if (title) document.title = `${title} · PestLaunch`;
+  }, [title]);
+}
+
 export const IN_PROGRESS = new Set(["queued", "transcribing", "analyzing", "queued_analysis"]);

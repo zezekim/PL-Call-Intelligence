@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -11,6 +11,7 @@ from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
 from callsentry.core.security import hash_password, issue_token, verify_password
 from callsentry.models import User, UserRole
+from callsentry.services import ratelimit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -47,13 +48,22 @@ class MeResponse(BaseModel):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
-    user = await session.scalar(select(User).where(User.email == payload.email.lower()))
+async def login(payload: LoginRequest, session: SessionDep, request: Request) -> TokenResponse:
+    ip = ratelimit.client_ip(request)
+    email = payload.email.lower()
+    if await ratelimit.blocked(ip, email):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many failed sign-in attempts. Try again in 15 minutes.",
+        )
+    user = await session.scalar(select(User).where(User.email == email))
 
     stored = user.password_hash if user else _DUMMY_HASH
     ok = await asyncio.to_thread(verify_password, payload.password, stored)
     if not user or not ok:
+        await ratelimit.record_failure(ip, email)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid email or password")
+    await ratelimit.clear(ip, email)
 
     return TokenResponse(
         access_token=issue_token(

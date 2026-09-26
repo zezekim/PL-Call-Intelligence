@@ -120,3 +120,18 @@ async def backfill(session: AsyncSession) -> int:
         await sync(session, call, analysis)
     await session.commit()
     return len(rows)
+
+
+async def refresh_contact(session: AsyncSession, lead_id: Any) -> None:
+    """Recompute a lead's last contact from its calls after a date correction."""
+    from sqlalchemy import func
+
+    lead = await session.get(Lead, lead_id)
+    if lead is None:
+        return
+    latest = await session.scalar(
+        select(func.max(func.coalesce(Call.occurred_at, Call.created_at))).where(
+            Call.lead_id == lead_id
+        )
+    )
+    lead.last_contact_at = latest

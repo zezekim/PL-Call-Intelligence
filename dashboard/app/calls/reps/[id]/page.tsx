@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { RepDetail } from "@/lib/api";
 import { clock, date, pct, tone } from "@/lib/format";
-import { useApi } from "@/lib/hooks";
+import { useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
 import { BackIcon, CheckIcon } from "@/components/icons";
 import { Avatar, Card, CardHeader, Empty, ErrorNote, HitBar, Loading, Metric } from "@/components/ui";
@@ -19,6 +19,7 @@ export default function RepPage() {
   const { id } = useParams<{ id: string }>();
   const { query } = useCalls();
   const { data: rep, error, loading } = useApi<RepDetail>(query(`/intel/reps/${id}`));
+  useTitle(rep?.name);
 
   if (loading && !rep) return <Loading />;
   if (error && !rep) return <ErrorNote message={error} />;

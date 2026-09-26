@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useEffect } from "react";
 import type { RepSummary } from "@/lib/api";
 import { TONE_TEXT, pct, tone } from "@/lib/format";
-import { useApi } from "@/lib/hooks";
+import { useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
 import { ChevronIcon } from "@/components/icons";
 import { Avatar, Card, Empty, ErrorNote, Loading } from "@/components/ui";
 
 export default function RepsPage() {
+  useTitle("Reps");
   const { query, refreshKey } = useCalls();
   const { data, error, loading, reload } = useApi<RepSummary[]>(query("/intel/reps"));
 

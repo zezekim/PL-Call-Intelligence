@@ -43,10 +43,71 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: /api
 
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: callsentry
+          POSTGRES_PASSWORD: callsentry
+          POSTGRES_DB: callsentry
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U callsentry" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql+asyncpg://callsentry:callsentry@localhost:5432/callsentry
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: e2e-jwt-secret
+      INTERNAL_API_TOKEN: e2e-internal-token
+      UPLOAD_DIR: /tmp/uploads
+      CALLSENTRY_LOCAL_ONLY: "1"
+      SEED_ADMIN_EMAIL: admin@pestlaunch.local
+      SEED_ADMIN_PASSWORD: e2e-password-1234
+      E2E_EMAIL: admin@pestlaunch.local
+      E2E_PASSWORD: e2e-password-1234
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Start the API
+        working-directory: app
+        run: |
+          echo "ENCRYPTION_KEY=$(python -c 'import base64,secrets;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())')" >> "$GITHUB_ENV"
+          pip install -e ".[dev]"
+      - working-directory: app
+        run: |
+          alembic upgrade head
+          python -m callsentry.scripts.seed
+          nohup uvicorn callsentry.main:app --port 8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && break; sleep 1; done
+      - name: Start the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
+          nohup npx next start -p 3000 > /tmp/dashboard.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs -o /dev/null localhost:3000/login && break; sleep 1; done
+      - name: Browser tests
+        working-directory: dashboard
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test --reporter=line
+      - name: Logs on failure
+        if: failure()
+        run: tail -n 80 /tmp/api.log /tmp/dashboard.log
+
   deploy:
     # Only pushes to main reach the server; pull requests never run on it.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [api, dashboard]
+    needs: [api, dashboard, e2e]
     runs-on: [self-hosted, pestlaunch]
     concurrency:
       group: deploy

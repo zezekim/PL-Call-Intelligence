@@ -18,7 +18,7 @@ from sqlalchemy import or_, select, update
 
 from callsentry.config import get_settings
 from callsentry.core.db import get_sessionmaker
-from callsentry.intel import leads, pipeline
+from callsentry.intel import followups, leads, pipeline
 from callsentry.models import Call, ProcessingStatus
 
 log = structlog.get_logger(__name__)
@@ -106,6 +106,13 @@ async def run() -> None:
             log.info("intel.recovered", count=recovered)
     except Exception as exc:  # noqa: BLE001
         log.warning("intel.recover_failed", error=str(exc))
+    try:
+        async with get_sessionmaker()() as session:
+            tracked = await followups.backfill(session)
+        if tracked:
+            log.info("intel.followups_backfilled", calls=tracked)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("intel.followups_backfill_failed", error=str(exc))
     try:
         async with get_sessionmaker()() as session:
             created = await leads.backfill(session)

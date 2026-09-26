@@ -13,7 +13,8 @@ import {
   duration,
   titleCase,
 } from "@/lib/format";
-import { IN_PROGRESS, useApi } from "@/lib/hooks";
+import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
+import { FollowUpList } from "@/components/follow-up-list";
 import {
   AlertIcon,
   BackIcon,
@@ -42,6 +43,7 @@ export default function CallPage() {
   const { data: call, error, loading, reload, setData } = useApi<CallDetail>(`/intel/calls/${id}`, {
     poll: (c) => IN_PROGRESS.has(c.processing_status),
   });
+  useTitle(call ? call.analysis?.customer_name ?? call.external_ref ?? "Call" : null);
   const audio = useAudio();
 
   if (loading && !call) return <Loading />;
@@ -50,6 +52,7 @@ export default function CallPage() {
 
   const a = call.analysis;
   const processing = IN_PROGRESS.has(call.processing_status);
+  const expired = !call.audio_url && call.recording_expires_at && new Date(call.recording_expires_at) < new Date();
 
   return (
     <div className="space-y-5">
@@ -75,7 +78,7 @@ export default function CallPage() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_372px]">
         <div className="min-w-0 space-y-5">
-          {a && <Summary analysis={a} />}
+          {a && <Summary analysis={a} followUps={call.follow_ups} />}
           {a && a.items.length > 0 && <Coaching analysis={a} seek={audio.seek} />}
           {call.segments.length > 0 && (
             <Transcript segments={call.segments} current={audio.time} seek={audio.seek} repName={call.rep_name} />
@@ -84,7 +87,14 @@ export default function CallPage() {
 
         <div className="no-scrollbar space-y-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-2">
           {call.audio_url && <Player src={api.url(call.audio_url)} audio={audio} duration={call.duration_seconds} />}
-          {a && a.items.length > 0 && <Scorecard analysis={a} seek={audio.seek} />}
+          {expired && (
+            <Card className="px-5 py-4">
+              <p className="text-[14px] text-muted">
+                The recording was deleted under the retention policy. The transcript and score remain.
+              </p>
+            </Card>
+          )}
+          {a && a.items.length > 0 && <Scorecard analysis={a} seek={audio.seek} callId={call.id} onChange={reload} />}
           {a && !a.items.length && (
             <Card className="p-5">
               <p className="font-medium">Not scored</p>
@@ -136,7 +146,7 @@ function Header({
             )}
             <span>{call.external_ref ?? call.original_filename}</span>
             <span>{duration(call.duration_seconds)}</span>
-            <span>{dateTime(call.occurred_at ?? call.created_at)}</span>
+            <DateEditor call={call} onSaved={reload} />
             {a?.triage?.direction && a.triage.direction !== "unknown" && (
               <span>{titleCase(a.triage.direction)}</span>
             )}
@@ -144,12 +154,12 @@ function Header({
         </div>
 
         {a?.score_max ? (
-          <div className="text-right">
+          <div className="sm:text-right">
             <p className="tnum text-[44px] font-semibold leading-none tracking-title">
               {a.score}
               <span className="text-[26px] font-medium text-faint">/{a.score_max}</span>
             </p>
-            <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex sm:justify-end">
               <GradeBadge grade={a.grade} size="lg" />
             </div>
             <p className="mt-1 text-[12px] text-muted">{a.scorecard_name}</p>
@@ -208,6 +218,60 @@ function Header({
         </div>
       </Modal>
     </Card>
+  );
+}
+
+function DateEditor({ call, onSaved }: { call: CallDetail; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const when = call.occurred_at ?? call.created_at;
+  if (!editing) {
+    return (
+      <button
+        className="hover:text-link"
+        title={call.occurred_at ? "Change when this call happened" : "Upload time - set when the call happened"}
+        onClick={() => {
+          const d = new Date(when);
+          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+          setValue(local);
+          setEditing(true);
+        }}
+      >
+        {dateTime(when)}
+        {!call.occurred_at && <span className="text-faint"> (uploaded)</span>}
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input
+        type="datetime-local"
+        className="input w-auto px-2 py-1 text-[13px]"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        max={new Date().toISOString().slice(0, 16)}
+      />
+      <button
+        className="btn-primary px-3 py-1 text-[13px]"
+        disabled={busy || !value}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await api.patch(`/intel/calls/${call.id}`, { occurred_at: new Date(value).toISOString() });
+            setEditing(false);
+            await onSaved();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Save
+      </button>
+      <button className="btn-ghost px-2 py-1 text-[13px]" onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+    </span>
   );
 }
 
@@ -386,7 +450,7 @@ function Processing({ status }: { status: string }) {
 
 // --- Summary & details ------------------------------------------------------------
 
-function Summary({ analysis: a }: { analysis: Analysis }) {
+function Summary({ analysis: a, followUps }: { analysis: Analysis; followUps: CallDetail["follow_ups"] }) {
   const t = a.triage;
   const details: { label: string; value: React.ReactNode }[] = [];
   if (a.lens === "sales") {
@@ -428,20 +492,10 @@ function Summary({ analysis: a }: { analysis: Analysis }) {
           ))}
         </dl>
       )}
-      {t.follow_ups.length > 0 && (
+      {followUps.length > 0 && (
         <div className="mt-6 border-t border-line pt-5">
-          <p className="eyebrow mb-2">Follow-ups</p>
-          <ul className="space-y-2 text-[14px]">
-            {t.follow_ups.map((f, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="mt-[7px] h-[5px] w-[5px] shrink-0 rounded-full bg-muted" />
-                <span>
-                  {f.action}
-                  <span className="text-muted"> · {[titleCase(f.owner), f.due].filter(Boolean).join(" · ")}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p className="eyebrow mb-3">Follow-ups</p>
+          <FollowUpList items={followUps} />
         </div>
       )}
     </Card>
@@ -498,7 +552,17 @@ function Coaching({ analysis: a, seek }: { analysis: Analysis; seek: (t: number)
 
 // --- Scorecard --------------------------------------------------------------------
 
-function Scorecard({ analysis: a, seek }: { analysis: Analysis; seek: (t: number) => void }) {
+function Scorecard({
+  analysis: a,
+  seek,
+  callId,
+  onChange,
+}: {
+  analysis: Analysis;
+  seek: (t: number) => void;
+  callId: string;
+  onChange: () => Promise<void>;
+}) {
   const groups = useMemo(() => {
     const out: { quadrant: string; items: ScoreItem[] }[] = [];
     a.items.forEach((item) => {
@@ -533,7 +597,7 @@ function Scorecard({ analysis: a, seek }: { analysis: Analysis; seek: (t: number
               </div>
               <ul className="divide-y divide-line overflow-hidden rounded-xl bg-panel">
                 {g.items.map((item) => (
-                  <ItemRow key={item.key} item={item} seek={seek} />
+                  <ItemRow key={item.key} item={item} seek={seek} callId={callId} onChange={onChange} />
                 ))}
               </ul>
             </div>
@@ -552,7 +616,17 @@ function Scorecard({ analysis: a, seek }: { analysis: Analysis; seek: (t: number
   );
 }
 
-function ItemRow({ item, seek }: { item: ScoreItem; seek: (t: number) => void }) {
+function ItemRow({
+  item,
+  seek,
+  callId,
+  onChange,
+}: {
+  item: ScoreItem;
+  seek: (t: number) => void;
+  callId: string;
+  onChange: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const split = item.agreement && /^[12]\/3$/.test(item.agreement);
   return (
@@ -568,7 +642,12 @@ function ItemRow({ item, seek }: { item: ScoreItem; seek: (t: number) => void })
           </span>
         )}
         <span className="flex-1 text-[14px]">{item.label}</span>
-        {item.auto_awarded && <span className="text-[12px] text-muted">Auto</span>}
+        {item.override && (
+          <span className="text-[12px] text-muted" title={`Changed by ${item.override.by}`}>
+            Manager
+          </span>
+        )}
+        {item.auto_awarded && !item.override && <span className="text-[12px] text-muted">Auto</span>}
         {split && !item.auto_awarded && (
           <span className="chip bg-warn-soft text-warn" title="Independent grading passes disagreed on this step">
             Borderline
@@ -589,6 +668,7 @@ function ItemRow({ item, seek }: { item: ScoreItem; seek: (t: number) => void })
       {open && (
         <div className="space-y-2 px-3 pb-3.5 pl-[38px] text-[14px]">
           <p className="text-ink/80">{item.reason}</p>
+          <OverrideControls item={item} callId={callId} onChange={onChange} />
           {item.deliberation && (
             <div className="space-y-2 rounded-xl bg-white p-3">
               <p className="text-xs font-medium text-muted">How the models deliberated</p>
@@ -793,5 +873,77 @@ function Transcript({
         })}
       </div>
     </Card>
+  );
+}
+
+
+function OverrideControls({
+  item,
+  callId,
+  onChange,
+}: {
+  item: ScoreItem;
+  callId: string;
+  onChange: () => Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  async function save(status: "met" | "missed" | null) {
+    setBusy(true);
+    try {
+      await api.put(`/intel/calls/${callId}/items/${item.key}/override`, { status, note });
+      setEditing(false);
+      setNote("");
+      await onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (item.override) {
+    const model = item.model_status === "met" ? "met" : "missed";
+    return (
+      <div className="rounded-xl bg-white px-3 py-2.5 text-[13px]">
+        <p>
+          <span className="font-medium">Changed to {item.override.status} by {item.override.by}</span>
+          <span className="text-muted"> · {dateTime(item.override.at)} · scored {model} originally</span>
+        </p>
+        {item.override.note && <p className="mt-1 text-ink/80">{item.override.note}</p>}
+        <button className="mt-1.5 text-link hover:underline" disabled={busy} onClick={() => save(null)}>
+          Undo change
+        </button>
+      </div>
+    );
+  }
+
+  const target = item.awarded ? "missed" : "met";
+  if (!editing) {
+    return (
+      <button className="text-[13px] text-link hover:underline" onClick={() => setEditing(true)}>
+        Disagree? Mark as {target}
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-xl bg-white p-3">
+      <input
+        className="input py-1.5 text-[13px]"
+        placeholder="Why? (optional, shown to the team)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        maxLength={500}
+      />
+      <div className="flex gap-2">
+        <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy} onClick={() => save(target)}>
+          {busy && <Spinner className="h-3 w-3" />}
+          Mark as {target}
+        </button>
+        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

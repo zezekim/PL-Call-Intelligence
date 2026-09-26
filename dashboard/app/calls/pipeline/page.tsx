@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type Lead } from "@/lib/api";
 import { STAGES, date, dateTime } from "@/lib/format";
-import { useApi } from "@/lib/hooks";
+import { useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
 import { ChevronIcon } from "@/components/icons";
 import { Avatar, Card, Empty, ErrorNote, Loading } from "@/components/ui";
@@ -18,6 +18,7 @@ const STAGE_DOT: Record<string, string> = {
 };
 
 export default function PipelinePage() {
+  useTitle("Pipeline");
   const { refreshKey } = useCalls();
   const { data, error, loading, reload, setData } = useApi<Lead[]>("/intel/pipeline");
   const [dragging, setDragging] = useState<string | null>(null);

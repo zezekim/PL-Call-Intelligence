@@ -88,6 +88,10 @@ PUBLIC_ROUTES = [
     ("get", "/intel/overview"),
     ("get", "/intel/pipeline"),
     ("patch", "/intel/leads/{lead_id}"),
+    ("patch", "/intel/calls/{call_id}"),
+    ("get", "/intel/follow-ups"),
+    ("patch", "/intel/follow-ups/{follow_up_id}"),
+    ("put", "/intel/calls/{call_id}/items/{key}/override"),
 ]
 
 

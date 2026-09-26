@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
+import { useTitle } from "@/lib/hooks";
 import { askForEnvironmentNext } from "@/components/environment";
 import { ErrorNote, Spinner } from "@/components/ui";
 
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useTitle("Sign in");
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();

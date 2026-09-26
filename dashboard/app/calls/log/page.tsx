@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import type { CallPage, CallRow, RepSummary } from "@/lib/api";
 import { CALL_TYPES, date, duration } from "@/lib/format";
-import { IN_PROGRESS, useApi } from "@/lib/hooks";
+import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
 import { SearchIcon } from "@/components/icons";
 import {
@@ -37,6 +37,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function CallLog() {
+  useTitle("Call Log");
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();

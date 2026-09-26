@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect } from "react";
 import type { MissedStep, Overview } from "@/lib/api";
 import { CANCEL_REASON, OFFER_LABEL, pct, titleCase } from "@/lib/format";
-import { useApi } from "@/lib/hooks";
+import { useApi, useTitle } from "@/lib/hooks";
 import { useCalls } from "@/components/calls-context";
 import { ChevronIcon, PhoneIcon } from "@/components/icons";
+import { FollowUpList } from "@/components/follow-up-list";
 import { Card, CardHeader, Empty, ErrorNote, GroupRow, HitBar, Loading, Metric } from "@/components/ui";
 
 export default function OverviewPage() {
+  useTitle("Calls");
   const { query, refreshKey } = useCalls();
   const { data, error, loading, reload } = useApi<Overview>(query("/intel/overview"), {
     poll: (d) => d.scorecard.in_progress > 0,
@@ -39,8 +41,8 @@ export default function OverviewPage() {
   const attention = [
     {
       show: data.follow_ups.length > 0,
-      title: `${plural(data.follow_ups.length, "follow-up")} promised to customers`,
-      detail: "Callbacks, quotes and visits committed to on calls",
+      title: `${plural(data.follow_ups.length, "open follow-up")}`,
+      detail: "Callbacks, quotes and visits promised on calls - tick them off as they're done",
       href: "#follow-ups",
     },
     {
@@ -196,16 +198,9 @@ export default function OverviewPage() {
         <section id="follow-ups" className="scroll-mt-8">
           <h2 className="section-title mb-3 px-1">Promised to customers</h2>
           {data.follow_ups.length ? (
-            <div className="group-list">
-              {data.follow_ups.map((f, i) => (
-                <GroupRow key={i} href={`/calls/${f.call_id}`}>
-                  <p className="text-[14px] leading-snug">{f.action}</p>
-                  <p className="mt-0.5 text-[12px] text-muted">
-                    {[f.customer, titleCase(f.owner), f.due].filter(Boolean).join(" · ")}
-                  </p>
-                </GroupRow>
-              ))}
-            </div>
+            <Card className="p-5">
+              <FollowUpList items={data.follow_ups} linkToCall />
+            </Card>
           ) : (
             <Card>
               <Empty title="Nothing outstanding" />

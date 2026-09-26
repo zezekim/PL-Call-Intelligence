@@ -4,24 +4,25 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from callsentry.api.deps import BusinessDep, SessionDep
+from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
-from callsentry.intel import audio, ingest, insights, jobs, pipeline
+from callsentry.intel import audio, followups, ingest, insights, jobs, overrides, pipeline
 from callsentry.intel import leads as leads_service
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
-from callsentry.models import Call, CallAnalysis, Lead, ProcessingStatus, Rep
+from callsentry.models import Call, CallAnalysis, FollowUp, Lead, ProcessingStatus, Rep
 
 router = APIRouter(prefix="/intel", tags=["call-intelligence"])
 
@@ -86,7 +87,24 @@ class AnalysisOut(BaseModel):
     cost_usd: float
 
 
+class FollowUpOut(BaseModel):
+    id: str
+    call_id: str
+    action: str
+    owner: str | None
+    due: str | None
+    status: str
+    done_at: datetime | None
+    done_by: str | None
+    created_at: datetime
+    customer: str | None = None
+    rep: str | None = None
+    ref: str | None = None
+
+
 class CallDetailOut(CallRow):
+    follow_ups: list[FollowUpOut]
+    recording_expires_at: datetime | None
     stt_engine: str | None
     stt_provider: str | None
     audio_channels: int | None
@@ -135,7 +153,7 @@ def _sign(call_id: str, expires: int) -> str:
 
 
 def _audio_url(call: Call) -> str | None:
-    if not call.audio_path:
+    if pipeline.audio_file(call) is None:
         return None
     expires = int(time.time()) + AUDIO_URL_TTL_SECONDS
     return f"/intel/calls/{call.id}/audio?expires={expires}&sig={_sign(str(call.id), expires)}"
@@ -210,14 +228,22 @@ async def _owned_call(session: SessionDep, business_id: uuid.UUID, call_id: uuid
         .options(selectinload(Call.analysis), selectinload(Call.rep))
     )
     # Same 404 for missing and foreign rows, so other tenants' ids don't leak.
-    if call is None or call.business_id != business_id or not call.audio_path:
+    if (
+        call is None
+        or call.business_id != business_id
+        or not (call.audio_path or call.stt_provider)
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
     return call
 
 
 def _base_query(business_id: uuid.UUID) -> Select[Any]:
-    # Every call with a recording: uploads and calls the AI receptionist took.
-    return select(Call).where(Call.business_id == business_id, Call.audio_path.isnot(None))
+    # Every call with a recording (uploads and the receptionist's calls), and
+    # calls whose recording has since expired but whose analysis remains.
+    return select(Call).where(
+        Call.business_id == business_id,
+        or_(Call.audio_path.isnot(None), Call.stt_provider.isnot(None)),
+    )
 
 
 # --- Routes --------------------------------------------------------------------
@@ -230,7 +256,14 @@ async def upload(
     files: Annotated[list[UploadFile], File(description="One or more call recordings")],
     engine: Annotated[str, Form()] = "",
     scoring: Annotated[str, Form()] = "",
+    # JSON list of ISO datetimes, one per file (the browser sends each file's
+    # own modified time, which for call exports is when the call happened).
+    dates: Annotated[str, Form()] = "",
 ) -> list[CallRow]:
+    try:
+        occurred = [_parse_when(d) for d in json.loads(dates)] if dates else []
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "dates must be a JSON list") from exc
     if scoring and scoring not in {"standard", "enhanced"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "scoring must be standard or enhanced")
     engine = engine or get_settings().call_stt_engine
@@ -238,7 +271,7 @@ async def upload(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "engine must be auto, deepgram or local")
 
     created: list[Call] = []
-    for upload_file in files:
+    for index, upload_file in enumerate(files):
         try:
             call = await ingest.ingest(
                 session,
@@ -246,6 +279,7 @@ async def upload(
                 filename=upload_file.filename or "recording",
                 data=await upload_file.read(),
                 engine=engine,
+                occurred_at=occurred[index] if index < len(occurred) else None,
             )
             call.scoring_mode = scoring or None
         except ingest.RejectedUpload as exc:
@@ -329,8 +363,15 @@ async def list_calls(
 @router.get("/calls/{call_id}", response_model=CallDetailOut)
 async def get_call(call_id: uuid.UUID, session: SessionDep, business: BusinessDep) -> CallDetailOut:
     call = await _owned_call(session, business.id, call_id)
+    follow_ups = (
+        await session.scalars(
+            select(FollowUp).where(FollowUp.call_id == call.id).order_by(FollowUp.created_at)
+        )
+    ).all()
     return CallDetailOut(
         **_row(call).model_dump(),
+        follow_ups=[_follow_up_out(f) for f in follow_ups],
+        recording_expires_at=call.recording_expires_at,
         stt_engine=call.stt_engine,
         stt_provider=call.stt_provider,
         audio_channels=call.audio_channels,
@@ -474,3 +515,125 @@ async def move_lead(
     lead.stage_source = "manual"
     await session.commit()
     return {"id": str(lead.id), "stage": lead.stage}
+
+
+
+def _parse_when(value: Any) -> datetime | None:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timezone required")
+    # A file dated in the future or before phones existed is a bad clock, not a call date.
+    if parsed > datetime.now(UTC) + timedelta(days=1) or parsed.year < 2000:
+        return None
+    return parsed
+
+
+class CallUpdate(BaseModel):
+    occurred_at: datetime
+
+
+@router.patch("/calls/{call_id}", response_model=CallRow)
+async def update_call(
+    call_id: uuid.UUID, payload: CallUpdate, session: SessionDep, business: BusinessDep
+) -> CallRow:
+    """Correct when a call happened."""
+    call = await _owned_call(session, business.id, call_id)
+    if payload.occurred_at.tzinfo is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "occurred_at needs a timezone")
+    call.occurred_at = payload.occurred_at
+    await session.flush()
+    if call.lead_id:
+        await leads_service.refresh_contact(session, call.lead_id)
+    await session.commit()
+    return _row(call)
+
+
+def _follow_up_out(f: FollowUp, call: Call | None = None) -> FollowUpOut:
+    analysis = call.analysis if call else None
+    return FollowUpOut(
+        id=str(f.id), call_id=str(f.call_id), action=f.action, owner=f.owner, due=f.due,
+        status=f.status, done_at=f.done_at, done_by=f.done_by, created_at=f.created_at,
+        customer=analysis.customer_name if analysis else None,
+        rep=(call.rep.name if call and call.rep else None),
+        ref=call.external_ref if call else None,
+    )
+
+
+@router.get("/follow-ups", response_model=list[FollowUpOut])
+async def list_follow_ups(
+    session: SessionDep,
+    business: BusinessDep,
+    status_: Annotated[str, Query(alias="status")] = "open",
+) -> list[FollowUpOut]:
+    rows = (
+        await session.execute(
+            select(FollowUp, Call)
+            .join(Call, Call.id == FollowUp.call_id)
+            .where(FollowUp.business_id == business.id, FollowUp.status == status_)
+            .options(selectinload(Call.analysis), selectinload(Call.rep))
+            .order_by(FollowUp.created_at.desc())
+            .limit(200)
+        )
+    ).all()
+    return [_follow_up_out(f, c) for f, c in rows]
+
+
+class FollowUpUpdate(BaseModel):
+    status: str
+
+
+@router.patch("/follow-ups/{follow_up_id}", response_model=FollowUpOut)
+async def update_follow_up(
+    follow_up_id: uuid.UUID, payload: FollowUpUpdate, session: SessionDep,
+    business: BusinessDep, user: UserDep,
+) -> FollowUpOut:
+    item = await session.get(FollowUp, follow_up_id)
+    if item is None or item.business_id != business.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "follow-up not found")
+    if payload.status not in (followups.OPEN, followups.DONE):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "status must be open or done")
+    item.status = payload.status
+    item.done_at = datetime.now(UTC) if payload.status == followups.DONE else None
+    item.done_by = user.email if payload.status == followups.DONE else None
+    await session.commit()
+    return _follow_up_out(item)
+
+
+class OverrideRequest(BaseModel):
+    # met | missed, or null to clear the override.
+    status: str | None
+    note: str = Field(default="", max_length=500)
+
+
+@router.put("/calls/{call_id}/items/{key}/override", response_model=CallRow)
+async def override_item(
+    call_id: uuid.UUID, key: str, payload: OverrideRequest, session: SessionDep,
+    business: BusinessDep, user: UserDep,
+) -> CallRow:
+    """A manager's correction to one scorecard step. The grade is recomputed."""
+    call = await _owned_call(session, business.id, call_id)
+    analysis = call.analysis
+    if analysis is None or not any(i.get("key") == key for i in analysis.items or []):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "step not found")
+    if payload.status not in (None, "met", "missed"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "status must be met, missed or null")
+
+    current = dict(analysis.overrides or {})
+    if payload.status is None:
+        current.pop(key, None)
+    else:
+        current[key] = {
+            "status": payload.status,
+            "note": payload.note.strip(),
+            "by": user.email,
+            "at": datetime.now(UTC).isoformat(),
+        }
+    items, score, grade = overrides.apply(analysis.items or [], current, analysis.scorecard_key)
+    analysis.overrides = current
+    analysis.items = items
+    analysis.score, analysis.grade = score, grade
+    call.score, call.grade = score, grade
+    await session.commit()
+    return _row(call)

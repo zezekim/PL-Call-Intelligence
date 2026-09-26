@@ -32,6 +32,21 @@ async def sweep(session: AsyncSession) -> dict[str, int]:
         .values(recording_url=None)
     )
 
+    # Uploaded and receptionist recordings live on disk: delete the file, keep
+    # the transcript and score until the transcript's own expiry.
+    from callsentry.intel.pipeline import audio_file
+
+    expired = (
+        await session.scalars(
+            select(Call).where(Call.audio_path.isnot(None), Call.recording_expires_at <= now)
+        )
+    ).all()
+    for call in expired:
+        path = audio_file(call)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        call.audio_path = None
+
     transcript_cutoff = now - timedelta(days=settings.transcript_retention_days)
     transcripts = await session.execute(
         update(Call)
@@ -40,7 +55,7 @@ async def sweep(session: AsyncSession) -> dict[str, int]:
     )
 
     result = {
-        "recordings_purged": recordings.rowcount or 0,
+        "recordings_purged": (recordings.rowcount or 0) + len(expired),
         "transcripts_purged": transcripts.rowcount or 0,
     }
     log.info("retention.sweep", **result)

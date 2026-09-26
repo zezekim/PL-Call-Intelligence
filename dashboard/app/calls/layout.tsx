@@ -109,15 +109,15 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
               </button>
             </div>
           </div>
-          <div className="mt-6 overflow-x-auto">
-            <div className="inline-flex rounded-[9px] bg-fill p-[2px]" role="tablist">
+          <div className="mt-6">
+            <div className="flex w-full rounded-[9px] bg-fill p-[2px] sm:inline-flex sm:w-auto" role="tablist">
               {TABS.map((t) => (
                 <Link
                   key={t.href}
                   href={t.href}
                   role="tab"
                   aria-selected={active === t.href}
-                  className={`whitespace-nowrap rounded-[7px] px-4 py-[5px] text-[13px] font-medium transition-all duration-150 ${
+                  className={`flex-1 whitespace-nowrap rounded-[7px] px-2 py-[5px] text-center text-[13px] font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
                     active === t.href ? "bg-white text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
                   }`}
                 >
@@ -161,6 +161,8 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
     setError(null);
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
+    // Each file's own modified time is when an exported call happened.
+    form.append("dates", JSON.stringify(files.map((f) => new Date(f.lastModified).toISOString())));
     form.append("engine", ENGINE_FOR[env]);
     form.append("scoring", scoring);
     try {

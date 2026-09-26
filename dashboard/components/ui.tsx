@@ -113,7 +113,7 @@ export function ScoreCell({
   if (score === null || !max) return <span className="text-[13px] text-muted">Not scored</span>;
   return (
     <div className="flex items-center gap-3">
-      <span className="tnum w-10 text-[14px] font-medium">
+      <span className="tnum whitespace-nowrap text-[14px] font-medium">
         {score}
         <span className="text-faint">/{max}</span>
       </span>

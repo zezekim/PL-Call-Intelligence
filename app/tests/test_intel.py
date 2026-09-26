@@ -526,3 +526,51 @@ def test_only_receptionist_bookings_become_leads_outside_sales(source, booked, e
     analysis = CallAnalysis(call_type="scheduling",
                             triage={"appointment": {"booked": booked, "when": "Monday"}})
     assert _receptionist_booking(call, analysis) is expected
+
+
+# --- Manager overrides -----------------------------------------------------------
+
+
+def _items(statuses):
+    return [{"key": k, "label": k, "status": v, "awarded": v != "missed"} for k, v in statuses]
+
+
+def test_override_changes_grade_and_keeps_model_verdict():
+    from callsentry.intel import overrides
+
+    keys = [i.key for i in ALL_CALLS.items]
+    items = _items([(k, "met") for k in keys[:-1]] + [(keys[-1], "missed")])
+    out, score, grade = overrides.apply(items, {}, "all_calls")
+    assert (score, grade) == (11, "green")
+
+    fixed = {keys[-1]: {"status": "met", "by": "owner@x", "at": "t", "note": "heard it"}}
+    out, score, grade = overrides.apply(out, fixed, "all_calls")
+    assert (score, grade) == (12, "gold")
+    last = out[-1]
+    assert last["model_status"] == "missed" and last["status"] == "met"
+    assert last["override"]["by"] == "owner@x"
+
+    # Clearing the override restores the model's verdict.
+    out, score, _ = overrides.apply(out, {}, "all_calls")
+    assert score == 11 and "override" not in out[-1]
+
+
+def test_override_survives_rescoring_on_fresh_items():
+    from callsentry.intel import overrides
+
+    keys = [i.key for i in ALL_CALLS.items]
+    fresh = _items([(k, "met") for k in keys])
+    out, score, _ = overrides.apply(fresh, {keys[0]: {"status": "missed"}}, "all_calls")
+    assert score == 11 and out[0]["status"] == "missed" and out[0]["model_status"] == "met"
+
+
+def test_upload_dates_reject_bad_clocks():
+    from datetime import UTC, datetime, timedelta
+
+    from callsentry.api.routes.intel import _parse_when
+
+    now = datetime.now(UTC)
+    assert _parse_when((now - timedelta(days=3)).isoformat()) is not None
+    assert _parse_when((now + timedelta(days=30)).isoformat()) is None
+    assert _parse_when("1980-01-01T00:00:00+00:00") is None
+    assert _parse_when("") is None

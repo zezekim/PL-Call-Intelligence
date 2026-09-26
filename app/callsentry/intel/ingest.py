@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from callsentry.config import get_settings
 from callsentry.intel import audio, pipeline
 from callsentry.models import Call, CallSource, ProcessingStatus
 
@@ -32,6 +34,7 @@ async def ingest(
     filename: str,
     data: bytes,
     engine: str,
+    occurred_at: datetime | None = None,
 ) -> Call:
     name = Path(filename or "recording").name
     suffix = Path(name).suffix.lower()
@@ -64,6 +67,10 @@ async def ingest(
         audio_channels=info.channels,
         duration_seconds=int(round(info.duration_seconds)),
         processing_status=ProcessingStatus.QUEUED,
+        occurred_at=occurred_at,
+        # Stamped once: a later policy change never shortens what was promised.
+        recording_expires_at=datetime.now(UTC)
+        + timedelta(days=get_settings().recording_retention_days),
         stt_engine=engine,
         segments=[],
         provider_log=[],

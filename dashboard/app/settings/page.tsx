@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { useApi } from "@/lib/hooks";
+import { useApi, useTitle } from "@/lib/hooks";
 import { AlertIcon, CheckIcon } from "@/components/icons";
 import { ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
 
@@ -75,6 +75,7 @@ const ENGINE_CHOICES = [
 ];
 
 export default function SettingsPage() {
+  useTitle("Settings");
   const { data, error, loading, setData } = useApi<Platform>("/settings/platform");
   const spend = useApi<Spend>("/settings/spend");
   const models = useApi<ModelList>("/settings/models");
@@ -180,6 +181,8 @@ export default function SettingsPage() {
       ))}
 
       <PlaybookPanel canEdit={data.can_edit} />
+      <TeamPanel canEdit={data.can_edit} />
+      <AccountPanel />
 
       <Modal open={confirming} onClose={() => !saving && setConfirming(false)} title="Save these changes?">
         <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[14px] leading-snug">
@@ -585,6 +588,220 @@ function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
             spellCheck
           />
         )}
+      </div>
+    </section>
+  );
+}
+
+
+interface TeamUser {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+  is_current_user: boolean;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  viewer: "View only",
+  operator: "Platform operator",
+};
+
+function TeamPanel({ canEdit }: { canEdit: boolean }) {
+  const { data, reload, error } = useApi<TeamUser[]>("/settings/users");
+  const [adding, setAdding] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("admin");
+  const [resetting, setResetting] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [removing, setRemoving] = useState<TeamUser | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function run(action: () => Promise<unknown>, done: () => void) {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await action();
+      done();
+      await reload();
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="pt-3">
+      <div className="mb-3 flex items-end justify-between gap-3 px-1">
+        <div>
+          <h2 className="section-title">Team</h2>
+          <p className="footnote mt-1">People who can sign in. View-only users can see everything but change nothing.</p>
+        </div>
+        {canEdit && !adding && (
+          <button className="btn-secondary" onClick={() => setAdding(true)}>
+            Add person
+          </button>
+        )}
+      </div>
+      {(failure || error) && (
+        <div className="mb-3">
+          <ErrorNote message={failure ?? error ?? ""} />
+        </div>
+      )}
+      <div className="group-list">
+        {adding && (
+          <div className="grid gap-2 px-5 py-4 sm:grid-cols-[1.4fr_1fr_140px_auto]">
+            <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Temporary password (10+ characters)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="admin">Admin</option>
+              <option value="viewer">View only</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                className="btn-primary"
+                disabled={busy || !email || password.length < 10}
+                onClick={() =>
+                  run(() => api.post("/settings/users", { email, password, role }), () => {
+                    setAdding(false);
+                    setEmail("");
+                    setPassword("");
+                  })
+                }
+              >
+                Add
+              </button>
+              <button className="btn-ghost" onClick={() => setAdding(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {(data ?? []).map((u) => (
+          <div key={u.id} className="px-5 py-3.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px]">
+                  {u.email}
+                  {u.is_current_user && <span className="text-muted"> (you)</span>}
+                </p>
+                <p className="text-[12px] text-muted">{ROLE_LABEL[u.role] ?? u.role}</p>
+              </div>
+              {canEdit && !u.is_current_user && (
+                <div className="flex gap-2">
+                  <button className="btn-secondary px-3 py-1 text-[13px]" onClick={() => setResetting(resetting === u.id ? null : u.id)}>
+                    Set password
+                  </button>
+                  <button className="btn-danger px-3 py-1 text-[13px]" onClick={() => setRemoving(u)}>
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+            {resetting === u.id && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  className="input max-w-xs"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="New password (10+ characters)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+                <button
+                  className="btn-primary"
+                  disabled={busy || newPassword.length < 10}
+                  onClick={() =>
+                    run(() => api.put(`/settings/users/${u.id}/password`, { password: newPassword }), () => {
+                      setResetting(null);
+                      setNewPassword("");
+                    })
+                  }
+                >
+                  Save
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <Modal open={!!removing} onClose={() => setRemoving(null)} title="Remove this person?">
+        <p className="text-[14px] text-muted">{removing?.email} will no longer be able to sign in.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-secondary" onClick={() => setRemoving(null)}>
+            Cancel
+          </button>
+          <button
+            className="btn bg-bad text-white hover:bg-[#b0001a]"
+            disabled={busy}
+            onClick={() => removing && run(() => api.delete(`/settings/users/${removing.id}`), () => setRemoving(null))}
+          >
+            Remove
+          </button>
+        </div>
+      </Modal>
+    </section>
+  );
+}
+
+function AccountPanel() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  return (
+    <section className="pt-3">
+      <h2 className="section-title px-1">Your account</h2>
+      <p className="footnote mb-3 mt-1 px-1">Change the password you sign in with.</p>
+      <div className="card flex flex-wrap items-center gap-2 px-5 py-4">
+        <input
+          className="input max-w-[220px]"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Current password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+        <input
+          className="input max-w-[220px]"
+          type="password"
+          autoComplete="new-password"
+          placeholder="New password (10+ characters)"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+        <button
+          className="btn-primary"
+          disabled={busy || !current || next.length < 10}
+          onClick={async () => {
+            setBusy(true);
+            setMessage(null);
+            try {
+              await api.post("/auth/change-password", { current_password: current, new_password: next });
+              setCurrent("");
+              setNext("");
+              setMessage({ ok: true, text: "Password changed." });
+            } catch (err) {
+              setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not change password" });
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Change password
+        </button>
+        {message && <p className={`w-full text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
       </div>
     </section>
   );

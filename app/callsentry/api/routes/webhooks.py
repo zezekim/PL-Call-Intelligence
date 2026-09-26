@@ -109,6 +109,7 @@ async def twilio_voice(
             business_id=business.id,
             provider_call_id=call_sid,
             caller_number=from_number,
+            occurred_at=datetime.now(UTC),
             outcome=CallOutcome.ANSWERED,
             recording_expires_at=datetime.now(UTC)
             + timedelta(days=settings.recording_retention_days),

@@ -48,7 +48,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${BASE}${path}`, { ...init, headers });
 
-  if (response.status === 401) {
+  // A 401 from signing in is a wrong password, not an expired session.
+  if (response.status === 401 && !path.startsWith("/auth/login")) {
     clearToken();
     if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
@@ -144,6 +145,8 @@ export interface ScoreItem {
   reason: string;
   evidence: Evidence[];
   agreement: string | null;
+  model_status?: string;
+  override?: { status: string; note: string; by: string; at: string } | null;
   deliberation?: { model: string; first: string; final: string; reason: string }[] | null;
 }
 
@@ -227,7 +230,23 @@ export interface Segment {
   role: "rep" | "customer" | "unknown";
 }
 
+export interface FollowUp {
+  id: string;
+  call_id: string;
+  action: string;
+  owner: string | null;
+  due: string | null;
+  status: "open" | "done";
+  done_at: string | null;
+  done_by: string | null;
+  customer?: string | null;
+  rep?: string | null;
+  ref?: string | null;
+}
+
 export interface CallDetail extends CallRow {
+  follow_ups: FollowUp[];
+  recording_expires_at: string | null;
   stt_engine: string | null;
   stt_provider: string | null;
   audio_channels: number | null;
@@ -310,7 +329,7 @@ export interface Overview {
     unresolved_calls: (CallRef & { summary: string })[];
   };
   training: MissedStep[];
-  follow_ups: (CallRef & { action: string; owner: string; due: string })[];
+  follow_ups: (CallRef & { id: string; action: string; owner: string; due: string })[];
   review: (CallRef & { call_type: string; confidence: number })[];
 }
 

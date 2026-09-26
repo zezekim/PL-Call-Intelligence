@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
 from callsentry.core.providers import ProviderUnavailable
-from callsentry.intel import analyze, audio, leads
+from callsentry.intel import analyze, audio, followups, leads, overrides
 from callsentry.intel.analyze import Analysis, AnalysisFailed
 from callsentry.intel.transcribe import EmptyTranscript, transcribe
 from callsentry.intel.transcript import Segment, exact_speakers, merge_adjacent, plain_text
@@ -222,11 +222,17 @@ async def _store(
     row.grade = result.grade
     row.evidence_verified_pct = result.evidence_verified_pct
     row.triage = result.triage
-    row.items = result.items
     row.coaching = result.coaching
+    # A manager's corrections outlive re-scoring: apply them to the new verdicts.
+    items, score, grade = overrides.apply(result.items, row.overrides or {}, result.scorecard_key)
+    row.items = items
+    if score is not None:
+        row.score, row.grade = score, grade
+        call.score, call.grade = score, grade
     row.cost_usd = result.cost_usd
     await session.flush()
     await leads.sync(session, call, row)
+    await followups.sync(session, call, result.triage)
 
     for llm in result.llm_results:
         await costs.record(

@@ -134,6 +134,12 @@ class CallAnalysis(Base, TimestampMixin):
     triage: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
     coaching: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    # A manager's corrections to individual steps, keyed by step:
+    # {"close": {"status": "met", "by": "...", "at": "...", "note": "..."}}.
+    # Kept separately so they survive re-scoring.
+    overrides: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0, nullable=False)
 
     call: Mapped[Call] = relationship(back_populates="analysis")
@@ -167,3 +173,27 @@ class ReceptionistPlaybook(Base, TimestampMixin):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class FollowUp(Base, TimestampMixin):
+    """Something promised to a customer on a call, tracked until done."""
+
+    __tablename__ = "follow_ups"
+    __table_args__ = (Index("ix_follow_ups_business_status", "business_id", "status"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    business_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
+    )
+    call_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), index=True,
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(24))
+    due: Mapped[str | None] = mapped_column(String(120))
+    # open | done
+    status: Mapped[str] = mapped_column(String(8), default="open", server_default="open",
+                                        nullable=False)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done_by: Mapped[str | None] = mapped_column(String(320))
