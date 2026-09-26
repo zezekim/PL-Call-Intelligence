@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: pipecat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -46,7 +46,7 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -83,7 +83,7 @@ jobs:
       E2E_EMAIL: admin@pestlaunch.local
       E2E_PASSWORD: e2e-password-1234
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -127,7 +127,7 @@ jobs:
       group: deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build and start
         run: |
           export APP_VERSION="$(cat VERSION)" BUILD_ID="${GITHUB_SHA::7}"
