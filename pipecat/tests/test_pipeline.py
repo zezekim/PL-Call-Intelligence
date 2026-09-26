@@ -137,3 +137,45 @@ def test_empty_recorder_produces_nothing():
     from agent.pipeline import Recorder
 
     assert Recorder().wav() == b""
+
+
+def test_turns_run_one_at_a_time_and_merge_while_waiting():
+    """An utterance that ends while a reply is in flight waits, then is answered once."""
+    import asyncio
+
+    from agent.pipeline import CallPipeline
+
+    async def run() -> list[int]:
+        async def send(_: dict) -> None:
+            return None
+
+        pipe = CallPipeline(
+            context=CallContext(call_id="c"),
+            send_json=send,
+            app_base_url="http://app",
+            worker_base_url="http://worker",
+            internal_token="t",
+        )
+        handled: list[int] = []
+        active = 0
+
+        async def fake_turn(samples: np.ndarray) -> None:
+            nonlocal active
+            active += 1
+            assert active == 1, "two turns overlapped"
+            handled.append(samples.size)
+            await asyncio.sleep(0.05)
+            active -= 1
+
+        pipe._handle_utterance = fake_turn  # type: ignore[method-assign]
+        for size in (100, 200, 300):
+            pipe._pending.append(np.zeros(size, dtype=np.int16))
+            if pipe._turn_task is None or pipe._turn_task.done():
+                pipe._turn_task = asyncio.create_task(pipe._drain_turns())
+            await asyncio.sleep(0.01)
+        await pipe._turn_task
+        await pipe.close()
+        return handled
+
+    # The first utterance is answered alone; the two that arrived meanwhile together.
+    assert asyncio.run(run()) == [100, 500]

@@ -70,6 +70,8 @@ class CallState:
     booked: str = ""
     # The caller has been asked what message to pass on.
     taking_message: bool = False
+    # The receptionist promised to put the caller through to a person.
+    transfer_requested: bool = False
 
     def remember(self, role: str, content: str) -> None:
         self.history.append({"role": role, "content": content})

@@ -48,6 +48,7 @@ def _dump(state: CallState) -> str:
         "returning_note": state.returning_note,
         "booked": state.booked,
         "taking_message": state.taking_message,
+        "transfer_requested": state.transfer_requested,
         "pending_slot": (
             {
                 "start": state.pending_slot.start.isoformat(),

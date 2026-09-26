@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { setBusinessZone } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
 import { AlertIcon, CheckIcon } from "@/components/icons";
 import { ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
@@ -154,6 +155,8 @@ export default function SettingsPage() {
       </div>
 
       {!data.can_edit && <ErrorNote message="Only an admin can change these settings." />}
+
+      <BusinessPanel canEdit={data.can_edit} />
 
       {SECTIONS.map((section) => (
         <section key={section.title} className="pt-3">
@@ -813,6 +816,137 @@ function AccountPanel() {
         </button>
         {message && <p className={`w-full text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
       </div>
+    </section>
+  );
+}
+
+interface BusinessSettings {
+  name: string;
+  timezone: string;
+  escalation_phone: string | null;
+}
+
+const ZONES: string[] = (() => {
+  try {
+    return (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf("timeZone");
+  } catch {
+    return ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles"];
+  }
+})();
+
+function BusinessPanel({ canEdit }: { canEdit: boolean }) {
+  const { data, setData, error } = useApi<BusinessSettings>("/settings");
+  const [edits, setEdits] = useState<Partial<BusinessSettings>>({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  if (error && !data) return <ErrorNote message={error} />;
+  if (!data) return null;
+
+  const value = { ...data, ...edits };
+  const dirty = Object.keys(edits).length > 0;
+  const set = (key: keyof BusinessSettings, v: string) => {
+    setMessage(null);
+    setEdits((e) => {
+      const next = { ...e, [key]: v };
+      if ((data[key] ?? "") === v) delete next[key];
+      return next;
+    });
+  };
+  const zones = ZONES.includes(value.timezone) ? ZONES : [value.timezone, ...ZONES];
+
+  async function save() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const saved = await api.patch<BusinessSettings>("/settings", edits);
+      setData(saved);
+      setEdits({});
+      // Times across the dashboard follow the business zone from here on.
+      if (setBusinessZone(saved.timezone)) window.location.reload();
+      setMessage({ ok: true, text: "Saved." });
+    } catch (err) {
+      setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not save" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const row = (label: string, help: string, control: React.ReactNode) => (
+    <div className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:items-center sm:gap-8">
+      <div>
+        <p className="text-[15px]">{label}</p>
+        <p className="mt-0.5 text-[12px] leading-snug text-muted">{help}</p>
+      </div>
+      <div className="flex sm:justify-end">{control}</div>
+    </div>
+  );
+
+  return (
+    <section className="pt-3">
+      <h2 className="section-title px-1">Business</h2>
+      <p className="footnote mb-3 mt-1 max-w-2xl px-1">
+        How the business appears, the time zone calls are shown in, and who the receptionist puts callers
+        through to.
+      </p>
+      <div className="group-list px-5">
+        {row(
+          "Business name",
+          "Shown in the sidebar and spoken in the receptionist's greeting.",
+          <input
+            className="input w-full sm:max-w-[300px]"
+            aria-label="Business name"
+            value={value.name}
+            onChange={(e) => set("name", e.target.value)}
+            disabled={!canEdit}
+          />,
+        )}
+        {row(
+          "Time zone",
+          "Call times across the dashboard are shown in this zone.",
+          <select
+            className="select w-full sm:max-w-[300px]"
+            aria-label="Time zone"
+            value={value.timezone}
+            onChange={(e) => set("timezone", e.target.value)}
+            disabled={!canEdit}
+          >
+            {zones.map((z) => (
+              <option key={z} value={z}>
+                {z.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>,
+        )}
+        {row(
+          "Transfer number",
+          "When a caller asks for a person, the receptionist tells the person who is calling and why, then connects them. Leave empty to take a message instead.",
+          <input
+            className="input w-full sm:max-w-[300px]"
+            aria-label="Transfer number"
+            type="tel"
+            placeholder="+1 555 123 4567"
+            value={value.escalation_phone ?? ""}
+            onChange={(e) => set("escalation_phone", e.target.value)}
+            disabled={!canEdit}
+          />,
+        )}
+      </div>
+      {(dirty || message) && (
+        <div className="mt-3 flex items-center justify-end gap-3 px-1">
+          {message && <p className={`text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
+          {dirty && (
+            <>
+              <button className="btn-secondary" onClick={() => setEdits({})} disabled={busy}>
+                Discard
+              </button>
+              <button className="btn-primary" onClick={save} disabled={busy || !value.name.trim()}>
+                {busy && <Spinner className="h-3.5 w-3.5" />}
+                Save
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }

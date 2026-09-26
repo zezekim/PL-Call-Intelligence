@@ -171,6 +171,11 @@ class CallPipeline:
         self.should_hangup = False
         self.transfer_to: str | None = None
         self._playback_task: asyncio.Task | None = None
+        # Utterances waiting for the turn in flight. Turns run one at a time:
+        # two overlapping turns each cut the other's reply off mid-word, which
+        # callers hear as garbled speech.
+        self._pending: list[np.ndarray] = []
+        self._turn_task: asyncio.Task | None = None
         self._barge_frames = 0
         self._client = httpx.AsyncClient(timeout=30.0)
 
@@ -198,10 +203,18 @@ class CallPipeline:
             return
 
         if self.endpointer.push(samples):
-            utterance = self.endpointer.take()
+            self._pending.append(self.endpointer.take())
             # Handle the turn off the receive loop so incoming frames keep
             # draining; otherwise Twilio's buffer overruns during inference.
-            asyncio.create_task(self._handle_utterance(utterance))
+            if self._turn_task is None or self._turn_task.done():
+                self._turn_task = asyncio.create_task(self._drain_turns())
+
+    async def _drain_turns(self) -> None:
+        while self._pending and not self.should_hangup:
+            # A caller who paused mid-sentence produced several utterances;
+            # answer them together as one turn.
+            batch, self._pending = self._pending, []
+            await self._handle_utterance(np.concatenate(batch))
 
     async def _handle_utterance(self, samples: np.ndarray) -> None:
         if samples.size == 0:

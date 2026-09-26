@@ -7,9 +7,10 @@ fabricate calls, transcripts, and costs against a tenant.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, quoteattr
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -26,6 +27,7 @@ from callsentry.models import (
     CallOutcome,
     CallSource,
     CostCategory,
+    FollowUp,
 )
 from callsentry.services import callstate, costs
 
@@ -143,8 +145,11 @@ async def twilio_voice(
 
     # <Connect><Stream> hands the bidirectional audio to Pipecat. The greeting
     # rides along as a parameter so the agent can speak before the caller does.
+    # When the agent closes the stream Twilio fetches the action URL for what
+    # comes next: a transfer to a person, or hanging up.
+    after = _public_url(settings, f"/webhooks/twilio/stream-ended/{call.id}")
     return _twiml(
-        "<Connect>"
+        f'<Connect action="{escape(after)}">'
         f'<Stream url="{escape(ws_url)}">'
         f'<Parameter name="callId" value="{call.id}"/>'
         f'<Parameter name="businessId" value="{business.id}"/>'
@@ -152,6 +157,105 @@ async def twilio_voice(
         f'<Parameter name="voice" value="{escape(business.voice_id)}"/>'
         "</Stream>"
         "</Connect>"
+    )
+
+
+def _public_url(settings: Any, path: str) -> str:
+    return f"{settings.public_base_url.rstrip('/')}{path}"
+
+
+async def _call_and_business(session: Any, call_id: str) -> tuple[Call | None, Business | None]:
+    try:
+        call = await session.get(Call, uuid.UUID(call_id))
+    except ValueError:
+        return None, None
+    business = await session.get(Business, call.business_id) if call else None
+    return call, business
+
+
+@router.post("/twilio/stream-ended/{call_id}")
+async def twilio_stream_ended(
+    call_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    """The receptionist hung up its side: put the caller through, or end the call."""
+    form = dict(await request.form())
+    await _validate_twilio(request, form, settings)
+    call, business = await _call_and_business(session, call_id)
+    state = await callstate.load(call_id)
+    if call is None or business is None or state is None or not state.transfer_requested:
+        return _twiml("<Hangup/>")
+    if not business.escalation_phone:
+        return _twiml("<Hangup/>")
+
+    log.info("call.transfer", call_id=call_id)
+    whisper = _public_url(settings, f"/webhooks/twilio/whisper/{call_id}")
+    done = _public_url(settings, f"/webhooks/twilio/transfer-done/{call_id}")
+    caller_id = business.twilio_number or str(form.get("To", ""))
+    # Warm transfer: the person answering hears who is calling and why before
+    # the caller is connected (the <Number url> whisper plays to them only).
+    return _twiml(
+        f'<Dial timeout="25" answerOnBridge="true" action="{escape(done)}"'
+        f'{f" callerId={quoteattr(caller_id)}" if caller_id else ""}>'
+        f'<Number url="{escape(whisper)}">{escape(business.escalation_phone)}</Number>'
+        "</Dial>"
+    )
+
+
+def whisper_text(state: CallState | None, call: Call | None) -> str:
+    collected = state.collected if state else {}
+    who = collected.get("name") or "a caller"
+    parts = [f"Transfer from the AI receptionist: {who}"]
+    if call and call.caller_number:
+        parts[0] += f" at {' '.join(call.caller_number.lstrip('+'))}"
+    reason = (call.escalation_reason if call else None) or ""
+    if collected.get("pest"):
+        parts.append(f"calling about {collected['pest']}")
+    if reason:
+        parts.append(f"Reason: {reason.rstrip('.')}")
+    return ". ".join(parts) + ". Connecting you now."
+
+
+@router.post("/twilio/whisper/{call_id}")
+async def twilio_whisper(
+    call_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    """Spoken to the staff member only, before the caller is bridged in."""
+    form = dict(await request.form())
+    await _validate_twilio(request, form, settings)
+    call, _ = await _call_and_business(session, call_id)
+    return _twiml(f"<Say>{escape(whisper_text(await callstate.load(call_id), call))}</Say>")
+
+
+@router.post("/twilio/transfer-done/{call_id}")
+async def twilio_transfer_done(
+    call_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    """After the transfer: nothing to do if answered, otherwise leave a callback."""
+    form = dict(await request.form())
+    await _validate_twilio(request, form, settings)
+    if str(form.get("DialCallStatus", "")) == "completed":
+        return _twiml("<Hangup/>")
+
+    call, business = await _call_and_business(session, call_id)
+    if call is not None and business is not None:
+        state = await callstate.load(call_id)
+        name = (state.collected.get("name") if state else None) or "the caller"
+        number = call.caller_number or (state.caller_number if state else "")
+        session.add(
+            FollowUp(
+                business_id=business.id,
+                call_id=call.id,
+                action=f"Call back {name}{f' at {number}' if number else ''}: "
+                "transfer to a person was not answered",
+                owner="office",
+                due="As soon as possible",
+            )
+        )
+        await session.flush()
+    log.info("call.transfer_unanswered", call_id=call_id, status=form.get("DialCallStatus"))
+    return _twiml(
+        "<Say>Sorry, no one could pick up just now. We have your number and someone will "
+        "call you back shortly. Goodbye.</Say><Hangup/>"
     )
 
 

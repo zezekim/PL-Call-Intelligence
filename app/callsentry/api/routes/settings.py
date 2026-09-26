@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from callsentry.api.deps import BusinessDep, SessionDep, UserDep
@@ -48,6 +50,32 @@ class SettingsPatch(BaseModel):
     greeting_override: str | None = None
     twilio_number: str | None = None
     voice_id: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown time zone") from exc
+        return value
+
+    @field_validator("escalation_phone")
+    @classmethod
+    def _phone(cls, value: str | None) -> str | None:
+        # "" clears it: the receptionist then takes a message instead.
+        if value is None:
+            return None
+        digits = re.sub(r"[\s().-]", "", value)
+        if not digits:
+            return ""
+        if not re.fullmatch(r"\+?\d{10,15}", digits):
+            raise ValueError("Enter a phone number like +1 555 123 4567")
+        if digits.startswith("+"):
+            return digits
+        return f"+1{digits}" if len(digits) == 10 else f"+{digits}"
 
 
 class ConnectCalRequest(BaseModel):
@@ -93,7 +121,7 @@ async def patch_settings(
     payload: SettingsPatch, session: SessionDep, business: BusinessDep
 ) -> SettingsOut:
     for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(business, field, value)
+        setattr(business, field, value if value != "" or field != "escalation_phone" else None)
     await session.flush()
     return _out(business)
 

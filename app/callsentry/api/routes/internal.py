@@ -83,6 +83,9 @@ async def turn(
     if result.escalation_reason:
         call.escalated = True
         call.escalation_reason = result.escalation_reason
+    if result.transfer_to:
+        # Twilio asks what to do once the stream closes; see webhooks.stream_ended.
+        state.transfer_requested = True
 
     await callstate.save(state)
 

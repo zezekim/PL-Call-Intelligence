@@ -27,6 +27,19 @@ jobs:
       - run: ruff check callsentry tests
       - run: pytest -q
 
+  voice:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipecat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests
+
   dashboard:
     runs-on: ubuntu-latest
     defaults:
@@ -107,7 +120,7 @@ jobs:
   deploy:
     # Only pushes to main reach the server; pull requests never run on it.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [api, dashboard, e2e]
+    needs: [api, voice, dashboard, e2e]
     runs-on: [self-hosted, pestlaunch]
     concurrency:
       group: deploy

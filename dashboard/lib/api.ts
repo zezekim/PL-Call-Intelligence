@@ -66,6 +66,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       const body = await response.json();
       detail = body.detail ?? detail;
+      // Validation errors arrive as a list; show the first one's message.
+      if (Array.isArray(detail) && typeof detail[0]?.msg === "string") {
+        detail = detail[0].msg.replace(/^Value error, /, "");
+      }
     } catch {
       /* non-JSON error body */
     }
