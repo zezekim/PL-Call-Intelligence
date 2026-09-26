@@ -20,7 +20,7 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
@@ -34,7 +34,7 @@ jobs:
         working-directory: pipecat
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
@@ -84,7 +84,7 @@ jobs:
       E2E_PASSWORD: e2e-password-1234
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: actions/setup-node@v4
