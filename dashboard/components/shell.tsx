@@ -157,8 +157,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <UpdateNotice />
       <main
-        className={`mx-auto w-full min-w-0 px-4 pb-20 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
-          wide ? "max-w-none" : "max-w-[1120px]"
+        className={`mx-auto w-full min-w-0 px-4 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
+          wide ? "max-w-none pb-4" : "max-w-[1120px] pb-20"
         }`}
       >
         {children}

@@ -80,9 +80,11 @@ export default function PipelinePage() {
       </div>
       {moveError && <ErrorNote message={moveError} />}
 
-      {/* The board scrolls sideways on its own; the page never does. */}
-      <div className="-mx-4 overflow-x-auto px-4 pb-4 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
-        <div className="flex w-max items-start gap-4">
+      {/* The board fills the window: it scrolls sideways, each column scrolls
+          down, so the horizontal scrollbar stays in view however tall the
+          expanded cards get. The page itself never scrolls sideways. */}
+      <div className="-mx-4 h-[calc(100dvh-16.5rem)] min-h-[420px] overflow-x-auto overflow-y-hidden px-4 pb-3 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
+        <div className="flex h-full w-max items-stretch gap-4">
           {STAGES.map((stage) => {
             const cards = leads.filter((l) => l.stage === stage.value);
             return (
@@ -100,12 +102,12 @@ export default function PipelinePage() {
                   setDragging(null);
                   setOver(null);
                 }}
-                className={`flex min-h-[480px] w-[310px] shrink-0 flex-col rounded-card p-2.5 transition-colors ${
+                className={`flex h-full w-[310px] shrink-0 flex-col rounded-card p-2.5 transition-colors ${
                   over === stage.value ? "bg-accent-soft" : "bg-black/[0.035]"
                 }`}
                 aria-label={stage.label}
               >
-                <header className="mb-2.5 flex items-center justify-between px-2 pt-1">
+                <header className="mb-2.5 flex shrink-0 items-center justify-between px-2 pt-1">
                   <span className="flex items-center gap-2 text-[14px] font-semibold tracking-tightish">
                     <span className={`h-2 w-2 rounded-full ${STAGE_DOT[stage.value]}`} />
                     {stage.label}
@@ -114,7 +116,7 @@ export default function PipelinePage() {
                     {cards.length}
                   </span>
                 </header>
-                <div className="flex flex-col gap-2.5">
+                <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-1 pb-1">
                   {cards.map((lead) => (
                     <LeadCard
                       key={lead.id}
