@@ -132,13 +132,28 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
       <div key={pathname} className="animate-page-in">
         {children}
       </div>
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={() => {
+          setRefreshKey((k) => k + 1);
+          setAsOf(new Date().toISOString());
+        }}
+      />
       <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
     </CallsContext.Provider>
   );
 }
 
-function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function UploadDialog({
+  open,
+  onClose,
+  onUploaded,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const { env, choose } = useEnvironment();
@@ -160,7 +175,10 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const finish = () => {
     reset();
     onClose();
-    startProgress();
+    // Already on the Call Log (e.g. right after deleting a call): refresh it
+    // in place, since pushing the same URL neither navigates nor refetches.
+    onUploaded();
+    startProgress("/calls/log");
     router.push("/calls/log");
   };
 
@@ -187,6 +205,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         return;
       }
       // Say which files were skipped before moving on.
+      if (result.created.length) onUploaded();
       setFiles([]);
       setSkipped(result.duplicates);
       setBusy(false);

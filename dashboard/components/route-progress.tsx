@@ -5,8 +5,19 @@ import { Suspense, useEffect, useRef, useState } from "react";
 
 const START = "pestlaunch:navigation-start";
 
-/** Start the bar for a navigation made in code (router.push). */
-export function startProgress() {
+// A navigation that never lands (same URL, cancelled, failed) must not leave
+// the bar hanging at 90%.
+const GIVE_UP_MS = 8000;
+
+/**
+ * Start the bar for a navigation made in code (router.push). Pass the
+ * destination so a push to the page already on screen doesn't start it.
+ */
+export function startProgress(href?: string) {
+  if (href) {
+    const url = new URL(href, window.location.href);
+    if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+  }
   window.dispatchEvent(new Event(START));
 }
 
@@ -36,6 +47,15 @@ function Bar() {
     timers.current = [];
   };
 
+  function finish() {
+    if (!running.current) return;
+    running.current = false;
+    clear();
+    setWidth(100);
+    timers.current.push(window.setTimeout(() => setVisible(false), 250));
+    timers.current.push(window.setTimeout(() => setWidth(0), 550));
+  }
+
   useEffect(() => {
     const start = () => {
       clear();
@@ -46,6 +66,7 @@ function Bar() {
       [[60, 30], [220, 55], [500, 72], [1000, 84], [2000, 90]].forEach(([delay, to]) =>
         timers.current.push(window.setTimeout(() => setWidth(to), delay)),
       );
+      timers.current.push(window.setTimeout(finish, GIVE_UP_MS));
     };
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey ||
@@ -68,12 +89,7 @@ function Bar() {
 
   // The new route rendered: finish, then fade out.
   useEffect(() => {
-    if (!running.current) return;
-    running.current = false;
-    clear();
-    setWidth(100);
-    timers.current.push(window.setTimeout(() => setVisible(false), 250));
-    timers.current.push(window.setTimeout(() => setWidth(0), 550));
+    finish();
   }, [pathname, search]);
 
   return (
