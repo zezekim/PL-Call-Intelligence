@@ -61,7 +61,7 @@ export function RepCompact() {
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Card className="p-5">
           <Heading tone="good" title="Good at" />
           {rep.strengths.length ? (

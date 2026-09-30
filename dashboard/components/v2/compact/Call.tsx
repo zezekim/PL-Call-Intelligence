@@ -93,8 +93,8 @@ function CallPage() {
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
-        <div className="min-w-0 lg:sticky lg:top-6">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
+        <div className="min-w-0 xl:sticky xl:top-6">
           <ListenPanel
             src={call.audio_url ? api.url(call.audio_url) : null}
             duration={call.duration_seconds}
@@ -177,7 +177,7 @@ function Verdict({ call, audio, onChanged }: { call: CallDetail; audio: AudioCon
       </div>
 
       {(best || fix) && (
-        <div className="mt-5 grid gap-3 border-t border-line pt-5 sm:grid-cols-2">
+        <div className="mt-5 grid gap-3 border-t border-line pt-5 sm:grid-cols-2 sm:gap-y-0">
           {best && (
             <Moment tone="good" label="Done well" title={best.title} at={best.start} seg={best.segment_id} audio={audio} />
           )}
@@ -258,29 +258,31 @@ function Moment({
 }) {
   const Icon = tone === "good" ? CheckIcon : CrossIcon;
   return (
+    // Label, title and link sit on shared rows (subgrid), so the two cards
+    // line up side by side even when one title wraps.
     <button
-      className={`group flex items-start gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${
+      className={`group grid grid-cols-[20px_minmax(0,1fr)] gap-x-3 rounded-2xl px-4 py-3 text-left transition-colors sm:row-span-3 sm:grid-rows-subgrid sm:gap-y-0 ${
         tone === "good" ? "bg-good-soft hover:brightness-[0.98]" : "bg-bad-soft hover:brightness-[0.98]"
       }`}
       onClick={() => at !== null && audio.seek(at, seg)}
       disabled={at === null}
     >
       <span
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white ${
+        className={`row-span-3 mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white ${
           tone === "good" ? "bg-good" : "bg-bad"
         }`}
       >
         <Icon className="h-3 w-3" />
       </span>
-      <span className="min-w-0">
-        <span className={`block text-[12px] font-semibold ${tone === "good" ? "text-good" : "text-bad"}`}>{label}</span>
-        <span className="block text-[15px] font-medium leading-snug">{title}</span>
-        {at !== null && (
-          <span className="mt-1 inline-flex items-center gap-1 text-[12px] text-link group-hover:underline">
-            <PlayIcon className="h-2.5 w-2.5" /> Hear it ({clock(at)})
-          </span>
-        )}
-      </span>
+      <span className={`block text-[12px] font-semibold ${tone === "good" ? "text-good" : "text-bad"}`}>{label}</span>
+      <span className="block text-[15px] font-medium leading-snug">{title}</span>
+      {at !== null ? (
+        <span className="mt-1 inline-flex items-center gap-1 self-end text-[12px] text-link group-hover:underline">
+          <PlayIcon className="h-2.5 w-2.5" /> Hear it ({clock(at)})
+        </span>
+      ) : (
+        <span aria-hidden />
+      )}
     </button>
   );
 }

@@ -9,7 +9,7 @@ import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/en
 import { RefreshIcon, UploadIcon } from "@/components/icons";
 import { Segmented } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
-import { bigButton, easyLink } from "@/components/v2/kit";
+import { bigButton } from "@/components/v2/kit";
 import {
   TEXT_SIZES,
   TEXT_SIZE_EVENT,
@@ -61,7 +61,7 @@ const RANGE_KEY = "pestlaunch.range";
 export default function V2Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [range, setRange] = useState<Range>("all");
-  const [size, setSizeState] = useState<TextSize>("normal");
+  const [size, setSizeState] = useState<TextSize>("small");
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [envOpen, setEnvOpen] = useState(false);
@@ -107,12 +107,23 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
   const tab = TABS.find((t) => t.href === pathname);
   // The call-back list shows open deals whatever the period, so it has no range.
   const ranged = !!tab && tab.href !== "/v2/pipeline";
-  const header = { tab, ranged, range, changeRange, size, setSize, asOf, refresh };
+  const header = { tab, ranged, range, changeRange, asOf, refresh };
 
   return (
     <TextSizeContext.Provider value={{ size, setSize }}>
       <CallsContext.Provider value={{ days, refreshKey, query }}>
-        {/* Larger text scales the whole page, so nothing gets cut off. */}
+        {/* The same slim bar in every mode and never zoomed, so the picker
+            stays exactly where it was clicked while the page below changes. */}
+        <div className="mb-6 flex min-h-[40px] flex-wrap items-center justify-between gap-3">
+          <Link
+            href={tab?.v1 ?? "/calls"}
+            className="text-[14px] font-medium text-ink underline decoration-accent decoration-2 underline-offset-4"
+          >
+            You are on the new version · see the old one
+          </Link>
+          <SizeSwitch size={size} setSize={setSize} />
+        </div>
+        {/* Larger text scales the page, so nothing gets cut off. */}
         <div style={size === "large" ? { zoom: 1.2 } : undefined}>
           {size === "small" ? (
             <CompactHeader {...header} onUpload={() => setUploadOpen(true)} onEnv={() => setEnvOpen(true)} />
@@ -135,8 +146,6 @@ interface HeaderProps {
   ranged: boolean;
   range: Range;
   changeRange: (r: Range) => void;
-  size: TextSize;
-  setSize: (s: TextSize) => void;
   asOf: string;
   refresh: () => void;
   onUpload: () => void;
@@ -149,8 +158,6 @@ function CompactHeader({
   ranged,
   range,
   changeRange,
-  size,
-  setSize,
   asOf,
   refresh,
   onUpload,
@@ -160,23 +167,11 @@ function CompactHeader({
   const { env } = useEnvironment();
   return (
     <div className="mb-7">
-      <div className="mb-5 flex justify-end">
-        <SizeSwitch size={size} setSize={setSize} compact />
-      </div>
       {tab && (
         <>
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
             <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="large-title">{tab.title}</h1>
-                <Link
-                  href={tab.v1}
-                  className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-semibold text-link hover:underline"
-                  title="This is the new version. Open the old one."
-                >
-                  v2 · see v1
-                </Link>
-              </div>
+              <h1 className="large-title">{tab.title}</h1>
               <p className="footnote mt-1.5">
                 {ranged ? (range === "all" ? "All calls" : `Last ${range} days`) : "People who haven't decided"} ·
                 updated {dateTime(asOf)}
@@ -233,7 +228,7 @@ function CompactHeader({
 
 // --- Normal and Larger: the accessible layout ---------------------------------------------
 
-function EasyHeader({ tab, ranged, range, changeRange, size, setSize, onUpload }: HeaderProps) {
+function EasyHeader({ tab, ranged, range, changeRange, onUpload }: HeaderProps) {
   const pathname = usePathname();
   return (
     <>
@@ -258,7 +253,6 @@ function EasyHeader({ tab, ranged, range, changeRange, size, setSize, onUpload }
             );
           })}
         </nav>
-        <SizeSwitch size={size} setSize={setSize} />
       </div>
 
       {tab && (
@@ -288,9 +282,6 @@ function EasyHeader({ tab, ranged, range, changeRange, size, setSize, onUpload }
                 </select>
               </label>
             )}
-            <Link href={tab.v1} className={`text-[17px] ${easyLink}`}>
-              Switch to the old version
-            </Link>
           </div>
         </header>
       )}
@@ -298,22 +289,28 @@ function EasyHeader({ tab, ranged, range, changeRange, size, setSize, onUpload }
   );
 }
 
-function SizeSwitch({ size, setSize, compact }: { size: TextSize; setSize: (s: TextSize) => void; compact?: boolean }) {
+/** Three "A"s, each drawn at the size it gives: small, but obvious. */
+function SizeSwitch({ size, setSize }: { size: TextSize; setSize: (s: TextSize) => void }) {
   return (
-    <div className="flex items-center gap-2" role="group" aria-label="Text size">
-      <span className={compact ? "text-[13px] text-muted" : "text-[16px] font-medium text-ink/80"}>Text size</span>
-      {TEXT_SIZES.map((s) => (
-        <button
-          key={s.value}
-          onClick={() => setSize(s.value)}
-          aria-pressed={size === s.value}
-          className={`rounded-full font-semibold transition-colors ${compact ? "min-h-[32px] px-3" : "min-h-[44px] px-4"} ${
-            s.value === "small" ? "text-[13px]" : s.value === "normal" ? "text-[16px]" : "text-[20px]"
-          } ${size === s.value ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"}`}
-        >
-          {s.label}
-        </button>
-      ))}
+    <div className="flex items-center gap-2" role="radiogroup" aria-label="Text size">
+      <span className="text-[14px] font-medium text-ink/80">Text size</span>
+      <div className="flex h-10 items-center rounded-full bg-fill p-1">
+        {TEXT_SIZES.map((s) => (
+          <button
+            key={s.value}
+            role="radio"
+            aria-checked={size === s.value}
+            aria-label={s.label}
+            title={s.label}
+            onClick={() => setSize(s.value)}
+            className={`flex h-8 w-10 items-center justify-center rounded-full font-semibold leading-none transition-colors ${s.glyph} ${
+              size === s.value ? "bg-surface text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
+            }`}
+          >
+            A
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -37,13 +37,13 @@ export function OverviewCompact() {
     <div className="space-y-8">
       <Headline brief={data} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3 xl:gap-y-0">
         {[sales, retention, service].map((c) => (
           <Performance key={c.key} card={c} />
         ))}
       </div>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <DoToday items={data.todo} total={data.todo_total} />
         <CoachingFocus brief={data} quality={quality} />
       </div>
@@ -69,38 +69,49 @@ function Headline({ brief }: { brief: Brief }) {
   );
 }
 
+/*
+ * The three cards share their row heights (CSS subgrid), so the numbers, bars
+ * and links line up across them however long each card's wording is.
+ */
 function Performance({ card }: { card: PerformanceCard }) {
   return (
-    <Card className="flex flex-col p-5">
+    <Card className="flex flex-col p-5 xl:row-span-7 xl:grid xl:grid-rows-subgrid xl:gap-0">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-[15px] font-semibold tracking-tightish">{card.label}</p>
           <p className="text-[13px] text-muted">{card.question}</p>
         </div>
-        <StatusPill status={card.status} />
+        <span className="shrink-0">
+          <StatusPill status={card.status} />
+        </span>
       </div>
 
       <div className="mt-5 flex items-baseline gap-2">
-        <span className={`tnum text-[40px] font-semibold leading-none tracking-title ${STATUS_TEXT[card.status]}`}>
+        <span className={`tnum whitespace-nowrap text-[40px] font-semibold leading-none tracking-title ${STATUS_TEXT[card.status]}`}>
           {card.of ? `${card.count} of ${card.of}` : "–"}
         </span>
         <span className="text-[15px] font-medium text-ink/80">{card.metric_label.toLowerCase()}</span>
         <Change value={card.change} />
       </div>
       <p className="mt-1 text-[13px] text-muted">{card.goal}</p>
-      <div className="mt-3">
+      <div className="mt-3 w-full self-start">
         <Meter value={card.value} target={card.target} status={card.status} label={card.metric_label} />
       </div>
       <p className="tnum mt-3 text-[13px] text-muted">{card.detail}</p>
 
-      <div className="mt-4 flex-1 border-t border-line pt-3">
+      <div className="mt-4 border-t border-line pt-3">
         <p className="text-[14px] leading-snug">{card.why}</p>
       </div>
-      {card.action && (
-        <Link href={card.action.href} className="mt-3 inline-flex items-center gap-1 text-[14px] font-medium text-link hover:underline">
+      {card.action ? (
+        <Link
+          href={card.action.href}
+          className="mt-3 inline-flex items-center gap-1 self-start text-[14px] font-medium text-link hover:underline"
+        >
           {card.action.label}
           <ChevronIcon className="h-3.5 w-3.5" />
         </Link>
+      ) : (
+        <span aria-hidden />
       )}
     </Card>
   );
