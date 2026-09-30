@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
-import { startProgress } from "@/components/route-progress";
 import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/environment";
 import { RefreshIcon, UploadIcon } from "@/components/icons";
 import { Segmented } from "@/components/ui";
@@ -14,15 +13,15 @@ import { UploadDialog } from "@/components/upload-dialog";
 type Range = "7" | "30" | "all";
 
 const TABS = [
-  { href: "/calls", label: "Overview" },
-  { href: "/calls/pipeline", label: "Pipeline" },
-  { href: "/calls/reps", label: "Reps" },
-  { href: "/calls/log", label: "Call Log" },
+  { href: "/v2", label: "Overview", v1: "/calls" },
+  { href: "/v2/pipeline", label: "Pipeline", v1: "/calls/pipeline" },
+  { href: "/v2/reps", label: "Reps", v1: "/calls/reps" },
+  { href: "/v2/calls", label: "Calls", v1: "/calls/log" },
 ];
 
 const RANGE_KEY = "pestlaunch.range";
 
-export default function CallsLayout({ children }: { children: React.ReactNode }) {
+export default function V2Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [range, setRange] = useState<Range>("all");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -54,19 +53,34 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
     (path: string) => (days ? `${path}${path.includes("?") ? "&" : "?"}days=${days}` : path),
     [days],
   );
+  const refresh = () => {
+    setRefreshKey((k) => k + 1);
+    setAsOf(new Date().toISOString());
+  };
 
-  const isTab = TABS.some((t) => t.href === pathname);
-  const active = TABS.find((t) => t.href === pathname)?.href;
+  const tab = TABS.find((t) => t.href === pathname);
+  // The pipeline shows open deals whatever the period, so it has no range.
+  const ranged = tab && tab.href !== "/v2/pipeline";
 
   return (
     <CallsContext.Provider value={{ days, refreshKey, query }}>
-      {isTab && (
-        <div className="mb-8">
+      {tab && (
+        <div className="mb-7">
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
             <div>
-              <h1 className="large-title">Calls</h1>
+              <div className="flex items-center gap-2.5">
+                <h1 className="large-title">Calls</h1>
+                <Link
+                  href={tab.v1}
+                  className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-semibold text-link hover:underline"
+                  title="This is the revised version. Open the original."
+                >
+                  v2 · see v1
+                </Link>
+              </div>
               <p className="footnote mt-1.5">
-                {range === "all" ? "All calls" : `Last ${range} days`} · updated {dateTime(asOf)}
+                {ranged ? (range === "all" ? "All calls" : `Last ${range} days`) : "Open deals"} · updated{" "}
+                {dateTime(asOf)}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -78,25 +92,19 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
                 <span className={`h-[7px] w-[7px] rounded-full ${env === "local" ? "bg-[#ff9f0a]" : "bg-[#30d158]"}`} />
                 {ENVIRONMENTS.find((e) => e.value === env)?.label}
               </button>
-              <Segmented
-                size="sm"
-                value={range}
-                onChange={changeRange}
-                options={[
-                  { value: "7", label: "7D" },
-                  { value: "30", label: "30D" },
-                  { value: "all", label: "All" },
-                ]}
-              />
-              <button
-                className="btn-secondary px-3"
-                aria-label="Refresh"
-                title="Refresh"
-                onClick={() => {
-                  setRefreshKey((k) => k + 1);
-                  setAsOf(new Date().toISOString());
-                }}
-              >
+              {ranged && (
+                <Segmented
+                  size="sm"
+                  value={range}
+                  onChange={changeRange}
+                  options={[
+                    { value: "7", label: "7D" },
+                    { value: "30", label: "30D" },
+                    { value: "all", label: "All" },
+                  ]}
+                />
+              )}
+              <button className="btn-secondary px-3" aria-label="Refresh" title="Refresh" onClick={refresh}>
                 <RefreshIcon className="h-4 w-4" />
               </button>
               <button className="btn-primary" onClick={() => setUploadOpen(true)}>
@@ -112,9 +120,9 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
                   key={t.href}
                   href={t.href}
                   role="tab"
-                  aria-selected={active === t.href}
+                  aria-selected={pathname === t.href}
                   className={`flex-1 whitespace-nowrap rounded-[7px] px-2 py-[5px] text-center text-[13px] font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
-                    active === t.href ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
+                    pathname === t.href ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
                   }`}
                 >
                   {t.label}
@@ -127,14 +135,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
       <div key={pathname} className="animate-page-in">
         {children}
       </div>
-      <UploadDialog
-        open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        onUploaded={() => {
-          setRefreshKey((k) => k + 1);
-          setAsOf(new Date().toISOString());
-        }}
-      />
+      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={refresh} logHref="/v2/calls" />
       <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
     </CallsContext.Provider>
   );

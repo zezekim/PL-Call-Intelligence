@@ -114,7 +114,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <SearchBox />
 
         <nav className="mt-5 flex flex-1 flex-col gap-px" aria-label="Main">
-          {NAV.map(({ label, icon: Icon, href }) => {
+          {NAV.map(({ label, icon: Icon, href: base }) => {
+            // Inside the v2 preview, Calls stays in v2.
+            const href = base === "/calls" && pathname.startsWith("/v2") ? "/v2" : base;
             const active = href && pathname.startsWith(href);
             if (!href) {
               return (
@@ -225,7 +227,8 @@ function SearchBox() {
       onSubmit={(e) => {
         e.preventDefault();
         startProgress();
-        router.push(`/calls/log${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
+        const log = window.location.pathname.startsWith("/v2") ? "/v2/calls" : "/calls/log";
+        router.push(`${log}${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
       }}
     >
       <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-muted" />

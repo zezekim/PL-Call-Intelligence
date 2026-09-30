@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
-from callsentry.intel import audio, followups, ingest, insights, jobs, overrides, pipeline
+from callsentry.intel import audio, brief, followups, ingest, insights, jobs, overrides, pipeline
 from callsentry.intel import leads as leads_service
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
@@ -524,6 +524,39 @@ async def overview(
     data = await insights.overview(session, business.id, days)
     data["receptionist_number"] = business.twilio_number
     return data
+
+
+@router.get("/v2/brief")
+async def owner_brief(
+    session: SessionDep, business: BusinessDep, days: int | None = None
+) -> dict[str, Any]:
+    """What is happening, whether it is good, what matters, and what to do next."""
+    data = await brief.brief(session, business.id, days)
+    data["receptionist_number"] = business.twilio_number
+    return data
+
+
+@router.get("/v2/pipeline")
+async def owner_pipeline(session: SessionDep, business: BusinessDep) -> dict[str, Any]:
+    """Open leads with the next action for whoever works the pipeline."""
+    return await brief.pipeline(session, business.id)
+
+
+@router.get("/v2/reps")
+async def owner_reps(
+    session: SessionDep, business: BusinessDep, days: int | None = None
+) -> list[dict[str, Any]]:
+    return await brief.reps(session, business.id, days)
+
+
+@router.get("/v2/reps/{rep_id}")
+async def owner_rep(
+    rep_id: uuid.UUID, session: SessionDep, business: BusinessDep, days: int | None = None
+) -> dict[str, Any]:
+    detail = await brief.rep_brief(session, business.id, rep_id, days)
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "rep not found")
+    return detail
 
 
 @router.get("/reps")
