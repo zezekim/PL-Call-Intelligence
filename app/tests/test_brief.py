@@ -124,3 +124,13 @@ def test_with_one_call_the_focus_is_what_that_call_was_coached_on():
     stats = brief.step_stats([row])
     assert brief.focus_step(stats) is None
     assert brief.coached_step([row], stats).key == "thank"
+
+
+def test_coaching_tip_prefers_one_mainly_about_the_step():
+    row = _row([_item("thank", False)])
+    row.analysis.coaching = {"coaching": [
+        {"item_keys": ["validate", "thank"], "try_saying": "Sorry about the ants!"},
+        {"item_keys": ["thank"], "try_saying": "Thanks for calling us."},
+    ]}
+    stat = brief.step_stats([row])["Thank"]
+    assert brief._tip_for([row], stat)["try_saying"] == "Thanks for calling us."

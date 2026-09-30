@@ -314,20 +314,29 @@ def strong_steps(stats: dict[str, StepStat], limit: int = 2) -> list[StepStat]:
 
 
 def _tip_for(rows: list[Row], step: StepStat) -> dict[str, Any] | None:
-    """The best coaching moment for a step: what happened and what to say instead."""
-    for row in sorted(rows, key=lambda r: r.when, reverse=True):
+    """The best coaching moment for a step: what happened and what to say instead.
+
+    A tip written mainly about this step wins over one that only mentions it
+    alongside others; the most recent call breaks ties.
+    """
+    candidates = []
+    for row in rows:
         for tip in (row.analysis.coaching or {}).get("coaching") or []:
-            if step.key in (tip.get("item_keys") or []) and tip.get("try_saying"):
-                return {
-                    "call_id": str(row.call.id),
-                    "ref": row.call.external_ref,
-                    "customer": row.analysis.customer_name,
-                    "rep": row.call.rep.name if row.call.rep else row.analysis.rep_name,
-                    "title": tip.get("title"),
-                    "what_happened": tip.get("what_happened"),
-                    "try_saying": (tip.get("try_saying") or "").strip().strip('"'),
-                    "start": tip.get("start"),
-                }
+            keys = tip.get("item_keys") or []
+            if step.key in keys and tip.get("try_saying"):
+                rank = (keys.index(step.key), len(keys), -row.when.timestamp())
+                candidates.append((*rank, row, tip))
+    for _, _, _, row, tip in sorted(candidates, key=lambda c: c[:3]):
+        return {
+            "call_id": str(row.call.id),
+            "ref": row.call.external_ref,
+            "customer": row.analysis.customer_name,
+            "rep": row.call.rep.name if row.call.rep else row.analysis.rep_name,
+            "title": tip.get("title"),
+            "what_happened": tip.get("what_happened"),
+            "try_saying": (tip.get("try_saying") or "").strip().strip('"'),
+            "start": tip.get("start"),
+        }
     return None
 
 
@@ -352,7 +361,8 @@ def _stat_out(s: StepStat) -> dict[str, Any]:
 
 
 def coaching(rows: list[Row]) -> dict[str, Any] | None:
-    scored = [r for r in rows if r.pct is not None]
+    # The team's coaching is about the people on the phones, not the AI receptionist.
+    scored = [r for r in rows if r.pct is not None and r.call.source != "twilio"]
     stats = step_stats(scored)
     focus = focus_step(stats)
     if focus is None:
