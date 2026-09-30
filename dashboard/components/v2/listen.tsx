@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Segment } from "@/lib/api";
 import { clock } from "@/lib/format";
-import { PauseIcon, PlayIcon } from "@/components/icons";
+import { bigButton } from "@/components/v2/kit";
 
 export interface AudioControl {
   ref: React.RefObject<HTMLAudioElement | null>;
@@ -44,18 +44,33 @@ export interface Marker {
   at: number;
   tone: "good" | "bad";
   label: string;
+  segmentId?: number;
 }
 
+/** "1 min 20 sec" for screen readers and anyone who reads clocks slowly. */
+function spoken(t: number): string {
+  const s = Math.max(0, Math.round(t));
+  const m = Math.floor(s / 60);
+  return m ? `${m} minute${m === 1 ? "" : "s"} ${s % 60} seconds` : `${s} seconds`;
+}
+
+const SPEEDS = [
+  { rate: 0.75, label: "Slower" },
+  { rate: 1, label: "Normal speed" },
+  { rate: 1.25, label: "Faster" },
+];
+
 /**
- * The recording and its transcript as one tool: the player stays pinned above
- * the words, the line being spoken is highlighted and kept in view, and any
- * line, marker or piece of evidence plays from that moment.
+ * The recording and what was said, as one tool. Big labelled controls, the
+ * words of the line being played highlighted and kept in view, and the
+ * important moments listed as buttons rather than tiny marks on a timeline.
  */
 export function ListenPanel({
   src,
   duration,
   segments,
   repName,
+  customerName,
   audio,
   markers,
   expired,
@@ -64,6 +79,7 @@ export function ListenPanel({
   duration: number;
   segments: Segment[];
   repName: string | null;
+  customerName: string | null;
   audio: AudioControl;
   markers: Marker[];
   expired: boolean;
@@ -89,8 +105,7 @@ export function ListenPanel({
     if (!box || !line) return;
     // Leave the reader alone for a few seconds after they scroll themselves.
     if (!force && Date.now() - userScrolledAt.current < 4000) return;
-    const top = line.offsetTop - box.clientHeight / 3;
-    box.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    box.scrollTo({ top: Math.max(0, line.offsetTop - box.clientHeight / 3), behavior: "smooth" });
   }, []);
 
   useEffect(() => {
@@ -101,37 +116,28 @@ export function ListenPanel({
     if (audio.target) scrollTo(audio.target.id, true);
   }, [audio.target, scrollTo]);
 
-  const turns = useMemo(() => {
-    const out: { role: Segment["role"]; items: Segment[] }[] = [];
-    segments.forEach((s) => {
-      const last = out[out.length - 1];
-      if (last && last.role === s.role) last.items.push(s);
-      else out.push({ role: s.role, items: [s] });
-    });
-    return out;
-  }, [segments]);
+  const jump = (delta: number) => {
+    const el = audio.ref.current;
+    if (!el) return;
+    el.currentTime = Math.max(0, Math.min(length || el.duration || 0, el.currentTime + delta));
+    audio.setTime(el.currentTime);
+  };
 
-  const progress = length ? Math.min(100, (audio.time / length) * 100) : 0;
-  const cited = audio.target?.id;
+  const who = (s: Segment) =>
+    s.role === "rep"
+      ? `${repName ?? "Team member"} (your team)`
+      : s.role === "customer"
+        ? `${customerName ?? "Customer"} (customer)`
+        : "Someone";
 
   return (
-    <section className="card flex flex-col overflow-hidden" aria-label="Recording and transcript">
-      <div className="border-b border-line px-5 pb-4 pt-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-[17px] font-semibold tracking-title">Recording &amp; transcript</h2>
-          {markers.length > 0 && (
-            <div className="flex items-center gap-3 text-[12px] text-muted">
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-bad" /> Coaching moment
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-good" /> Done well
-              </span>
-            </div>
-          )}
-        </div>
+    <section className="rounded-[22px] border-2 border-line bg-surface" aria-labelledby="listen-title">
+      <div className="p-6">
+        <h2 id="listen-title" className="text-[26px] font-bold tracking-title">
+          Listen to the call
+        </h2>
         {src ? (
-          <div className="flex items-center gap-3">
+          <>
             <audio
               ref={audio.ref}
               src={src}
@@ -143,120 +149,139 @@ export function ListenPanel({
                 Number.isFinite(e.currentTarget.duration) && setLength(e.currentTarget.duration)
               }
             />
-            <button
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-opacity hover:opacity-90"
-              onClick={audio.toggle}
-              aria-label={audio.playing ? "Pause" : "Play"}
-            >
-              {audio.playing ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="ml-0.5 h-4 w-4" />}
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="relative pt-2">
-                <input
-                  type="range"
-                  min={0}
-                  max={length || 0}
-                  step={0.1}
-                  value={audio.time}
-                  onChange={(e) => {
-                    const t = Number(e.target.value);
-                    audio.setTime(t);
-                    if (audio.ref.current) audio.ref.current.currentTime = t;
-                  }}
-                  className="w-full accent-accent"
-                  aria-label="Seek"
-                  style={{ backgroundSize: `${progress}% 100%` }}
-                />
-                {length > 0 &&
-                  markers.map((m, i) => (
-                    <button
-                      key={i}
-                      onClick={() => audio.seek(m.at)}
-                      title={`${clock(m.at)} · ${m.label}`}
-                      aria-label={`Play ${m.label} at ${clock(m.at)}`}
-                      className={`absolute top-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full ring-2 ring-surface ${
-                        m.tone === "bad" ? "bg-bad" : "bg-good"
-                      }`}
-                      style={{ left: `${Math.min(100, (m.at / length) * 100)}%` }}
-                    />
-                  ))}
-              </div>
-              <div className="tnum flex justify-between text-[12px] text-muted">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                className="inline-flex min-h-[64px] items-center gap-3 rounded-full bg-[#0055aa] px-8 text-[22px] font-bold text-white hover:bg-[#004a94] focus-visible:ring-[4px] focus-visible:ring-accent/50"
+                onClick={audio.toggle}
+              >
+                <span aria-hidden className="text-[24px]">
+                  {audio.playing ? "❚❚" : "▶"}
+                </span>
+                {audio.playing ? "Pause" : "Play the call"}
+              </button>
+              <button className={bigButton.secondary} onClick={() => jump(-10)}>
+                ↺ Back 10 seconds
+              </button>
+              <button className={bigButton.secondary} onClick={() => jump(10)}>
+                Forward 10 seconds ↻
+              </button>
+            </div>
+
+            <div className="mt-5">
+              <input
+                type="range"
+                min={0}
+                max={length || 0}
+                step={0.1}
+                value={audio.time}
+                onChange={(e) => {
+                  const t = Number(e.target.value);
+                  audio.setTime(t);
+                  if (audio.ref.current) audio.ref.current.currentTime = t;
+                }}
+                className="h-3 w-full cursor-pointer accent-accent"
+                aria-label="Move through the call"
+                aria-valuetext={`${spoken(audio.time)} of ${spoken(length)}`}
+              />
+              <p className="mt-1 flex justify-between text-[18px] font-medium tabular-nums">
                 <span>{clock(audio.time)}</span>
                 <span>{clock(length)}</span>
-              </div>
+              </p>
             </div>
-            <button
-              className="btn-secondary tnum w-12 px-0 py-1 text-[12px]"
-              onClick={() => {
-                const next = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1;
-                setRate(next);
-                if (audio.ref.current) audio.ref.current.playbackRate = next;
-              }}
-              aria-label="Playback speed"
-            >
-              {rate}×
-            </button>
-          </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Playback speed">
+              <span className="mr-1 text-[18px] font-semibold">Speed:</span>
+              {SPEEDS.map((s) => (
+                <button
+                  key={s.rate}
+                  role="radio"
+                  aria-checked={rate === s.rate}
+                  onClick={() => {
+                    setRate(s.rate);
+                    if (audio.ref.current) audio.ref.current.playbackRate = s.rate;
+                  }}
+                  className={`min-h-[48px] rounded-full px-5 text-[17px] font-semibold ${
+                    rate === s.rate ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {markers.length > 0 && (
+              <div className="mt-6 border-t-2 border-line pt-5">
+                <p className="text-[20px] font-semibold">Important moments</p>
+                <ul className="mt-3 space-y-2">
+                  {[...markers]
+                    .sort((a, b) => a.at - b.at)
+                    .map((m, i) => (
+                      <li key={i}>
+                        <button
+                          onClick={() => audio.seek(m.at, m.segmentId)}
+                          className={`flex min-h-[56px] w-full items-center gap-4 rounded-[14px] px-4 text-left text-[18px] transition-colors ${
+                            m.tone === "good" ? "bg-good-soft hover:brightness-[0.97]" : "bg-bad-soft hover:brightness-[0.97]"
+                          }`}
+                        >
+                          <span className="font-bold tabular-nums">▶ {clock(m.at)}</span>
+                          <span className="font-semibold">{m.tone === "good" ? "Done well:" : "To do better:"}</span>
+                          <span className="min-w-0 flex-1">{m.label}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </>
         ) : (
-          <p className="text-[14px] text-muted">
+          <p className="mt-3 text-[20px]">
             {expired
-              ? "The recording was deleted under the retention policy. The transcript remains."
-              : "No recording for this call."}
+              ? "The recording was deleted after 90 days, as planned. You can still read what was said below."
+              : "There is no recording for this call."}
           </p>
         )}
       </div>
 
-      <div
-        ref={scroller}
-        onWheel={() => (userScrolledAt.current = Date.now())}
-        onTouchMove={() => (userScrolledAt.current = Date.now())}
-        className="relative max-h-[68vh] min-h-[240px] flex-1 space-y-3 overflow-y-auto px-5 py-5 print:max-h-none print:overflow-visible"
-      >
-        {turns.length === 0 && <p className="text-[14px] text-muted">No transcript yet.</p>}
-        {turns.map((turn, i) => {
-          const rep = turn.role === "rep";
-          return (
-            <div key={i} className={`flex min-w-0 ${rep ? "" : "justify-end"}`}>
-              <div className={`min-w-0 max-w-[88%] ${rep ? "" : "text-right"}`}>
-                <p className="mb-1 px-1 text-[12px] text-muted">
-                  {rep ? repName ?? "Rep" : turn.role === "customer" ? "Customer" : "Speaker"}{" "}
-                  <button className="tnum hover:text-link" onClick={() => audio.seek(turn.items[0].start)}>
-                    {clock(turn.items[0].start)}
-                  </button>
-                </p>
-                <div
-                  className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left text-[15px] leading-[1.45] [overflow-wrap:anywhere] ${
-                    rep ? "bg-bubble text-ink" : "bg-accent text-white"
+      <div className="border-t-2 border-line px-6 pb-6 pt-5">
+        <h3 className="text-[22px] font-bold">What was said</h3>
+        {src && <p className="mt-1 text-[17px] text-ink/80">Tap any line to hear it.</p>}
+        <div
+          ref={scroller}
+          onWheel={() => (userScrolledAt.current = Date.now())}
+          onTouchMove={() => (userScrolledAt.current = Date.now())}
+          className="relative mt-4 max-h-[60vh] space-y-2 overflow-y-auto pr-2 print:max-h-none print:overflow-visible"
+          tabIndex={0}
+          aria-label="What was said, line by line"
+        >
+          {segments.length === 0 && <p className="text-[18px]">Nothing yet.</p>}
+          {segments.map((s, i) => {
+            const newSpeaker = i === 0 || segments[i - 1].role !== s.role;
+            const active = s.id === activeId;
+            const cited = s.id === audio.target?.id;
+            const rep = s.role === "rep";
+            return (
+              <div key={s.id} data-seg={s.id} className={newSpeaker && i > 0 ? "pt-3" : ""}>
+                {newSpeaker && <p className="mb-1 text-[17px] font-bold">{who(s)}</p>}
+                <button
+                  onClick={() => audio.seek(s.start)}
+                  className={`block w-full rounded-[12px] border-l-[6px] px-4 py-2.5 text-left text-[20px] leading-relaxed transition-colors ${
+                    active
+                      ? "border-accent bg-accent-soft"
+                      : cited
+                        ? "border-[#c25e00] bg-warn-soft"
+                        : rep
+                          ? "border-transparent bg-panel hover:bg-fill"
+                          : "border-transparent bg-surface hover:bg-panel"
                   }`}
+                  aria-current={active ? "true" : undefined}
                 >
-                  {turn.items.map((s) => (
-                    <span
-                      key={s.id}
-                      data-seg={s.id}
-                      onClick={() => audio.seek(s.start)}
-                      className={`cursor-pointer rounded px-0.5 transition-colors ${
-                        s.id === activeId
-                          ? rep
-                            ? "bg-highlight"
-                            : "bg-white/30"
-                          : s.id === cited
-                            ? rep
-                              ? "bg-highlight/60"
-                              : "bg-white/20"
-                            : rep
-                              ? "hover:bg-ink/5"
-                              : "hover:bg-white/15"
-                      }`}
-                    >
-                      {s.text}{" "}
-                    </span>
-                  ))}
-                </div>
+                  {active && <span className="sr-only">Playing now: </span>}
+                  {s.text}
+                </button>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </section>
   );

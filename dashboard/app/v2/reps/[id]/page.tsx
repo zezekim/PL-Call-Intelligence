@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { GRADE_LABEL, OUTCOME_LABEL, clock, date } from "@/lib/format";
+import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN, plural } from "@/lib/easy";
+import { date } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { RepBrief, StepStat } from "@/lib/v2";
-import { STATUS_TEXT, rateStatus } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
-import { Avatar, Card, ErrorNote, Loading } from "@/components/ui";
-import { Meter, StatusPill, Trend } from "@/components/v2/kit";
-import type { Grade } from "@/lib/api";
+import { Avatar, ErrorNote, Loading } from "@/components/ui";
+import { BigLink, GoalBar, Panel, Reveal, Section, StatusBadge, StatusIcon } from "@/components/v2/kit";
 
-export default function RepV2() {
+const FEW_CALLS = 3;
+
+export default function PersonV2() {
   const { id } = useParams<{ id: string }>();
   const { query } = useCalls();
   const { data: rep, error, loading } = useApi<RepBrief>(query(`/intel/v2/reps/${id}`));
@@ -22,190 +22,135 @@ export default function RepV2() {
   if (loading && !rep) return <Loading />;
   if (error && !rep) return <ErrorNote message={error} />;
   if (!rep) return null;
+  const tens = Math.round((rep.score ?? 0) / 10);
+  const early = rep.scored < FEW_CALLS;
 
   return (
-    <div className="space-y-6">
-      <Link href="/v2/reps" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
-        <BackIcon className="h-4 w-4" /> Reps
-      </Link>
+    <div className="space-y-12">
+      <BigLink href="/v2/reps" kind="secondary">
+        ← Back to the team
+      </BigLink>
 
-      <Card className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="flex min-w-0 flex-1 items-start gap-4">
-            <Avatar name={rep.name} size={52} />
-            <div className="min-w-0">
-              <h1 className="text-[28px] font-semibold leading-tight tracking-title">{rep.name}</h1>
-              <p className="mt-2 max-w-2xl text-[16px] leading-relaxed">{rep.verdict}</p>
-            </div>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className={`tnum text-[44px] font-semibold leading-none tracking-title ${STATUS_TEXT[rep.status]}`}>
-              {rep.score === null ? "–" : `${Math.round(rep.score)}%`}
-            </p>
-            <p className="mt-1 text-[12px] text-muted">of the call process</p>
-            <div className="mt-2 flex justify-end">
-              <Trend trend={rep.trend} />
-            </div>
+      <header className="flex flex-wrap items-start gap-6">
+        <Avatar name={rep.name} size={80} />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[40px] font-bold leading-tight tracking-title">{rep.name}</h1>
+          <p className="mt-3 max-w-3xl text-[22px] leading-relaxed">{rep.verdict}</p>
+          <div className="mt-4">
+            <StatusBadge large status={early ? "none" : rep.status} label={`Does ${tens} out of 10 steps`} />
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4 text-[14px] sm:grid-cols-4">
-          <Fact label="Calls scored" value={String(rep.scored)} />
-          <Fact label="Meet standard" value={`${rep.meeting_standard} of ${rep.scored}`} />
-          <Fact label="Team average" value={rep.team_score === null ? "–" : `${Math.round(rep.team_score)}%`} />
-          <Fact
-            label="Sales closed"
-            value={rep.close_rate === null ? "–" : `${Math.round(rep.close_rate)}%`}
-            hint={rep.sales_calls ? `${rep.sales_calls} sales call${rep.sales_calls === 1 ? "" : "s"}` : "No sales calls"}
-          />
-        </div>
-      </Card>
+      </header>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="p-5">
-          <Heading tone="good" title="Doing well" />
+      <Section title="What to teach" intro="One thing at a time works best.">
+        <Panel>
+          {rep.focus ? (
+            <>
+              <p className="text-[18px] font-semibold text-ink/80">Practise this step</p>
+              <p className="mt-1 text-[32px] font-bold leading-tight tracking-title">{rep.focus.plain}</p>
+              <p className="mt-2 text-[20px] leading-relaxed">{rep.focus.meaning}</p>
+              <p className="mt-3 inline-flex items-center gap-2 text-[20px] font-semibold">
+                <StatusIcon status="bad" size={22} />
+                Skipped on {rep.focus.missed} of {plural(rep.focus.of, "call")}
+              </p>
+              {rep.coach && (
+                <div className="mt-6 rounded-[18px] bg-panel p-6">
+                  <p className="text-[18px] font-semibold text-ink/80">What happened</p>
+                  <p className="mt-1 text-[20px] leading-relaxed">{rep.coach.what_happened}</p>
+                  <p className="mt-5 text-[18px] font-semibold text-ink/80">Next time, say something like:</p>
+                  <p className="mt-1 text-[22px] leading-relaxed">“{rep.coach.try_saying}”</p>
+                  <div className="mt-5">
+                    <BigLink
+                      href={`/v2/calls/${rep.coach.call_id}${rep.coach.start !== null ? `?t=${Math.floor(rep.coach.start)}` : ""}`}
+                    >
+                      ▶ Listen to this moment together
+                    </BigLink>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-[20px]">Nothing stands out to teach right now.</p>
+          )}
+        </Panel>
+      </Section>
+
+      <Section title="What they do well">
+        <Panel>
           {rep.strengths.length ? (
-            <ul className="mt-3 space-y-3">
+            <ul className="space-y-5">
               {rep.strengths.map((s) => (
                 <StepLine key={s.step} step={s} />
               ))}
             </ul>
           ) : (
-            <p className="mt-3 text-[14px] text-muted">No step done consistently yet.</p>
+            <p className="text-[20px]">
+              {early ? "We need a few more calls to know." : "No step is done well every time yet."}
+            </p>
           )}
           {rep.strength_example && (
-            <Link
-              href={`/v2/calls/${rep.strength_example.call_id}${rep.strength_example.start !== null ? `?t=${Math.floor(rep.strength_example.start)}` : ""}`}
-              className="mt-4 block rounded-2xl bg-good-soft p-4 transition hover:brightness-[0.98]"
-            >
-              <p className="text-[14px] font-medium">{rep.strength_example.title}</p>
+            <div className="mt-6 rounded-[18px] bg-good-soft p-6">
+              <p className="text-[20px] font-semibold">{rep.strength_example.title}</p>
               {rep.strength_example.quote && (
-                <p className="mt-1 text-[14px] leading-relaxed">“{rep.strength_example.quote}”</p>
+                <p className="mt-1 text-[20px] leading-relaxed">“{rep.strength_example.quote}”</p>
               )}
-              <p className="mt-2 inline-flex items-center gap-1 text-[12px] text-link">
-                <PlayIcon className="h-2.5 w-2.5" /> Hear it on {rep.strength_example.ref}
-                {rep.strength_example.start !== null && ` at ${clock(rep.strength_example.start)}`}
-              </p>
-            </Link>
-          )}
-        </Card>
-
-        <Card className="p-5">
-          <Heading tone="bad" title="Needs to improve" />
-          {rep.focus ? (
-            <div className="mt-3">
-              <p className="text-[20px] font-semibold leading-tight tracking-title">{rep.focus.step}</p>
-              <p className="mt-1 text-[14px] font-semibold text-bad">
-                Missed on {rep.focus.missed} of {rep.focus.of} calls
-              </p>
-              <div className="mt-3">
-                <Meter value={rep.focus.hit_rate} target={80} status={rateStatus(rep.focus.hit_rate)} label="Done rate" />
+              <div className="mt-4">
+                <BigLink
+                  href={`/v2/calls/${rep.strength_example.call_id}${rep.strength_example.start !== null ? `?t=${Math.floor(rep.strength_example.start)}` : ""}`}
+                  kind="secondary"
+                >
+                  ▶ Hear it
+                </BigLink>
               </div>
-              <p className="mt-2 text-[12px] text-muted">{rep.focus.quadrant} step. Target: done on 8 in 10 calls.</p>
             </div>
-          ) : (
-            <p className="mt-3 text-[14px] text-muted">No repeated gap. Nothing stands out to fix.</p>
           )}
-        </Card>
+        </Panel>
+      </Section>
 
-        <Card className="p-5">
-          <Heading tone="accent" title="Coach on this" />
-          {rep.coach ? (
-            <>
-              <p className="mt-3 text-[14px] leading-relaxed text-ink/80">{rep.coach.what_happened}</p>
-              <div className="mt-3 rounded-2xl bg-accent-soft p-4">
-                <p className="text-[12px] font-medium text-subtle">Next time, say</p>
-                <p className="mt-1 text-[15px] leading-relaxed">“{rep.coach.try_saying}”</p>
-              </div>
-              <Link
-                href={`/v2/calls/${rep.coach.call_id}${rep.coach.start !== null ? `?t=${Math.floor(rep.coach.start)}` : ""}`}
-                className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
-              >
-                <PlayIcon className="h-3 w-3" />
-                Listen together: {rep.coach.customer ?? rep.coach.ref}
-                {rep.coach.start !== null && ` at ${clock(rep.coach.start)}`}
+      <Section title={`${rep.name}'s calls`}>
+        <ul className="space-y-3">
+          {rep.calls_list.slice(0, 8).map((c) => (
+            <li key={c.call_id}>
+              <Link href={`/v2/calls/${c.call_id}`} className="block rounded-[22px] focus-visible:ring-[4px] focus-visible:ring-accent/50">
+                <Panel className="flex flex-wrap items-center gap-4 !py-4 transition-colors hover:border-accent">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[20px] font-semibold">{c.customer ?? "Customer not named"}</span>
+                    <span className="block text-[17px] text-ink/80">
+                      {CALL_TYPE_PLAIN[c.call_type] ?? c.call_type} · {date(c.when)}
+                      {c.outcome && OUTCOME_PLAIN[c.outcome] ? ` · ${OUTCOME_PLAIN[c.outcome]}` : ""}
+                    </span>
+                  </span>
+                  {c.grade && (
+                    <StatusBadge status={c.grade === "below" ? "bad" : "good"} label={GRADE_PLAIN[c.grade]} />
+                  )}
+                  <span aria-hidden className="text-[22px] text-ink/60">→</span>
+                </Panel>
               </Link>
-            </>
-          ) : (
-            <p className="mt-3 text-[14px] text-muted">No coaching moment recorded for this step yet.</p>
-          )}
-        </Card>
-      </div>
+            </li>
+          ))}
+        </ul>
+      </Section>
 
-      <RecentCalls rep={rep} />
       <AllSteps steps={rep.steps} />
     </div>
   );
 }
 
-function Fact({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div>
-      <p className="text-[12px] text-muted">{label}</p>
-      <p className="tnum mt-0.5 text-[17px] font-semibold">{value}</p>
-      {hint && <p className="text-[12px] text-muted">{hint}</p>}
-    </div>
-  );
-}
-
-function Heading({ tone, title }: { tone: "good" | "bad" | "accent"; title: string }) {
-  const cls = { good: "bg-good", bad: "bg-bad", accent: "bg-accent" }[tone];
-  const Icon = tone === "good" ? CheckIcon : tone === "bad" ? CrossIcon : PlayIcon;
-  return (
-    <h2 className="flex items-center gap-2 text-[17px] font-semibold tracking-title">
-      <span className={`flex h-5 w-5 items-center justify-center rounded-full text-white ${cls}`}>
-        <Icon className="h-3 w-3" />
-      </span>
-      {title}
-    </h2>
-  );
-}
-
 function StepLine({ step }: { step: StepStat }) {
+  const status = step.hit_rate >= 80 ? "good" : step.hit_rate >= 50 ? "watch" : "bad";
   return (
     <li>
-      <div className="flex items-baseline justify-between gap-3 text-[14px]">
-        <span className="font-medium">{step.step}</span>
-        <span className="tnum text-muted">
-          {step.met} of {step.of}
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <span className="text-[20px] font-semibold">{step.plain}</span>
+        <span className="text-[18px]">
+          done on {step.met} of {plural(step.of, "call")}
         </span>
       </div>
-      <div className="mt-1.5">
-        <Meter value={step.hit_rate} status={rateStatus(step.hit_rate)} label={step.step} />
+      <p className="text-[17px] text-ink/80">{step.meaning}</p>
+      <div className="mt-2">
+        <GoalBar value={step.hit_rate} status={status} />
       </div>
     </li>
-  );
-}
-
-function RecentCalls({ rep }: { rep: RepBrief }) {
-  const calls = rep.calls_list.slice(0, 6);
-  if (!calls.length) return null;
-  return (
-    <section>
-      <h2 className="mb-3 px-1 text-[19px] font-semibold tracking-title">Recent calls</h2>
-      <ul className="group-list">
-        {calls.map((c) => (
-          <li key={c.call_id}>
-            <Link href={`/v2/calls/${c.call_id}`} className="flex items-center gap-4 px-5 py-3 text-[14px] transition-colors hover:bg-surface-hover">
-              <span className="min-w-0 flex-1">
-                <span className="font-medium">{c.customer ?? c.ref}</span>
-                <span className="text-muted">
-                  {" "}
-                  · {date(c.when)}
-                  {c.outcome && c.outcome !== "not_applicable" && ` · ${OUTCOME_LABEL[c.outcome] ?? c.outcome}`}
-                </span>
-              </span>
-              {c.grade && (
-                <StatusPill
-                  status={c.grade === "below" ? "bad" : "good"}
-                  label={`${Math.round(c.score ?? 0)}% · ${GRADE_LABEL[c.grade as Grade]}`}
-                />
-              )}
-              <ChevronIcon className="h-4 w-4 text-faint" />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -213,23 +158,17 @@ function AllSteps({ steps }: { steps: StepStat[] }) {
   const [open, setOpen] = useState(false);
   if (!steps.length) return null;
   return (
-    <section>
-      <button className="flex w-full items-center justify-between px-1 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span>
-          <span className="text-[19px] font-semibold tracking-title">Every step</span>
-          <span className="ml-2 text-[13px] text-muted">How often each step of the call process is done.</span>
-        </span>
-        <ChevronIcon className={`h-4 w-4 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
+    <Section title="Every step" intro="How often each step of the call is done.">
+      <Reveal open={open} onToggle={() => setOpen((o) => !o)} more={`Show all ${steps.length} steps`} less="Hide the steps" />
       {open && (
-        <Card className="mt-3 p-5">
-          <ul className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+        <Panel className="mt-4">
+          <ul className="space-y-5">
             {steps.map((s) => (
               <StepLine key={s.step} step={s} />
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
-    </section>
+    </Section>
   );
 }

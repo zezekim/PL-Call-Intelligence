@@ -33,8 +33,8 @@ def test_decided_leads_have_no_next_step():
 
 def test_quoted_lead_gets_an_owner_action_with_urgency():
     action = brief.lead_action(_lead(LeadStage.QUOTED, days_ago=4, price="$649 initial"), {}, NOW)
-    assert action["label"] == "Follow up on the quote"
-    assert action["why"] == "Quoted $649, no decision yet"
+    assert action["label"] == "Call Pat back"
+    assert action["why"] == "Pat was given a price ($649) and hasn't decided yet."
     assert action["urgency"] == "overdue"
     assert brief.lead_action(_lead(LeadStage.QUOTED, days_ago=0), {}, NOW)["urgency"] == "upcoming"
     assert brief.lead_action(_lead(LeadStage.FOLLOW_UP, days_ago=20), {}, NOW)["urgency"] == "cold"
@@ -90,32 +90,45 @@ def test_a_single_miss_is_not_enough_to_call_it_a_gap():
     assert brief.focus_step(stats) is None
 
 
-def _card(label: str, value: float | None, status: str, target: float = 50) -> dict:
-    return {"label": label, "metric_label": "Rate", "value": value, "status": status,
-            "target": target, "detail": "1 of 20 calls meet standard"}
+def _card(label: str, status: str) -> dict:
+    return {"label": label, "status": status, "problem": f"{label} is behind.",
+            "praise": f"{label} is fine."}
 
 
 def test_headline_leads_with_the_worst_problem():
-    cards = [_card("Sales", 55, "good"), _card("Retention", 0, "bad", 60),
-             _card("Customer service", 90, "good"),
-             {**_card("Call quality", 50, "bad"), "meeting": 1, "scored": 21}]
-    coach = {"focus": {"step": "Thank the Customer", "missed": 18, "of": 21}}
+    cards = [_card("Sales", "good"), _card("Retention", "bad"),
+             _card("Service", "good"), {**_card("Quality", "bad"), "count": 1, "of": 21}]
+    coach = {"focus": {"plain": "Say thank you", "missed": 18, "of": 21}}
     result = brief.headline(cards, coach)
     assert result["status"] == "bad"
-    assert result["title"] == "Retention needs attention: rate is 0% (target 60%)."
-    assert "Sales and customer service are on target." in result["detail"]
-    assert result["detail"].endswith(
-        "Only 1 of 21 calls meet the call standard; the step missed most is "
-        "“Thank the Customer” (18 of 21 calls)."
+    assert result["title"] == "Retention is behind."
+    assert result["detail"] == (
+        "Sales is fine. Service is fine. Only 1 of 21 calls followed enough of the call "
+        "steps. The step skipped most: “Say thank you”."
     )
 
 
 def test_headline_when_everything_is_on_target():
-    cards = [_card(n, 90, "good") for n in ("Sales", "Retention", "Customer service")]
-    cards.append(_card("Call quality", 90, "good"))
+    cards = [_card(n, "good") for n in ("Sales", "Retention", "Service", "Quality")]
     result = brief.headline(cards, None)
-    assert result == {"status": "good",
-                      "title": "Sales, retention and service are all on target.", "detail": ""}
+    assert result["status"] == "good"
+    assert result["title"].startswith("Things are going well.")
+
+
+def test_headline_names_every_area_behind_target():
+    cards = [_card("Sales", "good"), _card("Retention", "bad"), _card("Service", "watch"),
+             {**_card("Quality", "bad"), "count": 0, "of": 21}]
+    coach = {"focus": {"plain": "Explain the plan", "missed": 19, "of": 19}}
+    result = brief.headline(cards, coach)
+    assert result["title"] == "Retention is behind."
+    assert result["detail"].startswith("Service is behind. Sales is fine. None of the 21 calls")
+
+
+def test_every_scorecard_step_has_a_plain_name():
+    from callsentry.intel.rubrics import SCORECARDS
+
+    keys = {item.key for sc in SCORECARDS.values() for item in sc.items}
+    assert keys <= set(brief.PLAIN_STEPS)
 
 
 def test_with_one_call_the_focus_is_what_that_call_was_coached_on():
@@ -135,14 +148,3 @@ def test_coaching_tip_prefers_one_mainly_about_the_step():
     stat = brief.step_stats([row])["Thank"]
     assert brief._tip_for([row], stat)["try_saying"] == "Thanks for calling us."
 
-
-def test_headline_names_every_area_behind_target():
-    cards = [_card("Sales", 55, "good"), _card("Retention", 0, "bad", 60),
-             {**_card("Customer service", 57, "bad", 85), "metric_label": "Resolved on the call"},
-             {**_card("Call quality", 44, "bad"), "meeting": 0, "scored": 21}]
-    coach = {"focus": {"step": "Summary Statement", "missed": 19, "of": 19}}
-    result = brief.headline(cards, coach)
-    assert result["detail"].startswith(
-        "Customer service is also behind: resolved on the call is 57% (target 85%). "
-        "Sales is on target. None of the 21 calls meet the call standard"
-    )

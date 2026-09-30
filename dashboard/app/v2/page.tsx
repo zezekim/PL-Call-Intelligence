@@ -2,17 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { clock } from "@/lib/format";
+import { plural } from "@/lib/easy";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { Brief, PerformanceCard, Todo } from "@/lib/v2";
-import { STATUS_SOFT, STATUS_TEXT, rateStatus } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { AlertIcon, CheckIcon, ChevronIcon, PhoneIcon, PlayIcon } from "@/components/icons";
-import { Card, Empty, ErrorNote, Loading } from "@/components/ui";
-import { Change, Meter, Section, StatusPill } from "@/components/v2/kit";
+import { ErrorNote, Loading } from "@/components/ui";
+import { BigLink, GoalBar, Panel, Reveal, Section, StatusBadge, StatusIcon, easyLink } from "@/components/v2/kit";
 
-export default function OverviewV2() {
-  useTitle("Overview");
+export default function TodayV2() {
+  useTitle("Today");
   const { query, refreshKey } = useCalls();
   const { data, error, loading, reload } = useApi<Brief>(query("/intel/v2/brief"));
 
@@ -25,254 +23,244 @@ export default function OverviewV2() {
   if (!data) return null;
   if (!data.calls.analyzed) {
     return (
-      <Card>
-        <Empty title="No analysed calls yet">Upload recordings and this page fills itself.</Empty>
-      </Card>
+      <Panel>
+        <p className="text-[24px] font-bold">No calls yet</p>
+        <p className="mt-2 text-[18px] text-ink/80">
+          Press “Add call recordings” at the top of the page. We will listen to each call and fill in this page.
+        </p>
+      </Panel>
     );
   }
 
-  const [sales, retention, service, quality] = data.cards;
+  const [sales, retention, service] = data.cards;
 
   return (
-    <div className="space-y-8">
-      <Headline brief={data} />
+    <div className="space-y-12">
+      <Message brief={data} />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {[sales, retention, service].map((c) => (
-          <Performance key={c.key} card={c} />
-        ))}
-      </div>
+      <Section title="How things are going" intro="Three questions about your customers. Each one has a goal.">
+        <div className="space-y-4">
+          {[sales, retention, service].map((c) => (
+            <Question key={c.key} card={c} />
+          ))}
+        </div>
+      </Section>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <DoToday items={data.todo} total={data.todo_total} />
-        <CoachingFocus brief={data} quality={quality} />
-      </div>
-
+      <DoFirst items={data.todo} />
+      <Teach brief={data} />
       <Footer brief={data} />
     </div>
   );
 }
 
-// --- What's happening ------------------------------------------------------------
-
-function Headline({ brief }: { brief: Brief }) {
+function Message({ brief }: { brief: Brief }) {
   const { status, title, detail } = brief.headline;
-  const Icon = status === "good" ? CheckIcon : AlertIcon;
+  const bg = { good: "bg-good-soft", watch: "bg-warn-soft", bad: "bg-bad-soft", none: "bg-panel" }[status];
   return (
-    <div className={`flex gap-4 rounded-card px-6 py-5 ${STATUS_SOFT[status]}`}>
-      <Icon className={`mt-1 h-5 w-5 shrink-0 ${STATUS_TEXT[status]}`} />
+    <div className={`flex gap-5 rounded-[22px] px-7 py-6 ${bg}`} role="status">
+      <StatusIcon status={status} size={40} />
       <div className="min-w-0">
-        <p className="text-[20px] font-semibold leading-snug tracking-title">{title}</p>
-        {detail && <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-ink/80">{detail}</p>}
+        <p className="text-[16px] font-semibold uppercase tracking-wide text-ink/80">The most important thing</p>
+        <p className="mt-1 text-[28px] font-bold leading-snug tracking-title">{title}</p>
+        {detail && <p className="mt-3 max-w-3xl text-[20px] leading-relaxed">{detail}</p>}
       </div>
     </div>
   );
 }
 
-function Performance({ card }: { card: PerformanceCard }) {
+function Question({ card }: { card: PerformanceCard }) {
+  const none = !card.of;
   return (
-    <Card className="flex flex-col p-5">
-      <div className="flex items-start justify-between gap-3">
+    <Panel>
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center">
         <div>
-          <p className="text-[15px] font-semibold tracking-tightish">{card.label}</p>
-          <p className="text-[13px] text-muted">{card.question}</p>
+          <StatusBadge status={none ? "none" : card.status} />
+          <h3 className="mt-3 text-[26px] font-bold leading-tight tracking-title">{card.label}</h3>
+          <p className="mt-1 text-[20px] text-ink/80">{card.question}</p>
         </div>
-        <StatusPill status={card.status} />
+        <div>
+          {none ? (
+            <p className="text-[20px] text-ink/80">{card.detail}.</p>
+          ) : (
+            <>
+              <p className="text-[36px] font-bold leading-none tracking-title">
+                {card.count} out of {card.of}{" "}
+                <span className="text-[22px] font-semibold text-ink/80">{card.metric_label.toLowerCase()}</span>
+              </p>
+              <div className="mt-4">
+                <GoalBar value={card.value} goal={card.target} status={card.status} />
+              </div>
+              <p className="text-[17px] text-ink/80">{card.goal}.</p>
+            </>
+          )}
+        </div>
       </div>
-
-      <div className="mt-5 flex items-baseline gap-2">
-        <span className={`tnum text-[40px] font-semibold leading-none tracking-title ${STATUS_TEXT[card.status]}`}>
-          {card.value === null ? "–" : `${Math.round(card.value)}%`}
-        </span>
-        <Change value={card.change} />
-      </div>
-      <p className="mt-1 text-[13px] text-muted">
-        {card.metric_label} · target {Math.round(card.target)}%
-      </p>
-      <div className="mt-3">
-        <Meter value={card.value} target={card.target} status={card.status} label={card.metric_label} />
-      </div>
-      <p className="tnum mt-3 text-[13px] text-muted">{card.detail}</p>
-
-      <div className="mt-4 flex-1 border-t border-line pt-3">
-        <p className="text-[14px] leading-snug">{card.why}</p>
-      </div>
-      {card.action && (
-        <Link href={card.action.href} className="mt-3 inline-flex items-center gap-1 text-[14px] font-medium text-link hover:underline">
-          {card.action.label}
-          <ChevronIcon className="h-3.5 w-3.5" />
-        </Link>
+      {!none && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t-2 border-line pt-5">
+          <p className="text-[20px] leading-relaxed">{card.why}</p>
+          {card.action && (
+            <BigLink href={card.action.href} kind="secondary">
+              {card.action.label} →
+            </BigLink>
+          )}
+        </div>
       )}
-    </Card>
+    </Panel>
   );
 }
 
-// --- What to do next -------------------------------------------------------------
+const FIRST = 3;
 
-const KIND_LABEL: Record<Todo["kind"], string> = {
-  retention: "Retention",
-  sales: "Sales",
-  service: "Service",
-  follow_up: "Promised",
-};
-
-const TOP = 5;
-
-function DoToday({ items, total }: { items: Todo[]; total: number }) {
+function DoFirst({ items }: { items: Todo[] }) {
   const [all, setAll] = useState(false);
-  const shown = all ? items : items.slice(0, TOP);
-  const hidden = total - shown.length;
+  const shown = all ? items : items.slice(0, FIRST);
+  return (
+    <Section title="Do these first" intro={items.length ? "The most important one is at the top." : undefined}>
+      {items.length === 0 ? (
+        <Panel className="flex items-center gap-4">
+          <StatusIcon status="good" size={32} />
+          <p className="text-[22px] font-semibold">Nothing needs you right now.</p>
+        </Panel>
+      ) : (
+        <>
+          <ol className="space-y-3">
+            {shown.map((t, i) => (
+              <li key={`${t.title}-${i}`}>
+                <Panel className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <span
+                    aria-hidden
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[22px] font-bold ${
+                      i === 0 ? "bg-[#a3001a] text-white" : "bg-fill text-ink"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[22px] font-bold leading-snug">
+                      <span className="sr-only">Number {i + 1}: </span>
+                      {t.title}
+                    </p>
+                    <p className="mt-1 text-[18px] leading-relaxed text-ink/80">{t.why}</p>
+                  </div>
+                  <BigLink href={t.href} kind={i === 0 ? "primary" : "secondary"} className="shrink-0">
+                    {t.cta} →
+                  </BigLink>
+                </Panel>
+              </li>
+            ))}
+          </ol>
+          {items.length > FIRST && (
+            <div className="mt-4">
+              <Reveal
+                open={all}
+                onToggle={() => setAll((a) => !a)}
+                more={`Show ${plural(items.length - FIRST, "more thing")} to do`}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+function Teach({ brief }: { brief: Brief }) {
+  const c = brief.coaching;
+  const quality = brief.cards[3];
+  if (!c) return null;
+  const tip = c.tip;
   return (
     <Section
-      title="Do today"
-      subtitle="Ranked by what's most likely to cost you a customer or a sale."
-      action={
-        items.length > TOP ? (
-          <button className="text-[13px] text-link hover:underline" onClick={() => setAll((a) => !a)}>
-            {all ? "Show top 5" : `${hidden} more`}
-          </button>
-        ) : undefined
+      title="What to teach the team this week"
+      intro={
+        quality.of
+          ? `Each call has 12 to 17 steps to follow. Right now the team does about ${Math.round(
+              (quality.value ?? 0) / 10,
+            )} out of 10 of them.`
+          : undefined
       }
     >
-      {shown.length ? (
-        <ol className="group-list">
-          {shown.map((t, i) => (
-            <li key={`${t.title}-${i}`}>
-              <Link href={t.href} className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-surface-hover">
-                <span
-                  className={`tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
-                    i === 0 ? "bg-bad text-white" : "bg-fill text-ink"
-                  }`}
-                >
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-medium leading-snug">{t.title}</p>
-                  <p className="mt-0.5 text-[13px] leading-snug text-muted">{t.why}</p>
-                </div>
-                <span className="mt-0.5 hidden shrink-0 text-[12px] text-muted sm:block">{KIND_LABEL[t.kind]}</span>
-                <ChevronIcon className="mt-1 h-4 w-4 shrink-0 text-faint" />
-              </Link>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <Card className="flex items-center gap-3 px-5 py-4">
-          <CheckIcon className="h-5 w-5 text-good" />
-          <p className="text-[15px]">Nothing needs you today.</p>
-        </Card>
-      )}
-    </Section>
-  );
-}
+      <Panel>
+        <p className="text-[18px] font-semibold text-ink/80">Practise this step</p>
+        <p className="mt-1 text-[32px] font-bold leading-tight tracking-title">{c.focus.plain}</p>
+        <p className="mt-2 text-[20px] leading-relaxed">{c.focus.meaning}</p>
+        <p className="mt-3 inline-flex items-center gap-2 text-[20px] font-semibold">
+          <StatusIcon status="bad" size={22} />
+          Skipped on {c.focus.missed} of {c.focus.of} calls
+        </p>
 
-// --- What to coach -----------------------------------------------------------------
-
-function CoachingFocus({ brief, quality }: { brief: Brief; quality: PerformanceCard }) {
-  const c = brief.coaching;
-  return (
-    <Section title="Coach this week" subtitle="One habit that would lift the most calls.">
-      <Card className="p-5">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-muted">Call quality</p>
-          <StatusPill status={quality.status} label={`${Math.round(quality.value ?? 0)}% of steps done`} />
-        </div>
-        <p className="mt-1 text-[13px] text-muted">{quality.detail}</p>
-
-        {c ? (
-          <>
-            <div className="mt-5 border-t border-line pt-5">
-              <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Focus</p>
-              <p className="mt-1 text-[20px] font-semibold leading-tight tracking-title">{c.focus.step}</p>
-              <p className="mt-1 text-[14px]">
-                <span className="font-semibold text-bad">Missed on {c.focus.missed} of {c.focus.of} calls.</span>
-              </p>
-              <div className="mt-3">
-                <Meter value={c.focus.hit_rate} target={80} status={rateStatus(c.focus.hit_rate)} label="Done rate" />
-              </div>
+        {tip && (
+          <div className="mt-6 rounded-[18px] bg-panel p-6">
+            <p className="text-[18px] font-semibold text-ink/80">Teach them to say something like:</p>
+            <p className="mt-2 text-[22px] leading-relaxed">“{tip.try_saying}”</p>
+            <div className="mt-5">
+              <BigLink
+                href={`/v2/calls/${tip.call_id}${tip.start !== null ? `?t=${Math.floor(tip.start)}` : ""}`}
+                kind="secondary"
+              >
+                ▶ Hear the moment on a real call
+              </BigLink>
             </div>
-
-            {c.tip && (
-              <div className="mt-5 rounded-2xl bg-panel p-4">
-                <p className="text-[12px] font-medium text-muted">Teach them to say</p>
-                <p className="mt-1 text-[15px] leading-relaxed">“{c.tip.try_saying}”</p>
-                <Link
-                  href={`/v2/calls/${c.tip.call_id}${c.tip.start !== null ? `?t=${Math.floor(c.tip.start)}` : ""}`}
-                  className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
-                >
-                  <PlayIcon className="h-3 w-3" />
-                  Hear the moment: {c.tip.rep ?? "rep"} with {c.tip.customer ?? c.tip.ref}
-                  {c.tip.start !== null && ` at ${clock(c.tip.start)}`}
-                </Link>
-              </div>
-            )}
-
-            {c.reps.length > 0 && (
-              <p className="mt-4 text-[13px] leading-relaxed text-muted">
-                <span className="font-medium text-ink">Start with </span>
-                {c.reps
-                  .slice(0, 3)
-                  .map((r) => `${r.rep} (missed ${r.missed} of ${r.of})`)
-                  .join(", ")}
-                .
-              </p>
-            )}
-
-            {c.strength && (
-              <div className="mt-4 flex items-start gap-2.5 border-t border-line pt-4 text-[14px]">
-                <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-good" />
-                <p>
-                  <span className="font-medium">What&apos;s working:</span> {c.strength.step}, done on{" "}
-                  {c.strength.met} of {c.strength.of} calls.
-                </p>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="mt-4 text-[14px] text-muted">Not enough scored calls to pick a focus yet.</p>
+          </div>
         )}
-      </Card>
+
+        {c.reps.length > 0 && (
+          <p className="mt-6 text-[20px] leading-relaxed">
+            <span className="font-semibold">Start with: </span>
+            {c.reps
+              .slice(0, 3)
+              .map((r) => r.rep)
+              .join(", ")}
+            .
+          </p>
+        )}
+        {c.strength && (
+          <p className="mt-4 flex items-start gap-3 border-t-2 border-line pt-5 text-[20px] leading-relaxed">
+            <StatusIcon status="good" size={24} />
+            <span>
+              <span className="font-semibold">The team is good at: </span>
+              {c.strength.plain} (done on {c.strength.met} of {c.strength.of} calls).
+            </span>
+          </p>
+        )}
+      </Panel>
     </Section>
   );
 }
-
-// --- Everything else, quietly -------------------------------------------------------
 
 function Footer({ brief }: { brief: Brief }) {
-  const bits: React.ReactNode[] = [`${brief.calls.analyzed} calls analysed`];
-  if (brief.calls.processing) bits.push(`${brief.calls.processing} processing`);
-  if (brief.calls.failed)
-    bits.push(
-      <Link key="f" href="/v2/calls?status=failed" className="text-bad hover:underline">
-        {brief.calls.failed} failed
-      </Link>,
-    );
+  const links: { href: string; text: string }[] = [];
   if (brief.review.disputed_calls)
-    bits.push(
-      <Link key="d" href="/v2/calls?disputed=1" className="text-link hover:underline">
-        {brief.review.disputed_calls} disputed score{brief.review.disputed_calls === 1 ? "" : "s"} to settle
-      </Link>,
-    );
+    links.push({
+      href: "/v2/calls?disputed=1",
+      text: `${plural(brief.review.disputed_calls, "call needs", "calls need")} your decision`,
+    });
   if (brief.review.type_checks)
-    bits.push(
-      <Link key="t" href="/v2/calls?review=1" className="text-link hover:underline">
-        {brief.review.type_checks} call type{brief.review.type_checks === 1 ? "" : "s"} to confirm
-      </Link>,
-    );
+    links.push({
+      href: "/v2/calls?review=1",
+      text: `${plural(brief.review.type_checks, "call")} may be the wrong type`,
+    });
+  if (brief.calls.failed)
+    links.push({ href: "/v2/calls?status=failed", text: `${plural(brief.calls.failed, "recording")} could not be read` });
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-4 text-[13px] text-muted">
-      <p className="flex flex-wrap gap-x-2">
-        {bits.map((b, i) => (
-          <span key={i}>
-            {i > 0 && <span aria-hidden>· </span>}
-            {b}
-          </span>
-        ))}
+    <div className="space-y-2 border-t-2 border-line pt-6 text-[18px]">
+      <p>
+        We listened to <span className="font-semibold">{plural(brief.calls.analyzed, "call")}</span>
+        {brief.calls.processing ? ` and are still working on ${brief.calls.processing}` : ""}.
       </p>
+      {links.map((l) => (
+        <p key={l.href}>
+          <Link href={l.href} className={easyLink}>
+            {l.text} →
+          </Link>
+        </p>
+      ))}
       {brief.receptionist_number && (
-        <p className="inline-flex items-center gap-1.5">
-          <PhoneIcon className="h-3.5 w-3.5" />
-          AI receptionist: <a className="text-link hover:underline" href={`tel:${brief.receptionist_number}`}>{brief.receptionist_number}</a>
+        <p>
+          Try the AI receptionist: call{" "}
+          <a className={easyLink} href={`tel:${brief.receptionist_number}`}>
+            {brief.receptionist_number}
+          </a>
         </p>
       )}
     </div>

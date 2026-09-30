@@ -13,6 +13,11 @@ export interface PerformanceCard {
   question: string;
   metric_label: string;
   value: number | null;
+  count: number;
+  of: number;
+  goal: string;
+  problem: string;
+  praise: string;
   status: Status;
   target: number;
   change: number | null;
@@ -33,6 +38,9 @@ export interface Todo {
 
 export interface StepStat {
   step: string;
+  /** Everyday name, e.g. "Explain the plan". */
+  plain: string;
+  meaning: string;
   key: string;
   quadrant: string;
   met: number;
@@ -172,10 +180,10 @@ export const STATUS_SOFT: Record<Status, string> = {
 };
 
 export const STATUS_WORD: Record<Status, string> = {
-  good: "On target",
-  watch: "Below target",
-  bad: "Needs attention",
-  none: "No data",
+  good: "Good",
+  watch: "Could be better",
+  bad: "Needs work",
+  none: "Not enough calls yet",
 };
 
 /** A hit rate judged the same way everywhere: done most of the time is good. */

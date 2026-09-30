@@ -20,16 +20,14 @@ test("signs in and every page renders without errors", async ({ page }) => {
 
   // The v2 owner views render too.
   for (const [path, heading] of [
-    ["/v2", "Do today"],
-    ["/v2/pipeline", "Your next calls"],
+    ["/v2", "Do these first"],
+    ["/v2/pipeline", "People to call back"],
+    ["/v2/reps", "Your team"],
+    ["/v2/calls", "All calls"],
   ] as const) {
     await page.goto(path);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
   }
-  await page.goto("/v2/reps");
-  await expect(page.getByRole("tab", { name: "Reps", selected: true })).toBeVisible();
-  await page.goto("/v2/calls");
-  await expect(page.getByRole("tab", { name: "Calls", selected: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();

@@ -61,6 +61,49 @@ TARGETS = {
     "call_quality": Target(good=85, watch=65),
 }
 
+# Everyday names for the scorecard steps, so anyone can read them. The manual's
+# own names ("Expectation Statement") mean little outside a training session.
+PLAIN_STEPS: dict[str, tuple[str, str]] = {
+    "validate": ("Show you care", "Say you're sorry about their exact problem."),
+    "confidence_statement": ("Promise to help", "Tell them you will take care of it."),
+    "expectation_statement_1": ("Say what you'll ask", "Tell them you'll ask a few questions."),
+    "investigate": ("Ask questions", "Ask what, where and when to understand the problem."),
+    "summary_statement": ("Repeat it back", "Say their problem back in your own words."),
+    "expectation_statement_2": ("Explain the plan",
+                                "Say you'll go over the service first, then the price."),
+    "present_solution": ("Offer the fix", "Explain what you'll do and why it helps them."),
+    "consensus": ("Check they agree", "Ask if it makes sense or if they have questions."),
+    "close": ("Ask to book", "Ask them to set a time, like morning or afternoon."),
+    "provide_conclusion": ("Confirm the details", "Repeat the date, time and address."),
+    "thank_customer": ("Say thank you", "Thank them for calling."),
+    "final_information": ("Leave the door open",
+                          "Tell them to call you first for any other pest problem."),
+    "validate_confidence": ("Stay calm and reassure",
+                            "Promise to help, without agreeing to cancel yet."),
+    "transition_statement": ("Look up the account", "Ask for the address and check the account."),
+    "do_research": ("Check their history",
+                    "Mention how long they've been a customer or recent visits."),
+    "validate_summary": ("Repeat the reason", "Say back why they want to cancel."),
+    "validate_expectation": ("Offer options", "Say you want to make it right and have options."),
+    "repeat": ("Try again", "If they say no, ask more and offer something else."),
+    "leave_teaser": ("End on a good note", "Invite them back, like a free first visit."),
+    "pricing": ("Give the price clearly",
+                "Say the full price, then the deal, then the monthly price."),
+    "objection_agree": ("Agree first", "When they push back, agree before you answer."),
+    "objection_restate": ("Find the real worry", "Repeat their concern and ask what's behind it."),
+    "objection_resolve": ("Answer the worry", "Solve the concern and show the value."),
+    "objection_reclose": ("Ask again", "Ask for the sale again."),
+}
+
+
+def plain_step(key: str, fallback: str = "") -> tuple[str, str]:
+    return PLAIN_STEPS.get(key, (fallback or key, ""))
+
+
+def _out_of(n: int, d: int) -> str:
+    return f"{n} out of {d}"
+
+
 # A step counts as a strength or a gap only with enough calls to judge it.
 MIN_ATTEMPTS = 2
 
@@ -76,6 +119,21 @@ CANCEL_REASON_LABEL = {
     "scheduling_issue": "scheduling",
     "deceased": "a death in the family",
     "other": "another reason",
+}
+
+
+# The reason as the end of a sentence: "They cancelled because ..."
+CANCEL_BECAUSE = {
+    "price": "it costs too much",
+    "moving": "they are moving",
+    "service_quality": "they were not happy with the service",
+    "pests_persist": "the pests kept coming back",
+    "no_longer_needed": "they no longer need it",
+    "switching_provider": "they are going to another company",
+    "financial_hardship": "money is tight",
+    "technician_issue": "of a problem with a technician",
+    "scheduling_issue": "of problems with scheduling",
+    "deceased": "of a death in the family",
 }
 
 
@@ -118,28 +176,34 @@ def _sales(rows: list[Row]) -> dict[str, Any]:
     deciding = [r for r in sales if r.analysis.outcome == "follow_up"]
     lost = [r for r in sales if r.analysis.outcome == "not_sold"]
     if not sales:
-        why = "No sales calls in this period."
+        why = "No calls from new customers in this time."
     elif deciding:
-        why = f"{_plural(len(deciding), 'prospect')} still deciding. Follow up before they go cold."
+        why = (f"{_plural(len(deciding), 'person is', 'people are')} still deciding. "
+               "Call them back before they go somewhere else.")
     elif lost:
-        why = f"{_plural(len(lost), 'prospect')} said no."
+        why = f"{_plural(len(lost), 'person')} said no."
     else:
-        why = "Every prospect in this period bought."
+        why = "Everyone who called said yes."
     return {
         "key": "sales",
-        "label": "Sales",
-        "question": "Are we closing?",
-        "metric_label": "Close rate",
+        "label": "New customers",
+        "question": "Are new customers saying yes?",
+        "metric_label": "Said yes",
         "value": rate,
+        "count": out["sold"],
+        "of": decided,
         "status": TARGETS["close_rate"].status(rate),
         "target": TARGETS["close_rate"].good,
+        "goal": "Goal: at least 5 out of 10 say yes",
         "detail": (
-            f"{out['sold']} sold · {out['follow_up']} deciding · {out['not_sold']} lost"
-            if sales else "No sales calls"
+            f"{out['sold']} said yes · {out['follow_up']} still deciding · "
+            f"{out['not_sold']} said no" if sales else "No calls from new customers"
         ),
+        "problem": f"Not enough new customers are saying yes: {_out_of(out['sold'], decided)}.",
+        "praise": f"New customers are saying yes ({_out_of(out['sold'], decided)}).",
         "why": why,
         "action": (
-            {"label": "Work the pipeline", "href": "/v2/pipeline"} if deciding else None
+            {"label": "See who to call back", "href": "/v2/pipeline"} if deciding else None
         ),
     }
 
@@ -161,31 +225,36 @@ def _retention(rows: list[Row]) -> dict[str, Any]:
     ]
     action = None
     if not ret:
-        why = "No cancellation calls in this period."
+        why = "Nobody called to cancel in this time."
     elif no_offer:
-        why = (
-            f"{_plural(len(no_offer), 'cancellation')} processed without a save offer."
-        )
-        action = {"label": "Open the call",
+        why = (f"{_plural(len(no_offer), 'customer')} cancelled and "
+               f"{'was' if len(no_offer) == 1 else 'were'} never given a reason to stay.")
+        action = {"label": "Listen to that call",
                   "href": f"/v2/calls/{no_offer[0].call.id}"}
     elif reasons:
         top, n = reasons.most_common(1)[0]
-        why = f"Top reason for cancelling: {CANCEL_REASON_LABEL.get(top, top)} ({n})."
+        why = f"The most common reason: {CANCEL_REASON_LABEL.get(top, top)} ({n})."
     else:
-        why = "Every cancellation request was handled."
+        why = "Every customer who wanted to cancel was helped."
     return {
         "key": "retention",
-        "label": "Retention",
-        "question": "Are we saving cancellations?",
-        "metric_label": "Save rate",
+        "label": "Customers who want to cancel",
+        "question": "Are we keeping them?",
+        "metric_label": "Kept",
         "value": rate,
+        "count": out["saved"],
+        "of": decided,
         "status": TARGETS["save_rate"].status(rate),
         "target": TARGETS["save_rate"].good,
+        "goal": "Goal: keep at least 6 out of 10",
         "detail": (
-            f"{out['saved']} saved · {out['cancelled']} cancelled"
-            + (f" · {out['pending']} pending" if out["pending"] else "")
-            if ret else "No cancellation calls"
+            f"{out['saved']} kept · {out['cancelled']} cancelled"
+            + (f" · {out['pending']} not decided" if out["pending"] else "")
+            if ret else "Nobody called to cancel"
         ),
+        "problem": ("Customers who want to cancel are not being kept: "
+                    f"{_out_of(out['saved'], decided)} kept."),
+        "praise": f"Customers who wanted to cancel were kept ({_out_of(out['saved'], decided)}).",
         "why": why,
         "action": action,
     }
@@ -198,23 +267,32 @@ def _service(rows: list[Row]) -> dict[str, Any]:
     rate = _rate(out["resolved"], decided)
     open_ = [r for r in svc if r.analysis.outcome in ("unresolved", "partially")]
     if not svc:
-        why = "No customer service calls in this period."
+        why = "No customers called with a problem in this time."
     elif open_:
         why = f"{_plural(len(open_), 'customer')} may still need help."
     else:
-        why = "Every service call was resolved on the call."
+        why = "Every problem was fixed on the call."
     return {
         "key": "service",
-        "label": "Customer service",
-        "question": "Are customers taken care of?",
-        "metric_label": "Resolved on the call",
+        "label": "Customers with a problem",
+        "question": "Did we fix it on the call?",
+        "metric_label": "Fixed",
         "value": rate,
+        "count": out["resolved"],
+        "of": decided,
         "status": TARGETS["resolution_rate"].status(rate),
         "target": TARGETS["resolution_rate"].good,
-        "detail": f"{out['resolved']} of {decided} resolved" if svc else "No service calls",
+        "goal": "Goal: fix almost all of them (more than 8 out of 10)",
+        "detail": (
+            f"{out['resolved']} fixed · {out['partially']} partly fixed · "
+            f"{out['unresolved']} not fixed" if svc else "No customers with a problem"
+        ),
+        "problem": ("Customer problems are not always fixed on the call: "
+                    f"{_out_of(out['resolved'], decided)} fixed."),
+        "praise": f"Customer problems are being fixed ({_out_of(out['resolved'], decided)}).",
         "why": why,
         "action": (
-            {"label": "Open the call", "href": f"/v2/calls/{open_[0].call.id}"}
+            {"label": "Listen to that call", "href": f"/v2/calls/{open_[0].call.id}"}
             if open_ else None
         ),
     }
@@ -226,15 +304,21 @@ def _quality(rows: list[Row]) -> dict[str, Any]:
     meeting = sum(1 for r in scored if r.analysis.grade in ("gold", "green"))
     return {
         "key": "quality",
-        "label": "Call quality",
-        "question": "Are calls handled the PestLaunch way?",
-        "metric_label": "Scorecard steps done",
+        "label": "Following the call steps",
+        "question": "Does the team follow the PestLaunch call steps?",
+        "metric_label": "Steps done",
         "value": avg,
+        "count": meeting,
+        "of": len(scored),
         "status": TARGETS["call_quality"].status(avg),
         "target": TARGETS["call_quality"].good,
+        "goal": "Goal: do almost every step on every call",
         "detail": (
-            f"{meeting} of {len(scored)} calls meet standard" if scored else "No scored calls"
+            f"{meeting} of {len(scored)} calls followed enough steps" if scored
+            else "No calls checked yet"
         ),
+        "problem": "",
+        "praise": "",
         "why": "",
         "action": None,
         "meeting": meeting,
@@ -356,8 +440,10 @@ def _strength_example(rows: list[Row]) -> dict[str, Any] | None:
 
 
 def _stat_out(s: StepStat) -> dict[str, Any]:
-    return {"step": s.label, "key": s.key, "quadrant": s.quadrant, "met": s.met,
-            "of": s.seen, "hit_rate": round(s.hit_rate, 1), "missed": s.missed}
+    plain, meaning = plain_step(s.key, s.label)
+    return {"step": s.label, "plain": plain, "meaning": meaning, "key": s.key,
+            "quadrant": s.quadrant, "met": s.met, "of": s.seen,
+            "hit_rate": round(s.hit_rate, 1), "missed": s.missed}
 
 
 def coaching(rows: list[Row]) -> dict[str, Any] | None:
@@ -436,15 +522,19 @@ def lead_action(
         return None
     promise = owner_promise(triage)
     value = quoted_value(lead.price_quoted)
+    name = lead.name
     if booked:
-        label, why = "Confirm the booked visit", lead.next_step or "Booked with the AI receptionist"
+        label = f"Confirm {name}'s visit"
+        why = f"{name} booked a visit with the AI receptionist. Call to make sure it's right."
     elif stage == LeadStage.QUOTED:
-        label = "Follow up on the quote"
-        why = (f"Quoted ${value:,.0f}" if value else "Quote given") + ", no decision yet"
+        label = f"Call {name} back"
+        price = f" (${value:,.0f})" if value else ""
+        why = f"{name} was given a price{price} and hasn't decided yet."
     elif stage == LeadStage.FOLLOW_UP:
-        label, why = "Call back for a decision", "Asked for time to think it over"
+        label, why = f"Call {name} back", f"{name} wanted time to think about it."
     else:
-        label, why = "Call to qualify", "New enquiry; needs a first conversation"
+        label = f"Call {name}"
+        why = f"{name} asked about a service. Nobody has talked it through with them yet."
     contact = lead.last_contact_at
     age = _age_days(contact, now)
     due = contact + timedelta(days=DUE_DAYS.get(LeadStage(stage), 2)) if contact else None
@@ -543,14 +633,15 @@ def _todo(
     for r in rows:
         retention = (r.analysis.triage or {}).get("retention") or {}
         if r.analysis.outcome == "cancelled" and not retention.get("offers_made"):
-            reason = CANCEL_REASON_LABEL.get(retention.get("cancel_reason") or "", "")
+            because = CANCEL_BECAUSE.get(retention.get("cancel_reason") or "")
+            name = (r.analysis.customer_name or "").strip()
             items.append({
                 "kind": "retention",
                 "priority": 100,
-                "title": f"Try to win back {_customer(r)}",
-                "why": "Cancelled" + (f" over {reason}" if reason else "")
-                + " and was never offered a way to stay.",
-                "cta": "Open call",
+                "title": f"Try to win back {name or 'a customer who cancelled'}",
+                "why": "They cancelled" + (f" because {because}" if because else "")
+                + ". Nobody offered them a reason to stay.",
+                "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
             })
@@ -566,9 +657,9 @@ def _todo(
         items.append({
             "kind": "sales",
             "priority": base + stage_bonus,
-            "title": f"{action['label']}: {lead['name']}",
-            "why": action["why"] + (f" · last spoke {age} days ago" if age else ""),
-            "cta": "Open pipeline",
+            "title": action["label"],
+            "why": action["why"] + (f" Last talk: {_plural(age, 'day')} ago." if age else ""),
+            "cta": "See call-back list",
             "href": "/v2/pipeline",
             "when": lead["last_contact_at"],
         })
@@ -581,9 +672,9 @@ def _todo(
                 "kind": "service",
                 "priority": 70 if r.analysis.outcome == "unresolved" else 55,
                 "title": f"Check on {_customer(r)}",
-                "why": "Issue " + ("not resolved" if r.analysis.outcome == "unresolved"
-                                   else "only partly resolved") + " on the call.",
-                "cta": "Open call",
+                "why": "Their problem was " + ("not fixed" if r.analysis.outcome == "unresolved"
+                                                else "only partly fixed") + " on the call.",
+                "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
             })
@@ -600,18 +691,14 @@ def _todo(
             "kind": "follow_up",
             "priority": 50,
             "title": f.action[:1].upper() + f.action[1:],
-            "why": f"Promised to {who}" + (f" · due {f.due}" if f.due else ""),
-            "cta": "Open call",
+            "why": f"Promised to {who}." + (f" When: {f.due}." if f.due else ""),
+            "cta": "Listen to the call",
             "href": f"/v2/calls/{call.id}",
             "when": (call.occurred_at or call.created_at).isoformat(),
         })
         seen_calls.add(str(call.id))
 
     return sorted(items, key=lambda i: (-i["priority"], i["when"] or ""))
-
-
-def _below(c: dict[str, Any]) -> str:
-    return f"{c['metric_label'].lower()} is {_pct(c['value'])} (target {round(c['target'])}%)"
 
 
 def headline(cards: list[dict[str, Any]], coach: dict[str, Any] | None) -> dict[str, str]:
@@ -621,29 +708,22 @@ def headline(cards: list[dict[str, Any]], coach: dict[str, Any] | None) -> dict[
     good = [c for c in cards[:3] if c["status"] == "good"]
     behind = bad + watch
     quality = cards[3]
-    parts: list[str] = []
-    if behind:
-        c = behind[0]
-        verb = "needs attention" if c["status"] == "bad" else "is a little below target"
-        parts.append(f"{c['label']} {verb}: {_below(c)}.")
-        for other in behind[1:]:
-            parts.append(f"{other['label']} is also behind: {_below(other)}.")
+    parts: list[str] = [c["problem"] for c in behind]
+    if not behind and good:
+        parts.append("Things are going well. New customers, cancellations and problems "
+                     "are all on track.")
     elif good:
-        parts.append("Sales, retention and service are all on target.")
-    if good and behind:
-        names = " and ".join(c["label"].lower() for c in good)
-        parts.append(f"{names[:1].upper() + names[1:]} {'is' if len(good) == 1 else 'are'} "
-                     "on target.")
+        parts.extend(c["praise"] for c in good)
     if quality["status"] in ("bad", "watch") and coach:
         focus = coach["focus"]
-        meeting, scored = quality.get("meeting", 0), quality.get("scored", 0)
-        share = (f"None of the {scored} calls meet" if meeting == 0
-                 else f"Only {meeting} of {scored} calls meet")
-        parts.append(f"{share} the call standard; the step missed most is “{focus['step']}” "
-                     f"({focus['missed']} of {focus['of']} calls).")
+        meeting, scored = quality.get("count", 0), quality.get("of", 0)
+        share = (f"None of the {scored} calls" if meeting == 0
+                 else f"Only {meeting} of {scored} calls")
+        parts.append(f"{share} followed enough of the call steps. The step skipped most: "
+                     f"“{focus['plain']}”.")
     status = "bad" if bad or quality["status"] == "bad" else ("watch" if watch else "good")
     if not parts:
-        return {"status": "none", "title": "No analysed calls yet.", "detail": ""}
+        return {"status": "none", "title": "No calls checked yet.", "detail": ""}
     return {"status": status, "title": parts[0], "detail": " ".join(parts[1:])}
 
 
@@ -749,26 +829,21 @@ def rep_card(rep: Rep, rows: list[Row]) -> dict[str, Any]:
 def _verdict(card: dict[str, Any]) -> str:
     name = card["name"]
     if not card["scored"]:
-        return f"No scored calls for {name} yet."
-    parts = []
-    trend = {"up": "and improving", "down": "and slipping", "steady": "and holding steady"}.get(
-        card["trend"] or "", ""
-    )
-    score = _pct(card["score"])
-    tail = f" {trend}" if trend else ""
-    if card["status"] == "good":
-        parts.append(f"{name} is handling calls well: {score} of the call process{tail}.")
-    else:
-        parts.append(f"{name} completes {score} of the call process{tail}.")
+        return f"No calls from {name} have been checked yet."
+    score = card["score"] or 0
+    tens = round(score / 10)
+    trend = {"up": " and getting better", "down": " and getting worse",
+             "steady": ""}.get(card["trend"] or "", "")
+    parts = [f"{name} does about {tens} out of 10 call steps{trend}."]
     if card["strengths"]:
-        parts.append(f"Strongest at {card['strengths'][0]['step']}.")
+        parts.append(f"Good at: {card['strengths'][0]['plain']}.")
     if card["focus"]:
         f = card["focus"]
-        calls = "their only scored call" if f["of"] == 1 else f"{f['missed']} of {f['of']} calls"
-        parts.append(f"Biggest gap: {f['step']}, missed on {calls}.")
+        calls = "their only checked call" if f["of"] == 1 else f"{f['missed']} of {f['of']} calls"
+        parts.append(f"Needs work on: {f['plain']} (skipped on {calls}).")
     if card["scored"] < FEW_CALLS:
-        parts.append(f"Based on {card['scored']} call{'s' if card['scored'] != 1 else ''}, "
-                     "so treat this as a first read.")
+        parts.append(f"This is based on only {_plural(card['scored'], 'call')}, "
+                     "so it may change.")
     return " ".join(parts)
 
 

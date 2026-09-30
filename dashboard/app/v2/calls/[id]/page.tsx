@@ -2,26 +2,25 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { api, type Analysis, type CallDetail, type ScoreItem } from "@/lib/api";
+import { Suspense, useEffect, useState } from "react";
+import { api, type Analysis, type CallDetail, type FollowUp, type ScoreItem } from "@/lib/api";
 import {
-  CALL_TYPES,
-  GRADE_LABEL,
-  OUTCOME_LABEL,
-  OUTCOME_TONE,
-  clock,
-  dateTime,
-  duration,
-} from "@/lib/format";
+  CALL_TYPE_PLAIN,
+  GRADE_PLAIN,
+  OUTCOME_PLAIN,
+  OUTCOME_STATUS,
+  plural,
+  spokenLength,
+  stepMeaning,
+  stepName,
+} from "@/lib/easy";
+import { CALL_TYPES, clock, dateTime } from "@/lib/format";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
-import { FollowUpList } from "@/components/follow-up-list";
-import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon, PrintIcon } from "@/components/icons";
-import { Avatar, Card, ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
+import { ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
 import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/components/v2/listen";
-import { StatusPill } from "@/components/v2/kit";
-import type { Status } from "@/lib/v2";
+import { BigLink, Panel, Reveal, Section, StatusBadge, StatusIcon, bigButton } from "@/components/v2/kit";
 
-export default function CallPageV2() {
+export default function CallV2() {
   return (
     <Suspense fallback={<Loading />}>
       <CallPage />
@@ -29,16 +28,14 @@ export default function CallPageV2() {
   );
 }
 
-const GRADE_STATUS: Record<string, Status> = { gold: "good", green: "good", below: "bad" };
-const OUTCOME_STATUS: Record<string, Status> = { good: "good", warn: "watch", bad: "bad", none: "none" };
-
 function CallPage() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
   const { data: call, error, loading, reload } = useApi<CallDetail>(`/intel/calls/${id}`, {
     poll: (c) => IN_PROGRESS.has(c.processing_status),
   });
-  useTitle(call ? call.analysis?.customer_name ?? call.external_ref ?? "Call" : null);
+  const name = call?.analysis?.customer_name ?? null;
+  useTitle(call ? `Call with ${name ?? "a customer"}` : null);
   const audio = useAudio();
 
   // A link to a moment (?t=seconds) opens the call ready at that moment.
@@ -47,8 +44,7 @@ function CallPage() {
     if (!call || !Number.isFinite(startAt) || startAt <= 0) return;
     const seg = [...call.segments].reverse().find((s) => s.start <= startAt + 0.5);
     audio.setTime(startAt);
-    const el = audio.ref.current;
-    if (el) el.currentTime = startAt;
+    if (audio.ref.current) audio.ref.current.currentTime = startAt;
     if (seg) audio.seek(startAt, seg.id);
     // Only when the call first arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,266 +60,148 @@ function CallPage() {
   const markers: Marker[] = [
     ...(a?.coaching.coaching ?? [])
       .filter((t) => t.start !== null)
-      .map((t) => ({ at: t.start as number, tone: "bad" as const, label: t.title })),
+      .map((t) => ({ at: t.start as number, tone: "bad" as const, label: t.title, segmentId: t.segment_id })),
     ...(a?.coaching.strengths ?? [])
       .filter((s) => s.start !== null)
-      .map((s) => ({ at: s.start as number, tone: "good" as const, label: s.title })),
+      .map((s) => ({ at: s.start as number, tone: "good" as const, label: s.title, segmentId: s.segment_id })),
   ];
 
   return (
-    <div className="space-y-5">
-      <Link href="/v2/calls" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline print:hidden">
-        <BackIcon className="h-4 w-4" /> Calls
-      </Link>
+    <div className="space-y-12">
+      <BigLink href="/v2/calls" kind="secondary">
+        ← Back to all calls
+      </BigLink>
 
-      <Verdict call={call} audio={audio} onChanged={reload} />
+      <Summary call={call} />
 
       {processing && (
-        <Card className="flex items-center gap-3 px-5 py-4">
-          <Spinner className="h-4 w-4" />
-          <p className="text-[15px]">Processing this call. Results appear here automatically.</p>
-        </Card>
+        <Panel className="flex items-center gap-4">
+          <Spinner className="h-6 w-6" />
+          <p className="text-[22px] font-semibold">We are still listening to this call. This page will update by itself.</p>
+        </Panel>
       )}
       {call.processing_status === "failed" && (
-        <Card className="space-y-3 p-5">
-          <ErrorNote message={call.processing_error ?? "Processing failed."} />
-          <Rerun callId={call.id} label="Try again" transcript={call.segments.length ? "keep" : "redo"} onDone={reload} />
-        </Card>
+        <Panel className="space-y-4">
+          <p className="flex items-center gap-3 text-[22px] font-semibold">
+            <StatusIcon status="bad" size={28} /> We could not read this recording.
+          </p>
+          <p className="text-[18px] text-ink/80">{call.processing_error}</p>
+          <Recheck callId={call.id} label="Try again" transcript={call.segments.length ? "keep" : "redo"} onDone={reload} />
+        </Panel>
       )}
       {a && a.call_type_confidence < 0.7 && !call.call_type_overridden && (
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
-        <div className="min-w-0 lg:sticky lg:top-6">
-          <ListenPanel
-            src={call.audio_url ? api.url(call.audio_url) : null}
-            duration={call.duration_seconds}
-            segments={call.segments}
-            repName={call.rep_name}
-            audio={audio}
-            markers={markers}
-            expired={expired}
-          />
-        </div>
-        <div className="min-w-0 space-y-5 print:mt-5">
-          {a && (a.coaching.coaching ?? []).length > 0 && <Coaching analysis={a} audio={audio} />}
-          {a && a.items.length > 0 && <Scorecard analysis={a} audio={audio} callId={call.id} onChange={reload} />}
-          {call.follow_ups.length > 0 && (
-            <Card className="p-5">
-              <h2 className="mb-3 text-[17px] font-semibold tracking-title">Promised on this call</h2>
-              <FollowUpList items={call.follow_ups} />
-            </Card>
-          )}
-          {a && <Details analysis={a} />}
-        </div>
-      </div>
+      <ListenPanel
+        src={call.audio_url ? api.url(call.audio_url) : null}
+        duration={call.duration_seconds}
+        segments={call.segments}
+        repName={call.rep_name}
+        customerName={name}
+        audio={audio}
+        markers={markers}
+        expired={expired}
+      />
+
+      {a && (a.coaching.coaching ?? []).length > 0 && <Coaching analysis={a} audio={audio} />}
+      {a && a.items.length > 0 && <Checklist analysis={a} audio={audio} callId={call.id} onChange={reload} />}
+      {call.follow_ups.length > 0 && <Promises items={call.follow_ups} />}
+      <MoreOptions call={call} onChanged={reload} />
     </div>
   );
 }
 
-// --- The verdict: what happened, and how it went -----------------------------------
+// --- Who, what, and how it went ---------------------------------------------------
 
-function Verdict({ call, audio, onChanged }: { call: CallDetail; audio: AudioControl; onChanged: () => Promise<void> }) {
+function Summary({ call }: { call: CallDetail }) {
   const a = call.analysis;
-  const router = useRouter();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const title = a?.customer_name ?? call.external_ref ?? call.original_filename ?? "Call";
-  const outcomeTone = call.outcome ? OUTCOME_TONE[call.outcome] ?? "none" : "none";
-  const best = a?.coaching.strengths?.[0];
-  const fix = a?.coaching.coaching?.[0];
-  const needed = a?.score_max && a.grade === "below" ? greenAt(a) : null;
-
+  const name = a?.customer_name;
+  const type = CALL_TYPE_PLAIN[call.call_type ?? ""] ?? "a call";
+  const outcome = call.outcome && OUTCOME_PLAIN[call.outcome];
   return (
-    <Card className="p-6">
-      <div className="flex flex-wrap items-start justify-between gap-6">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="font-medium">{call.call_type_label ?? "Call"}</span>
-            {call.outcome && call.outcome !== "not_applicable" && (
-              <StatusPill status={OUTCOME_STATUS[outcomeTone]} label={OUTCOME_LABEL[call.outcome] ?? call.outcome} />
-            )}
-          </div>
-          <h1 className="mt-1.5 text-[28px] font-semibold leading-tight tracking-title">{title}</h1>
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-muted">
-            {call.rep_name && (
-              <span className="inline-flex items-center gap-1.5 text-ink">
-                <Avatar name={call.rep_name} size={20} />
-                {call.rep_name}
-              </span>
-            )}
-            <span>{dateTime(call.occurred_at ?? call.created_at)}</span>
-            <span>{duration(call.duration_seconds)}</span>
-            {call.external_ref && <span>{call.external_ref}</span>}
-          </p>
-          {a?.summary && <p className="mt-4 max-w-3xl text-[16px] leading-relaxed">{a.summary}</p>}
-        </div>
-
-        {a?.score_max ? (
-          <div className="shrink-0 text-right">
-            <p className="tnum text-[44px] font-semibold leading-none tracking-title">
-              {a.score}
-              <span className="text-[24px] font-medium text-muted">/{a.score_max}</span>
-            </p>
-            <div className="mt-2 flex justify-end">
-              <StatusPill status={GRADE_STATUS[a.grade ?? ""] ?? "none"} label={a.grade ? GRADE_LABEL[a.grade] : "Not scored"} />
-            </div>
-            <p className="mt-1.5 text-[12px] text-muted">
-              {needed !== null ? `${needed} more steps for Green` : a.scorecard_name}
-            </p>
-          </div>
-        ) : null}
-      </div>
-
-      {(best || fix) && (
-        <div className="mt-5 grid gap-3 border-t border-line pt-5 sm:grid-cols-2">
-          {best && (
-            <Moment tone="good" label="Done well" title={best.title} at={best.start} seg={best.segment_id} audio={audio} />
-          )}
-          {fix && (
-            <Moment tone="bad" label="Fix first" title={fix.title} at={fix.start} seg={fix.segment_id} audio={audio} />
-          )}
-        </div>
-      )}
-
-      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4 text-[13px] print:hidden">
-        {a && (
-          <Rerun
-            callId={call.id}
-            label="Re-score"
-            transcript="keep"
-            onDone={onChanged}
-            disabled={IN_PROGRESS.has(call.processing_status)}
+    <header>
+      <h1 className="text-[40px] font-bold leading-tight tracking-title">
+        Call with {name ?? "a customer"}
+      </h1>
+      <p className="mt-3 max-w-3xl text-[22px] leading-relaxed">
+        {name ?? "The customer"} called about: <span className="font-semibold">{type.toLowerCase()}</span>.
+        {call.rep_name && (
+          <>
+            {" "}
+            Answered by <span className="font-semibold">{call.rep_name}</span>
+          </>
+        )}{" "}
+        on {dateTime(call.occurred_at ?? call.created_at)}. The call lasted {spokenLength(call.duration_seconds)}.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        {outcome && <StatusBadge large status={OUTCOME_STATUS[call.outcome!] ?? "none"} label={`Result: ${outcome}`} />}
+        {a?.grade && (
+          <StatusBadge
+            large
+            status={a.grade === "below" ? "bad" : "good"}
+            label={`Call steps: ${GRADE_PLAIN[a.grade].toLowerCase()} (${a.score} of ${a.score_max} done)`}
           />
         )}
-        {a && <ChangeType call={call} onDone={onChanged} />}
-        <button className="btn-secondary" onClick={() => window.print()} disabled={!a}>
-          <PrintIcon className="h-4 w-4" />
-          Print
-        </button>
-        <Link href={`/calls/${call.id}`} className="btn-ghost">
-          More tools
-        </Link>
-        <button className="btn-danger ml-auto" onClick={() => setConfirmDelete(true)}>
-          Delete
-        </button>
       </div>
-
-      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this call?">
-        <p className="text-[14px] text-muted">The recording, transcript and score are removed permanently.</p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-secondary" onClick={() => setConfirmDelete(false)}>
-            Cancel
-          </button>
-          <button
-            className="btn bg-bad text-white hover:opacity-90"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await api.delete(`/intel/calls/${call.id}`);
-              router.replace("/v2/calls");
-            }}
-          >
-            {busy && <Spinner className="h-3.5 w-3.5" />}
-            Delete
-          </button>
-        </div>
-      </Modal>
-    </Card>
+      {a?.summary && (
+        <Panel className="mt-6">
+          <h2 className="text-[22px] font-bold">What happened</h2>
+          <p className="mt-2 text-[20px] leading-relaxed">{a.summary}</p>
+        </Panel>
+      )}
+    </header>
   );
 }
 
-/** Steps short of Green on this call's scorecard (Green is 11 of 12, or 14 of 17). */
-function greenAt(a: Analysis): number | null {
-  if (!a.score_max || a.score === null) return null;
-  const green = a.score_max === 17 ? 14 : a.score_max - 1;
-  return Math.max(0, green - a.score);
-}
-
-function Moment({
-  tone,
-  label,
-  title,
-  at,
-  seg,
-  audio,
-}: {
-  tone: "good" | "bad";
-  label: string;
-  title: string;
-  at: number | null;
-  seg: number;
-  audio: AudioControl;
-}) {
-  const Icon = tone === "good" ? CheckIcon : CrossIcon;
-  return (
-    <button
-      className={`group flex items-start gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${
-        tone === "good" ? "bg-good-soft hover:brightness-[0.98]" : "bg-bad-soft hover:brightness-[0.98]"
-      }`}
-      onClick={() => at !== null && audio.seek(at, seg)}
-      disabled={at === null}
-    >
-      <span
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white ${
-          tone === "good" ? "bg-good" : "bg-bad"
-        }`}
-      >
-        <Icon className="h-3 w-3" />
-      </span>
-      <span className="min-w-0">
-        <span className={`block text-[12px] font-semibold ${tone === "good" ? "text-good" : "text-bad"}`}>{label}</span>
-        <span className="block text-[15px] font-medium leading-snug">{title}</span>
-        {at !== null && (
-          <span className="mt-1 inline-flex items-center gap-1 text-[12px] text-link group-hover:underline">
-            <PlayIcon className="h-2.5 w-2.5" /> Hear it at {clock(at)}
-          </span>
-        )}
-      </span>
-    </button>
-  );
-}
-
-// --- Coaching ------------------------------------------------------------------------
+// --- What to learn from it --------------------------------------------------------------
 
 function Coaching({ analysis: a, audio }: { analysis: Analysis; audio: AudioControl }) {
+  const strengths = a.coaching.strengths ?? [];
   const tips = a.coaching.coaching ?? [];
   return (
-    <Card className="p-5">
-      <h2 className="text-[17px] font-semibold tracking-title">Coaching for {a.rep_name ?? "the rep"}</h2>
-      <ol className="mt-4 space-y-4">
-        {tips.map((tip, i) => (
-          <li key={i} className={i ? "border-t border-line pt-4" : ""}>
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-[15px] font-semibold leading-snug tracking-tightish">
-                {i + 1}. {tip.title}
-              </p>
-              {tip.start !== null && (
-                <button
-                  onClick={() => audio.seek(tip.start as number, tip.segment_id)}
-                  className="tnum inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-medium text-link hover:underline"
-                >
-                  <PlayIcon className="h-2.5 w-2.5" />
-                  {clock(tip.start)}
-                </button>
-              )}
-            </div>
-            <p className="mt-1 text-[14px] leading-relaxed text-ink/80">{tip.what_happened}</p>
-            <div className="mt-2.5 rounded-xl bg-panel px-4 py-3">
-              <p className="text-[12px] font-medium text-muted">Try saying</p>
-              <p className="mt-0.5 text-[14px] leading-relaxed [overflow-wrap:anywhere]">{tip.try_saying}</p>
-            </div>
-          </li>
+    <Section title={`What ${a.rep_name ?? "the team member"} can learn`}>
+      <div className="space-y-4">
+        {strengths.slice(0, 1).map((s, i) => (
+          <Panel key={`s${i}`} className="bg-good-soft">
+            <p className="flex items-center gap-3 text-[18px] font-semibold">
+              <StatusIcon status="good" size={24} /> Done well
+            </p>
+            <p className="mt-2 text-[22px] font-bold">{s.title}</p>
+            <p className="mt-1 text-[19px] leading-relaxed">{s.detail}</p>
+            {s.start !== null && (
+              <button className={`${bigButton.secondary} mt-4`} onClick={() => audio.seek(s.start as number, s.segment_id)}>
+                ▶ Hear it ({clock(s.start)})
+              </button>
+            )}
+          </Panel>
         ))}
-      </ol>
-    </Card>
+        {tips.map((t, i) => (
+          <Panel key={`t${i}`}>
+            <p className="flex items-center gap-3 text-[18px] font-semibold">
+              <StatusIcon status="bad" size={24} /> Do better next time
+            </p>
+            <p className="mt-2 text-[22px] font-bold">{t.title}</p>
+            <p className="mt-1 text-[19px] leading-relaxed">{t.what_happened}</p>
+            <div className="mt-4 rounded-[16px] bg-panel p-5">
+              <p className="text-[18px] font-semibold text-ink/80">Try saying:</p>
+              <p className="mt-1 text-[21px] leading-relaxed">{t.try_saying}</p>
+            </div>
+            {t.start !== null && (
+              <button className={`${bigButton.secondary} mt-4`} onClick={() => audio.seek(t.start as number, t.segment_id)}>
+                ▶ Hear what was said ({clock(t.start)})
+              </button>
+            )}
+          </Panel>
+        ))}
+      </div>
+    </Section>
   );
 }
 
-// --- Scorecard: what was missed first, what was done folded away -------------------
+// --- The call steps ---------------------------------------------------------------------
 
-function Scorecard({
+function Checklist({
   analysis: a,
   audio,
   callId,
@@ -338,46 +216,38 @@ function Scorecard({
   const missed = a.items.filter((i) => !i.awarded);
   const done = a.items.filter((i) => i.awarded);
   return (
-    <Card className="p-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[17px] font-semibold tracking-title">{a.scorecard_name ?? "Scorecard"}</h2>
-        <span className="tnum text-[14px] text-muted">
-          {a.score} of {a.score_max} steps
-        </span>
-      </div>
-
+    <Section
+      title="The call steps"
+      intro={`Every call should follow the same steps. On this call, ${done.length} of ${a.items.length} steps were done.`}
+    >
       {missed.length > 0 && (
         <>
-          <p className="mt-4 text-[13px] font-semibold text-bad">Missed ({missed.length})</p>
-          <ul className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl bg-panel">
+          <h3 className="flex items-center gap-3 text-[22px] font-bold">
+            <StatusIcon status="bad" size={26} /> Skipped ({missed.length})
+          </h3>
+          <ul className="mt-3 space-y-3">
             {missed.map((item) => (
               <Step key={item.key} item={item} audio={audio} callId={callId} onChange={onChange} />
             ))}
           </ul>
         </>
       )}
-
-      <button
-        className="mt-4 flex w-full items-center justify-between text-left text-[13px] font-semibold text-good"
-        onClick={() => setShowDone((s) => !s)}
-        aria-expanded={showDone}
-      >
-        Done ({done.length})
-        <ChevronIcon className={`h-4 w-4 text-faint transition-transform ${showDone ? "rotate-90" : ""}`} />
-      </button>
+      <div className="mt-6">
+        <Reveal
+          open={showDone}
+          onToggle={() => setShowDone((s) => !s)}
+          more={`Show the ${plural(done.length, "step")} that ${done.length === 1 ? "was" : "were"} done`}
+          less="Hide the steps that were done"
+        />
+      </div>
       {showDone && (
-        <ul className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl bg-panel">
+        <ul className="mt-4 space-y-3">
           {done.map((item) => (
             <Step key={item.key} item={item} audio={audio} callId={callId} onChange={onChange} />
           ))}
         </ul>
       )}
-      {a.evidence_verified_pct !== null && (
-        <p className="mt-4 text-[12px] text-muted">
-          Every point cites the transcript; {a.evidence_verified_pct.toFixed(0)}% of quotes matched word for word.
-        </p>
-      )}
-    </Card>
+    </Section>
   );
 }
 
@@ -394,60 +264,58 @@ function Step({
 }) {
   const [open, setOpen] = useState(false);
   const evidence = item.evidence.find((e) => e.start !== null);
+  const disputed = item.agreement === "disputed" && !item.override;
   return (
     <li>
-      <button
-        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-ink/[0.02]"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <span
-          className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-white ${
-            item.awarded ? "bg-good" : "bg-bad"
-          }`}
-        >
-          {item.awarded ? <CheckIcon className="h-3 w-3" /> : <CrossIcon className="h-2.5 w-2.5" />}
-        </span>
-        <span className="flex-1 text-[14px]">{item.label}</span>
-        {item.override && <span className="text-[12px] text-muted">Changed by manager</span>}
-        {item.agreement === "disputed" && !item.override && (
-          <span className="chip bg-warn-soft text-warn" title="The two scoring models disagreed; your call">
-            Your call
-          </span>
-        )}
-        <ChevronIcon className={`h-4 w-4 shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
-      {open && (
-        <div className="space-y-2.5 px-3 pb-3.5 pl-[38px] text-[14px]">
-          <p className="leading-relaxed text-ink/80">{item.reason}</p>
-          {evidence && (
-            <button
-              onClick={() => audio.seek(evidence.start as number, evidence.segment_id)}
-              className="block w-full rounded-xl bg-surface px-3 py-2 text-left transition-colors [overflow-wrap:anywhere] hover:bg-accent-soft"
-            >
-              <span className="text-[13px]">“{evidence.quote}”</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-link">
-                <PlayIcon className="h-2.5 w-2.5" /> {clock(evidence.start)} · show in transcript
-              </span>
-            </button>
-          )}
-          <Override item={item} callId={callId} onChange={onChange} />
+      <Panel className="!p-5">
+        <div className="flex flex-wrap items-start gap-4">
+          <StatusIcon status={item.awarded ? "good" : "bad"} size={28} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[21px] font-bold">{stepName(item.key, item.label)}</p>
+            <p className="text-[18px] text-ink/80">{stepMeaning(item.key)}</p>
+            {disputed && (
+              <p className="mt-2">
+                <StatusBadge status="watch" label="Not sure. Please decide." />
+              </p>
+            )}
+            {item.override && (
+              <p className="mt-2 text-[17px]">You changed this. It was marked “{item.model_status === "met" ? "done" : "skipped"}” before.</p>
+            )}
+          </div>
+          <button
+            className={bigButton.secondary}
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+          >
+            {open ? "Hide" : "Why?"}
+          </button>
         </div>
-      )}
+        {open && (
+          <div className="mt-4 space-y-4 border-t-2 border-line pt-4">
+            <p className="text-[19px] leading-relaxed">{item.reason}</p>
+            {evidence && (
+              <button
+                className="block w-full rounded-[14px] bg-panel px-4 py-3 text-left text-[19px] hover:bg-fill"
+                onClick={() => audio.seek(evidence.start as number, evidence.segment_id)}
+              >
+                “{evidence.quote}”
+                <span className="mt-1 block text-[17px] font-semibold text-ink underline decoration-accent decoration-2 underline-offset-4">▶ Hear it ({clock(evidence.start)})</span>
+              </button>
+            )}
+            <Decide item={item} callId={callId} onChange={onChange} />
+          </div>
+        )}
+      </Panel>
     </li>
   );
 }
 
-function Override({ item, callId, onChange }: { item: ScoreItem; callId: string; onChange: () => Promise<void> }) {
+function Decide({ item, callId, onChange }: { item: ScoreItem; callId: string; onChange: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
-  const [editing, setEditing] = useState(false);
   async function save(status: "met" | "missed" | null) {
     setBusy(true);
     try {
-      await api.put(`/intel/calls/${callId}/items/${item.key}/override`, { status, note });
-      setEditing(false);
-      setNote("");
+      await api.put(`/intel/calls/${callId}/items/${item.key}/override`, { status, note: "" });
       await onChange();
     } finally {
       setBusy(false);
@@ -455,128 +323,158 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
   }
   if (item.override) {
     return (
-      <p className="text-[13px] text-muted">
-        Changed to {item.override.status} by {item.override.by}
-        {item.override.note ? `: “${item.override.note}”` : ""}.{" "}
-        <button className="text-link hover:underline" disabled={busy} onClick={() => save(null)}>
-          Undo
-        </button>
-      </p>
-    );
-  }
-  const target = item.awarded ? "missed" : "met";
-  if (!editing) {
-    return (
-      <button className="text-[13px] text-link hover:underline" onClick={() => setEditing(true)}>
-        Disagree? Mark as {target}
+      <button className={bigButton.secondary} disabled={busy} onClick={() => save(null)}>
+        Undo my change
       </button>
     );
   }
   return (
-    <div className="flex flex-wrap gap-2">
-      <input
-        className="input min-w-[180px] flex-1 py-1.5 text-[13px]"
-        placeholder="Why? (optional)"
-        aria-label="Reason for the change"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        maxLength={500}
-      />
-      <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy} onClick={() => save(target)}>
-        {busy && <Spinner className="h-3 w-3" />}
-        Mark as {target}
-      </button>
-      <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(false)}>
-        Cancel
-      </button>
+    <div>
+      <p className="text-[18px] font-semibold">Do you agree?</p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        <button className={bigButton.good} disabled={busy} onClick={() => save("met")}>
+          ✓ It was done
+        </button>
+        <button className={bigButton.danger} disabled={busy} onClick={() => save("missed")}>
+          ✕ It was skipped
+        </button>
+      </div>
     </div>
   );
 }
 
-// --- The facts, compact ---------------------------------------------------------------
+// --- Promises, bigger and simpler than the v1 checklist ----------------------------------
 
-function Details({ analysis: a }: { analysis: Analysis }) {
-  const t = a.triage;
-  const rows = useMemo(() => {
-    const out: [string, string][] = [];
-    if (a.lens === "sales") {
-      if (t.sales.service_discussed) out.push(["Service", t.sales.service_discussed]);
-      if (t.sales.price_quoted) out.push(["Price quoted", t.sales.price_quoted]);
-      if (t.sales.objections.length) out.push(["Objections", t.sales.objections.map((o) => o.objection).join("; ")]);
-      if (t.sales.lost_reason) out.push(["Why not closed", t.sales.lost_reason]);
-    }
-    if (a.lens === "retention" && t.retention.root_cause) out.push(["Why they're cancelling", t.retention.root_cause]);
-    if (a.lens === "service" && t.service.request) out.push(["Request", t.service.request]);
-    if (t.pests.length) out.push(["Pests", t.pests.join(", ")]);
-    if (t.appointment.booked) out.push(["Appointment", t.appointment.when || "Booked"]);
-    return out;
-  }, [a, t]);
-  if (!rows.length) return null;
+function Promises({ items }: { items: FollowUp[] }) {
+  const [done, setDone] = useState<Record<string, boolean>>({});
   return (
-    <Card className="p-5">
-      <h2 className="mb-3 text-[17px] font-semibold tracking-title">Details</h2>
-      <dl className="space-y-2.5">
-        {rows.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 text-[14px]">
-            <dt className="text-muted">{k}</dt>
-            <dd className="leading-snug [overflow-wrap:anywhere]">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </Card>
+    <Section title="Things we promised on this call" intro="Tick each one when it is done.">
+      <ul className="space-y-3">
+        {items.map((f) => {
+          const isDone = done[f.id] ?? f.status === "done";
+          return (
+            <li key={f.id}>
+              <label className="flex min-h-[64px] cursor-pointer items-start gap-4 rounded-[18px] border-2 border-line bg-surface px-5 py-4">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-7 w-7 shrink-0 accent-good"
+                  checked={isDone}
+                  onChange={async (e) => {
+                    const next = e.target.checked;
+                    setDone((d) => ({ ...d, [f.id]: next }));
+                    try {
+                      await api.patch(`/intel/follow-ups/${f.id}`, { status: next ? "done" : "open" });
+                    } catch {
+                      setDone((d) => ({ ...d, [f.id]: !next }));
+                    }
+                  }}
+                />
+                <span className="min-w-0">
+                  <span className={`block text-[20px] leading-snug ${isDone ? "line-through opacity-70" : ""}`}>{f.action}</span>
+                  {f.due && <span className="mt-1 block text-[17px] text-ink/80">When: {f.due}</span>}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 
-// --- Actions ----------------------------------------------------------------------------
+// --- Less common actions, together at the bottom --------------------------------------
 
-function Rerun({
+function MoreOptions({ call, onChanged }: { call: CallDetail; onChanged: () => Promise<void> }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typeOpen, setTypeOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Section title="More options">
+      <Reveal open={open} onToggle={() => setOpen((o) => !o)} more="Show more options" less="Hide more options" />
+      {open && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {call.analysis && (
+            <Recheck callId={call.id} label="Check this call again" transcript="keep" onDone={onChanged} />
+          )}
+          {call.analysis && (
+            <button className={bigButton.secondary} onClick={() => setTypeOpen(true)}>
+              Change what kind of call this was
+            </button>
+          )}
+          <button className={bigButton.secondary} onClick={() => window.print()}>
+            Print this page
+          </button>
+          <Link href={`/calls/${call.id}`} className={bigButton.secondary}>
+            Open in the old version
+          </Link>
+          <button className={bigButton.danger} onClick={() => setConfirmDelete(true)}>
+            Delete this call
+          </button>
+        </div>
+      )}
+      <TypeDialog call={call} open={typeOpen} onClose={() => setTypeOpen(false)} onDone={onChanged} />
+      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this call?">
+        <p className="text-[18px]">The recording and everything we wrote about it will be gone for good.</p>
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button className={bigButton.secondary} onClick={() => setConfirmDelete(false)}>
+            No, keep it
+          </button>
+          <button
+            className={`${bigButton.danger} !bg-[#a3001a] !text-white`}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await api.delete(`/intel/calls/${call.id}`);
+              router.replace("/v2/calls");
+            }}
+          >
+            {busy && <Spinner className="h-4 w-4" />}
+            Yes, delete it
+          </button>
+        </div>
+      </Modal>
+    </Section>
+  );
+}
+
+function Recheck({
   callId,
   label,
   transcript,
   onDone,
-  disabled,
 }: {
   callId: string;
   label: string;
   transcript: "keep" | "redo";
   onDone: () => Promise<void>;
-  disabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <button
-      className="btn-secondary"
-      disabled={busy || disabled}
-      title={error ?? "Grade this call again from its transcript"}
-      onClick={async () => {
-        setBusy(true);
-        setError(null);
-        try {
-          await api.post(`/intel/calls/${callId}/reprocess`, { transcript });
-          await onDone();
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Could not re-score");
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {busy && <Spinner className="h-3.5 w-3.5" />}
-      {label}
-    </button>
-  );
-}
-
-function ChangeType({ call, onDone }: { call: CallDetail; onDone: () => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="btn-secondary" onClick={() => setOpen(true)} disabled={IN_PROGRESS.has(call.processing_status)}>
-        Change type
+    <span className="inline-flex flex-col gap-2">
+      <button
+        className={bigButton.secondary}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api.post(`/intel/calls/${callId}/reprocess`, { transcript });
+            await onDone();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "That did not work. Please try again.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy && <Spinner className="h-4 w-4" />}
+        {label}
       </button>
-      <TypeDialog call={call} open={open} onClose={() => setOpen(false)} onDone={onDone} />
-    </>
+      {error && <span className="text-[17px] text-bad">{error}</span>}
+    </span>
   );
 }
 
@@ -593,52 +491,45 @@ function TypeDialog({
 }) {
   const [value, setValue] = useState(call.call_type ?? "");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   useEffect(() => setValue(call.call_type ?? ""), [call.call_type, open]);
   return (
     <Modal open={open} onClose={onClose} title="What kind of call was this?">
-      <p className="mb-4 text-[14px] text-muted">The call is re-graded on the scorecard for the type you choose.</p>
-      <div className="grid grid-cols-2 gap-2">
+      <p className="mb-4 text-[18px]">We will check the call again using the steps for this kind of call.</p>
+      <div className="grid gap-2">
         {CALL_TYPES.map((t) => (
           <button
             key={t.value}
             onClick={() => setValue(t.value)}
-            className={`rounded-xl border px-3 py-2.5 text-left text-[14px] font-medium transition-colors ${
-              value === t.value ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-line hover:bg-panel"
+            aria-pressed={value === t.value}
+            className={`min-h-[52px] rounded-[14px] border-2 px-4 text-left text-[18px] font-semibold ${
+              value === t.value ? "border-accent bg-accent-soft" : "border-line hover:bg-panel"
             }`}
           >
-            {t.label}
+            {value === t.value ? "● " : "○ "}
+            {CALL_TYPE_PLAIN[t.value] ?? t.label}
           </button>
         ))}
       </div>
-      {error && (
-        <div className="mt-3">
-          <ErrorNote message={error} />
-        </div>
-      )}
-      <div className="mt-5 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>
+      <div className="mt-6 flex flex-wrap justify-end gap-3">
+        <button className={bigButton.secondary} onClick={onClose}>
           Cancel
         </button>
         <button
-          className="btn-primary"
+          className={bigButton.primary}
           disabled={busy || !value}
           onClick={async () => {
             setBusy(true);
-            setError(null);
             try {
               await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: value });
               onClose();
               await onDone();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not re-grade");
             } finally {
               setBusy(false);
             }
           }}
         >
-          {busy && <Spinner className="h-3.5 w-3.5" />}
-          Re-grade
+          {busy && <Spinner className="h-4 w-4" />}
+          Save and check again
         </button>
       </div>
     </Modal>
@@ -647,26 +538,33 @@ function TypeDialog({
 
 function TypeCheck({ call, analysis, onDone }: { call: CallDetail; analysis: Analysis; onDone: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-4 print:hidden">
-      <div className="flex items-start gap-2.5 text-[14px]">
-        <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
-        <p>
-          <span className="font-semibold">Is this a {analysis.call_type_label.toLowerCase()} call?</span>{" "}
-          <span className="text-ink/80">It decides which scorecard grades it.</span>
-        </p>
-      </div>
-      <div className="flex gap-2">
+    <div className="rounded-[22px] bg-warn-soft p-6" role="region" aria-label="Please check the kind of call">
+      <p className="flex items-center gap-3 text-[22px] font-bold">
+        <StatusIcon status="watch" size={26} /> Please check: what kind of call was this?
+      </p>
+      <p className="mt-2 text-[20px] leading-relaxed">
+        We think it was: <span className="font-semibold">{(CALL_TYPE_PLAIN[analysis.call_type] ?? analysis.call_type_label).toLowerCase()}</span>
+        . We were not sure, and it changes which steps we check.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
         <button
-          className="btn-secondary"
+          className={bigButton.good}
+          disabled={busy}
           onClick={async () => {
-            await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: analysis.call_type });
-            await onDone();
+            setBusy(true);
+            try {
+              await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: analysis.call_type });
+              await onDone();
+            } finally {
+              setBusy(false);
+            }
           }}
         >
-          Yes
+          ✓ Yes, that is right
         </button>
-        <button className="btn-primary" onClick={() => setOpen(true)}>
+        <button className={bigButton.secondary} onClick={() => setOpen(true)}>
           No, change it
         </button>
       </div>

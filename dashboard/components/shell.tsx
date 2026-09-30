@@ -46,6 +46,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const wide = pathname.startsWith("/calls/pipeline");
   // Top-level area, e.g. "calls" or "settings": crossing between them fades in.
   const section = pathname.split("/")[1] ?? "";
+  // v2 is built for people who find software hard: bigger, darker text.
+  const easy = pathname.startsWith("/v2");
 
   useEffect(() => {
     if (bare) {
@@ -107,7 +109,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </span>
           <div className="min-w-0 leading-tight">
             <p className="truncate text-[14px] font-semibold tracking-tightish">{company}</p>
-            <p className="text-[12px] text-muted">PestLaunch OS</p>
+            <p className={easy ? "text-[14px] text-ink/80" : "text-[12px] text-muted"}>PestLaunch OS</p>
           </div>
         </div>
 
@@ -115,9 +117,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <nav className="mt-5 flex flex-1 flex-col gap-px" aria-label="Main">
           {NAV.map(({ label, icon: Icon, href: base }) => {
-            // Inside the v2 preview, Calls stays in v2.
-            const href = base === "/calls" && pathname.startsWith("/v2") ? "/v2" : base;
+            // Inside the v2 preview, Calls stays in v2, and sections that don't
+            // work in this build are hidden rather than shown greyed out.
+            const easy = pathname.startsWith("/v2");
+            const href = base === "/calls" && easy ? "/v2" : base;
             const active = href && pathname.startsWith(href);
+            if (!href && easy) return null;
             if (!href) {
               return (
                 <span
@@ -136,7 +141,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={label}
                 href={href}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] ${
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 ${easy ? "min-h-[48px] text-[18px]" : "py-[6px] text-[14px]"} ${
                   active ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
                 }`}
               >
@@ -150,20 +155,26 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-hairline pt-3">
           <Link
             href="/settings"
-            className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] ${
+            className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 ${easy ? "min-h-[48px] text-[18px]" : "py-[6px] text-[14px]"} ${
               pathname.startsWith("/settings") ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
             }`}
           >
             <SettingsIcon />
             Settings
           </Link>
-          {me && <p className="truncate px-2.5 pb-1 pt-1 text-[12px] text-muted">{me.email}</p>}
-          <p className="px-2.5 pb-1 text-[11px] text-faint" title={`Build ${BUILD_ID}`}>
+          {me && (
+            <p className={`truncate px-2.5 pb-1 pt-1 ${easy ? "text-[15px] text-ink/80" : "text-[12px] text-muted"}`}>
+              {me.email}
+            </p>
+          )}
+          <p className={`px-2.5 pb-1 ${easy ? "text-[14px] text-ink/80" : "text-[11px] text-faint"}`} title={`Build ${BUILD_ID}`}>
             Version {APP_VERSION}
             {BUILD_ID !== "local" && <span className="tnum"> ({BUILD_ID})</span>}
           </p>
           <button
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-ink/[0.04] hover:text-ink"
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 hover:bg-ink/[0.04] hover:text-ink ${
+              easy ? "min-h-[48px] text-[18px] text-ink" : "py-[6px] text-[14px] text-muted"
+            }`}
             onClick={() => {
               clearToken();
               router.replace("/login");
@@ -207,6 +218,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 function SearchBox() {
   const router = useRouter();
+  const easy = usePathname().startsWith("/v2");
   const ref = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
 
@@ -236,13 +248,17 @@ function SearchBox() {
         ref={ref}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search calls"
-        aria-label="Search calls"
-        className="w-full rounded-[9px] border-0 bg-ink/[0.05] py-[6px] pl-8 pr-10 text-[14px] placeholder:text-muted focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+        placeholder={easy ? "Find a customer" : "Search calls"}
+        aria-label={easy ? "Find a customer by name" : "Search calls"}
+        className={`w-full rounded-[9px] border-0 bg-ink/[0.05] pl-8 pr-10 placeholder:text-muted focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/25 ${
+          easy ? "min-h-[48px] text-[17px]" : "py-[6px] text-[14px]"
+        }`}
       />
-      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-subtle">
-        ⌘K
-      </kbd>
+      {!easy && (
+        <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-subtle">
+          ⌘K
+        </kbd>
+      )}
     </form>
   );
 }

@@ -2,19 +2,18 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { plural } from "@/lib/easy";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { RepCard } from "@/lib/v2";
-import { STATUS_TEXT } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
-import { Avatar, Card, Empty, ErrorNote, Loading } from "@/components/ui";
-import { Trend } from "@/components/v2/kit";
+import { Avatar, ErrorNote, Loading } from "@/components/ui";
+import { Panel, StatusBadge, StatusIcon, Trend, easyLink } from "@/components/v2/kit";
 
 // One or two calls are shown, but not judged as a pattern.
 const FEW_CALLS = 3;
 
-export default function RepsV2() {
-  useTitle("Reps");
+export default function TeamV2() {
+  useTitle("Team");
   const { query, refreshKey } = useCalls();
   const { data, error, loading, reload } = useApi<RepCard[]>(query("/intel/v2/reps"));
 
@@ -26,68 +25,69 @@ export default function RepsV2() {
   if (error && !data) return <ErrorNote message={error} />;
   if (!data?.length) {
     return (
-      <Card>
-        <Empty title="No reps yet">Reps appear once their calls are scored.</Empty>
-      </Card>
+      <Panel>
+        <p className="text-[22px] font-semibold">Nobody yet. People appear here once their calls are checked.</p>
+      </Panel>
     );
   }
 
   return (
     <div className="space-y-4">
-      <p className="px-1 text-[14px] text-muted">
-        Most in need of coaching first. Each rep&apos;s score is the share of the call process they complete; the
-        standard is 85%.
+      <p className="text-[20px] leading-relaxed">
+        The person who needs help the most is at the top. A good call does at least 8 or 9 out of 10 steps.
       </p>
-      <ul className="group-list">
-        {data.map((r) => (
-          <li key={r.id}>
-            <Link
-              href={`/v2/reps/${r.id}`}
-              className="grid gap-3 px-5 py-4 transition-colors hover:bg-surface-hover sm:grid-cols-[minmax(0,1.1fr)_110px_minmax(0,1.6fr)_16px] sm:items-center"
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <Avatar name={r.name} size={36} />
-                <span className="min-w-0">
-                  <span className="block truncate text-[16px] font-semibold tracking-tightish">{r.name}</span>
-                  <span className="block text-[12px] text-muted">
-                    {r.calls} call{r.calls === 1 ? "" : "s"}
-                    {r.close_rate !== null && ` · closes ${Math.round(r.close_rate)}%`}
-                  </span>
-                </span>
-              </span>
-              <span>
-                <span
-                  className={`tnum block text-[24px] font-semibold leading-none ${
-                    r.scored < FEW_CALLS ? "text-muted" : STATUS_TEXT[r.status]
-                  }`}
-                >
-                  {r.score === null ? "–" : `${Math.round(r.score)}%`}
-                </span>
-                {r.scored < FEW_CALLS ? <span className="text-[12px] text-muted">Early read</span> : <Trend trend={r.trend} />}
-              </span>
-              <span className="space-y-1 text-[14px]">
-                {r.focus && (
-                  <span className="flex items-start gap-2">
-                    <CrossIcon className="mt-1 h-3 w-3 shrink-0 text-bad" />
-                    <span>
-                      <span className="font-medium">Coach on {r.focus.step}</span>
-                      <span className="text-muted"> · missed {r.focus.missed} of {r.focus.of}</span>
-                    </span>
-                  </span>
-                )}
-                {r.strengths[0] && (
-                  <span className="flex items-start gap-2">
-                    <CheckIcon className="mt-1 h-3 w-3 shrink-0 text-good" />
-                    <span className="text-muted">
-                      Strong at <span className="text-ink">{r.strengths[0].step}</span>
-                    </span>
-                  </span>
-                )}
-              </span>
-              <ChevronIcon className="hidden h-4 w-4 text-faint sm:block" />
-            </Link>
-          </li>
-        ))}
+      <ul className="space-y-4">
+        {data.map((r) => {
+          const early = r.scored < FEW_CALLS;
+          const tens = Math.round((r.score ?? 0) / 10);
+          return (
+            <li key={r.id}>
+              <Link href={`/v2/reps/${r.id}`} className="block rounded-[22px] focus-visible:ring-[4px] focus-visible:ring-accent/50">
+                <Panel className="transition-colors hover:border-accent">
+                  <div className="flex flex-wrap items-start gap-5">
+                    <Avatar name={r.name} size={56} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[26px] font-bold leading-tight tracking-title">{r.name}</p>
+                      <p className="mt-1 text-[18px] text-ink/80">
+                        {plural(r.scored, "call")} checked
+                        {early ? " · too few to be sure" : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <StatusBadge status={early ? "none" : r.status} label={`Does ${tens} out of 10 steps`} />
+                      {!early && (
+                        <div className="mt-2">
+                          <Trend trend={r.trend} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-3 border-t-2 border-line pt-5 text-[20px] sm:grid-cols-2">
+                    {r.focus && (
+                      <p className="flex items-start gap-3">
+                        <StatusIcon status="bad" size={24} />
+                        <span>
+                          <span className="font-semibold">Teach: </span>
+                          {r.focus.plain}
+                        </span>
+                      </p>
+                    )}
+                    {r.strengths[0] && (
+                      <p className="flex items-start gap-3">
+                        <StatusIcon status="good" size={24} />
+                        <span>
+                          <span className="font-semibold">Good at: </span>
+                          {r.strengths[0].plain}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <p className={`mt-4 text-[18px] ${easyLink}`}>See {r.name}&apos;s calls and what to teach →</p>
+                </Panel>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
