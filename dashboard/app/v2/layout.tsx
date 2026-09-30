@@ -3,13 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
-import { UploadIcon } from "@/components/icons";
+import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/environment";
+import { RefreshIcon, UploadIcon } from "@/components/icons";
+import { Segmented } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { bigButton, easyLink } from "@/components/v2/kit";
+import {
+  TEXT_SIZES,
+  TEXT_SIZE_EVENT,
+  TEXT_SIZE_KEY,
+  type TextSize,
+  TextSizeContext,
+  readTextSize,
+} from "@/components/v2/text-size";
 
 type Range = "7" | "30" | "all";
-type Size = "normal" | "large";
 
 const TABS = [
   {
@@ -47,20 +57,21 @@ const TABS = [
 ];
 
 const RANGE_KEY = "pestlaunch.range";
-const SIZE_KEY = "pestlaunch.textsize";
 
 export default function V2Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [range, setRange] = useState<Range>("all");
-  const [size, setSize] = useState<Size>("normal");
+  const [size, setSizeState] = useState<TextSize>("normal");
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
+  const [asOf, setAsOf] = useState(() => new Date().toISOString());
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(RANGE_KEY) as Range | null;
       if (saved === "7" || saved === "30" || saved === "all") setRange(saved);
-      if (window.localStorage.getItem(SIZE_KEY) === "large") setSize("large");
+      setSizeState(readTextSize());
     } catch {
       /* storage unavailable */
     }
@@ -73,105 +84,236 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
       /* storage unavailable */
     }
   };
+  const setSize = (s: TextSize) => {
+    setSizeState(s);
+    remember(TEXT_SIZE_KEY, s);
+    window.dispatchEvent(new Event(TEXT_SIZE_EVENT));
+  };
+  const changeRange = (v: Range) => {
+    setRange(v);
+    remember(RANGE_KEY, v);
+  };
 
   const days = range === "all" ? null : Number(range);
   const query = useCallback(
     (path: string) => (days ? `${path}${path.includes("?") ? "&" : "?"}days=${days}` : path),
     [days],
   );
-  const refresh = () => setRefreshKey((k) => k + 1);
+  const refresh = () => {
+    setRefreshKey((k) => k + 1);
+    setAsOf(new Date().toISOString());
+  };
 
   const tab = TABS.find((t) => t.href === pathname);
-  const ranged = tab && tab.href !== "/v2/pipeline";
+  // The call-back list shows open deals whatever the period, so it has no range.
+  const ranged = !!tab && tab.href !== "/v2/pipeline";
+  const header = { tab, ranged, range, changeRange, size, setSize, asOf, refresh };
 
   return (
-    <CallsContext.Provider value={{ days, refreshKey, query }}>
-      {/* Larger text scales the whole page, so nothing gets cut off. */}
-      <div style={size === "large" ? { zoom: 1.2 } : undefined}>
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <nav aria-label="Calls sections" className="flex flex-wrap gap-2">
-            {TABS.map((t) => {
-              const active = t.href === pathname || (t.href !== "/v2" && pathname.startsWith(t.href));
-              return (
+    <TextSizeContext.Provider value={{ size, setSize }}>
+      <CallsContext.Provider value={{ days, refreshKey, query }}>
+        {/* Larger text scales the whole page, so nothing gets cut off. */}
+        <div style={size === "large" ? { zoom: 1.2 } : undefined}>
+          {size === "small" ? (
+            <CompactHeader {...header} onUpload={() => setUploadOpen(true)} onEnv={() => setEnvOpen(true)} />
+          ) : (
+            <EasyHeader {...header} onUpload={() => setUploadOpen(true)} />
+          )}
+          <div key={`${pathname}:${size}`} className="animate-page-in">
+            {children}
+          </div>
+        </div>
+        <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={refresh} logHref="/v2/calls" />
+        <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
+      </CallsContext.Provider>
+    </TextSizeContext.Provider>
+  );
+}
+
+interface HeaderProps {
+  tab: (typeof TABS)[number] | undefined;
+  ranged: boolean;
+  range: Range;
+  changeRange: (r: Range) => void;
+  size: TextSize;
+  setSize: (s: TextSize) => void;
+  asOf: string;
+  refresh: () => void;
+  onUpload: () => void;
+}
+
+// --- Small: the compact layout ------------------------------------------------------
+
+function CompactHeader({
+  tab,
+  ranged,
+  range,
+  changeRange,
+  size,
+  setSize,
+  asOf,
+  refresh,
+  onUpload,
+  onEnv,
+}: HeaderProps & { onEnv: () => void }) {
+  const pathname = usePathname();
+  const { env } = useEnvironment();
+  return (
+    <div className="mb-7">
+      <div className="mb-5 flex justify-end">
+        <SizeSwitch size={size} setSize={setSize} compact />
+      </div>
+      {tab && (
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="large-title">{tab.title}</h1>
+                <Link
+                  href={tab.v1}
+                  className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-semibold text-link hover:underline"
+                  title="This is the new version. Open the old one."
+                >
+                  v2 · see v1
+                </Link>
+              </div>
+              <p className="footnote mt-1.5">
+                {ranged ? (range === "all" ? "All calls" : `Last ${range} days`) : "People who haven't decided"} ·
+                updated {dateTime(asOf)}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={onEnv} className="btn-secondary gap-2 px-3.5" title="Change environment">
+                <span className={`h-[7px] w-[7px] rounded-full ${env === "local" ? "bg-[#ff9f0a]" : "bg-[#30d158]"}`} />
+                {ENVIRONMENTS.find((e) => e.value === env)?.label}
+              </button>
+              {ranged && (
+                <Segmented
+                  size="sm"
+                  value={range}
+                  onChange={changeRange}
+                  options={[
+                    { value: "7", label: "7D" },
+                    { value: "30", label: "30D" },
+                    { value: "all", label: "All" },
+                  ]}
+                />
+              )}
+              <button className="btn-secondary px-3" aria-label="Refresh" title="Refresh" onClick={refresh}>
+                <RefreshIcon className="h-4 w-4" />
+              </button>
+              <button className="btn-primary" onClick={onUpload}>
+                <UploadIcon className="h-4 w-4" />
+                Upload
+              </button>
+            </div>
+          </div>
+          <div className="mt-6">
+            <div className="flex w-full rounded-[9px] bg-fill p-[2px] sm:inline-flex sm:w-auto" role="tablist">
+              {TABS.map((t) => (
                 <Link
                   key={t.href}
                   href={t.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-[52px] items-center gap-2 rounded-full px-5 text-[18px] font-semibold transition-colors ${
-                    active ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"
+                  role="tab"
+                  aria-selected={pathname === t.href}
+                  className={`flex-1 whitespace-nowrap rounded-[7px] px-2 py-[5px] text-center text-[13px] font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
+                    pathname === t.href ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
                   }`}
                 >
-                  <span aria-hidden className="text-[20px]">
-                    {t.icon}
-                  </span>
                   {t.label}
                 </Link>
-              );
-            })}
-          </nav>
-          <div className="flex items-center gap-2" role="group" aria-label="Text size">
-            <span className="text-[16px] font-medium text-ink/80">Text size</span>
-            {(["normal", "large"] as Size[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setSize(s);
-                  remember(SIZE_KEY, s);
-                }}
-                aria-pressed={size === s}
-                className={`min-h-[44px] rounded-full px-4 font-semibold transition-colors ${
-                  s === "large" ? "text-[20px]" : "text-[16px]"
-                } ${size === s ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"}`}
-              >
-                {s === "normal" ? "Normal" : "Larger"}
-              </button>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        </>
+      )}
+    </div>
+  );
+}
 
-        {tab && (
-          <header className="mb-8">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="max-w-3xl">
-                <h1 className="text-[40px] font-bold leading-tight tracking-title">{tab.title}</h1>
-                <p className="mt-2 text-[20px] leading-relaxed text-ink/80">{tab.intro}</p>
-              </div>
-              <button className={bigButton.primary} onClick={() => setUploadOpen(true)}>
-                <UploadIcon className="h-5 w-5" />
-                Add call recordings
-              </button>
-            </div>
-            <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3">
-              {ranged && (
-                <label className="inline-flex items-center gap-3 text-[18px] font-medium">
-                  Show calls from
-                  <select
-                    className="min-h-[48px] rounded-xl border-2 border-line bg-surface px-4 text-[18px] font-semibold text-ink"
-                    value={range}
-                    onChange={(e) => {
-                      const v = e.target.value as Range;
-                      setRange(v);
-                      remember(RANGE_KEY, v);
-                    }}
-                  >
-                    <option value="all">All time</option>
-                    <option value="30">The last 30 days</option>
-                    <option value="7">The last 7 days</option>
-                  </select>
-                </label>
-              )}
-              <Link href={tab.v1} className={`text-[17px] ${easyLink}`}>
-                Switch to the old version
+// --- Normal and Larger: the accessible layout ---------------------------------------------
+
+function EasyHeader({ tab, ranged, range, changeRange, size, setSize, onUpload }: HeaderProps) {
+  const pathname = usePathname();
+  return (
+    <>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Calls sections" className="flex flex-wrap gap-2">
+          {TABS.map((t) => {
+            const active = t.href === pathname || (t.href !== "/v2" && pathname.startsWith(t.href));
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex min-h-[52px] items-center gap-2 rounded-full px-5 text-[18px] font-semibold transition-colors ${
+                  active ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"
+                }`}
+              >
+                <span aria-hidden className="text-[20px]">
+                  {t.icon}
+                </span>
+                {t.label}
               </Link>
-            </div>
-          </header>
-        )}
-
-        <div key={pathname} className="animate-page-in">
-          {children}
-        </div>
+            );
+          })}
+        </nav>
+        <SizeSwitch size={size} setSize={setSize} />
       </div>
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={refresh} logHref="/v2/calls" />
-    </CallsContext.Provider>
+
+      {tab && (
+        <header className="mb-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-3xl">
+              <h1 className="text-[40px] font-bold leading-tight tracking-title">{tab.title}</h1>
+              <p className="mt-2 text-[20px] leading-relaxed text-ink/80">{tab.intro}</p>
+            </div>
+            <button className={bigButton.primary} onClick={onUpload}>
+              <UploadIcon className="h-5 w-5" />
+              Add call recordings
+            </button>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3">
+            {ranged && (
+              <label className="inline-flex items-center gap-3 text-[18px] font-medium">
+                Show calls from
+                <select
+                  className="min-h-[48px] rounded-xl border-2 border-line bg-surface px-4 text-[18px] font-semibold text-ink"
+                  value={range}
+                  onChange={(e) => changeRange(e.target.value as Range)}
+                >
+                  <option value="all">All time</option>
+                  <option value="30">The last 30 days</option>
+                  <option value="7">The last 7 days</option>
+                </select>
+              </label>
+            )}
+            <Link href={tab.v1} className={`text-[17px] ${easyLink}`}>
+              Switch to the old version
+            </Link>
+          </div>
+        </header>
+      )}
+    </>
+  );
+}
+
+function SizeSwitch({ size, setSize, compact }: { size: TextSize; setSize: (s: TextSize) => void; compact?: boolean }) {
+  return (
+    <div className="flex items-center gap-2" role="group" aria-label="Text size">
+      <span className={compact ? "text-[13px] text-muted" : "text-[16px] font-medium text-ink/80"}>Text size</span>
+      {TEXT_SIZES.map((s) => (
+        <button
+          key={s.value}
+          onClick={() => setSize(s.value)}
+          aria-pressed={size === s.value}
+          className={`rounded-full font-semibold transition-colors ${compact ? "min-h-[32px] px-3" : "min-h-[44px] px-4"} ${
+            s.value === "small" ? "text-[13px]" : s.value === "normal" ? "text-[16px]" : "text-[20px]"
+          } ${size === s.value ? "bg-ink text-canvas" : "bg-fill text-ink hover:bg-fill-hover"}`}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken, type Me } from "@/lib/api";
 import { setBusinessZone } from "@/lib/format";
+import { TEXT_SIZE_EVENT, readTextSize } from "@/components/v2/text-size";
 import { APP_VERSION, BUILD_ID } from "@/lib/version";
 import { EnvironmentPrompt } from "./environment";
 import { RouteProgress, startProgress } from "./route-progress";
@@ -46,8 +47,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const wide = pathname.startsWith("/calls/pipeline");
   // Top-level area, e.g. "calls" or "settings": crossing between them fades in.
   const section = pathname.split("/")[1] ?? "";
-  // v2 is built for people who find software hard: bigger, darker text.
-  const easy = pathname.startsWith("/v2");
+  // v2 at Normal or Larger text is built for people who find software hard:
+  // bigger, darker text. Small keeps the compact sidebar.
+  const small = useSmallText();
+  const easy = pathname.startsWith("/v2") && !small;
 
   useEffect(() => {
     if (bare) {
@@ -119,8 +122,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {NAV.map(({ label, icon: Icon, href: base }) => {
             // Inside the v2 preview, Calls stays in v2, and sections that don't
             // work in this build are hidden rather than shown greyed out.
-            const easy = pathname.startsWith("/v2");
-            const href = base === "/calls" && easy ? "/v2" : base;
+            const href = base === "/calls" && pathname.startsWith("/v2") ? "/v2" : base;
             const active = href && pathname.startsWith(href);
             if (!href && easy) return null;
             if (!href) {
@@ -216,9 +218,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function useSmallText(): boolean {
+  const [small, setSmall] = useState(false);
+  useEffect(() => {
+    const read = () => setSmall(readTextSize() === "small");
+    read();
+    window.addEventListener(TEXT_SIZE_EVENT, read);
+    return () => window.removeEventListener(TEXT_SIZE_EVENT, read);
+  }, []);
+  return small;
+}
+
 function SearchBox() {
   const router = useRouter();
-  const easy = usePathname().startsWith("/v2");
+  const small = useSmallText();
+  const easy = usePathname().startsWith("/v2") && !small;
   const ref = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
 
