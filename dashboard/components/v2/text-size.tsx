@@ -1,37 +1,88 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { useEffect, useState } from "react";
 
 /**
- * Small is the compact v2 layout; Normal and Larger are the accessible layout
- * (Larger also zooms it). Wording is plain in all three.
+ * One design at three sizes. The whole v2 app (sidebar included) is scaled
+ * uniformly, like the system text-size setting on a Mac or iPhone, so every
+ * element keeps its place and only gets bigger.
  */
 export type TextSize = "small" | "normal" | "large";
 
-export const TextSizeContext = createContext<{ size: TextSize; setSize: (s: TextSize) => void }>({
-  size: "small",
-  setSize: () => undefined,
-});
-
-export const useTextSize = () => useContext(TextSizeContext);
-
-export const TEXT_SIZES: { value: TextSize; label: string; glyph: string }[] = [
-  { value: "small", label: "Small text", glyph: "text-[13px]" },
-  { value: "normal", label: "Normal text", glyph: "text-[17px]" },
-  { value: "large", label: "Larger text", glyph: "text-[21px]" },
+export const TEXT_SIZES: { value: TextSize; label: string; zoom: number; glyph: string }[] = [
+  { value: "small", label: "Small text", zoom: 1, glyph: "text-[11px]" },
+  { value: "normal", label: "Normal text", zoom: 1.1, glyph: "text-[14px]" },
+  { value: "large", label: "Larger text", zoom: 1.2, glyph: "text-[17px]" },
 ];
 
-/** Tells parts of the page outside v2 (the sidebar) which size is chosen. */
-export const TEXT_SIZE_EVENT = "pestlaunch:textsize";
-export const TEXT_SIZE_KEY = "pestlaunch.textsize";
+const KEY = "pestlaunch.textsize";
+const EVENT = "pestlaunch:textsize";
 
-export function readTextSize(): TextSize {
+function read(): TextSize {
   try {
-    const s = window.localStorage.getItem(TEXT_SIZE_KEY);
+    const s = window.localStorage.getItem(KEY);
     if (s === "small" || s === "normal" || s === "large") return s;
   } catch {
     /* storage unavailable */
   }
-  // Small (the compact layout) unless the viewer chose otherwise.
   return "small";
+}
+
+export function useTextSize(): [TextSize, (s: TextSize) => void] {
+  const [size, setSize] = useState<TextSize>("small");
+  useEffect(() => {
+    const sync = () => setSize(read());
+    sync();
+    window.addEventListener(EVENT, sync);
+    return () => window.removeEventListener(EVENT, sync);
+  }, []);
+  const choose = (s: TextSize) => {
+    try {
+      window.localStorage.setItem(KEY, s);
+    } catch {
+      /* still applied for this visit */
+    }
+    window.dispatchEvent(new Event(EVENT));
+  };
+  return [size, choose];
+}
+
+/** Applies the chosen size to the page while `active` (the v2 routes). */
+export function useTextZoom(active: boolean) {
+  const [size] = useTextSize();
+  useEffect(() => {
+    const root = document.documentElement;
+    const zoom = active ? TEXT_SIZES.find((t) => t.value === size)?.zoom ?? 1 : 1;
+    root.style.zoom = zoom === 1 ? "" : String(zoom);
+    return () => {
+      root.style.zoom = "";
+    };
+  }, [active, size]);
+}
+
+/** Three "A"s, each drawn at the size it gives. */
+export function TextSizePicker() {
+  const [size, choose] = useTextSize();
+  return (
+    <div className="flex items-center justify-between gap-2 px-2.5 py-1" role="radiogroup" aria-label="Text size">
+      <span className="text-[13px] text-muted">Text size</span>
+      <div className="flex rounded-[8px] bg-fill p-[2px]">
+        {TEXT_SIZES.map((t) => (
+          <button
+            key={t.value}
+            role="radio"
+            aria-checked={size === t.value}
+            aria-label={t.label}
+            title={t.label}
+            onClick={() => choose(t.value)}
+            className={`flex h-6 w-8 items-center justify-center rounded-[6px] font-semibold leading-none transition-colors ${t.glyph} ${
+              size === t.value ? "bg-thumb text-ink shadow-thumb" : "text-ink/60 hover:text-ink"
+            }`}
+          >
+            A
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
