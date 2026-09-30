@@ -102,7 +102,7 @@ def test_headline_leads_with_the_worst_problem():
     coach = {"focus": {"step": "Thank the Customer", "missed": 18, "of": 21}}
     result = brief.headline(cards, coach)
     assert result["status"] == "bad"
-    assert result["title"] == "Retention needs attention: rate is 0% against a 60% target."
+    assert result["title"] == "Retention needs attention: rate is 0% (target 60%)."
     assert "Sales and customer service are on target." in result["detail"]
     assert result["detail"].endswith(
         "Only 1 of 21 calls meet the call standard; the step missed most is "
@@ -134,3 +134,15 @@ def test_coaching_tip_prefers_one_mainly_about_the_step():
     ]}
     stat = brief.step_stats([row])["Thank"]
     assert brief._tip_for([row], stat)["try_saying"] == "Thanks for calling us."
+
+
+def test_headline_names_every_area_behind_target():
+    cards = [_card("Sales", 55, "good"), _card("Retention", 0, "bad", 60),
+             {**_card("Customer service", 57, "bad", 85), "metric_label": "Resolved on the call"},
+             {**_card("Call quality", 44, "bad"), "meeting": 0, "scored": 21}]
+    coach = {"focus": {"step": "Summary Statement", "missed": 19, "of": 19}}
+    result = brief.headline(cards, coach)
+    assert result["detail"].startswith(
+        "Customer service is also behind: resolved on the call is 57% (target 85%). "
+        "Sales is on target. None of the 21 calls meet the call standard"
+    )

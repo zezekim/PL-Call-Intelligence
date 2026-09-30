@@ -334,7 +334,7 @@ def _tip_for(rows: list[Row], step: StepStat) -> dict[str, Any] | None:
             "rep": row.call.rep.name if row.call.rep else row.analysis.rep_name,
             "title": tip.get("title"),
             "what_happened": tip.get("what_happened"),
-            "try_saying": (tip.get("try_saying") or "").strip().strip('"'),
+            "try_saying": (tip.get("try_saying") or "").strip().strip('"“”'),
             "start": tip.get("start"),
         }
     return None
@@ -610,32 +610,38 @@ def _todo(
     return sorted(items, key=lambda i: (-i["priority"], i["when"] or ""))
 
 
+def _below(c: dict[str, Any]) -> str:
+    return f"{c['metric_label'].lower()} is {_pct(c['value'])} (target {round(c['target'])}%)"
+
+
 def headline(cards: list[dict[str, Any]], coach: dict[str, Any] | None) -> dict[str, str]:
     """The most important thing first: a title, then one or two supporting sentences."""
-    worst = [c for c in cards[:3] if c["status"] == "bad"]
+    bad = [c for c in cards[:3] if c["status"] == "bad"]
     watch = [c for c in cards[:3] if c["status"] == "watch"]
     good = [c for c in cards[:3] if c["status"] == "good"]
+    behind = bad + watch
     quality = cards[3]
     parts: list[str] = []
-    if worst:
-        c = worst[0]
-        parts.append(f"{c['label']} needs attention: {c['metric_label'].lower()} is "
-                     f"{_pct(c['value'])} against a {round(c['target'])}% target.")
-    elif watch:
-        c = watch[0]
-        parts.append(f"{c['label']} is a little below target at {_pct(c['value'])}.")
+    if behind:
+        c = behind[0]
+        verb = "needs attention" if c["status"] == "bad" else "is a little below target"
+        parts.append(f"{c['label']} {verb}: {_below(c)}.")
+        for other in behind[1:]:
+            parts.append(f"{other['label']} is also behind: {_below(other)}.")
     elif good:
         parts.append("Sales, retention and service are all on target.")
-    if good and (worst or watch):
+    if good and behind:
         names = " and ".join(c["label"].lower() for c in good)
         parts.append(f"{names[:1].upper() + names[1:]} {'is' if len(good) == 1 else 'are'} "
                      "on target.")
     if quality["status"] in ("bad", "watch") and coach:
         focus = coach["focus"]
-        parts.append(f"Only {quality.get('meeting', 0)} of {quality.get('scored', 0)} calls meet "
-                     f"the call standard; the step missed most is “{focus['step']}” "
+        meeting, scored = quality.get("meeting", 0), quality.get("scored", 0)
+        share = (f"None of the {scored} calls meet" if meeting == 0
+                 else f"Only {meeting} of {scored} calls meet")
+        parts.append(f"{share} the call standard; the step missed most is “{focus['step']}” "
                      f"({focus['missed']} of {focus['of']} calls).")
-    status = "bad" if worst or quality["status"] == "bad" else ("watch" if watch else "good")
+    status = "bad" if bad or quality["status"] == "bad" else ("watch" if watch else "good")
     if not parts:
         return {"status": "none", "title": "No analysed calls yet.", "detail": ""}
     return {"status": status, "title": parts[0], "detail": " ".join(parts[1:])}
