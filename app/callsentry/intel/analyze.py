@@ -37,7 +37,7 @@ from callsentry.services.llm import LLMResult, get_llm
 log = structlog.get_logger(__name__)
 
 # Bump when a prompt or schema changes, so re-scored calls can be told apart.
-PROMPT_VERSION = "2026-09-27.1"
+PROMPT_VERSION = "2026-10-01.1"
 
 SOLUTION_BANK = [
     "free_reservice",
@@ -274,7 +274,15 @@ rep could have used - adapted from the company's scripts to this customer's situ
 the scorecard item keys it addresses.
 - `strengths`: 1-2 things the rep genuinely did well, with the moment.
 - `overall_feedback`: 2-3 sentences addressed to the rep ("you"), warm and direct.
-- Never invent company policy, prices or offers that the scripts and call do not contain."""
+- Never invent company policy, prices or offers that the scripts and call do not contain.
+
+The coaching, strengths and feedback are read by owners and reps of every reading level, so:
+- Short, everyday words and short sentences. Aim for a 6th-grade reading level.
+- No sales or training jargon (no "consensus", "objection", "expectation statement", \
+"transition", "solution", "value", "WINs"). Say what to do in plain terms instead.
+- Titles: at most 7 words, starting with a verb (e.g. "Say sorry about the problem first").
+- `try_saying` sounds like a friendly person on the phone, at most 2 short sentences.
+(Step reasons above can use the scorecard's own terms.)"""
 
 
 def _scoring_schema(
@@ -572,6 +580,8 @@ async def analyse(
         "overall_feedback": str(scored.get("overall_feedback") or "").strip(),
         "strengths": [_moment(s, segments) for s in scored.get("strengths") or []],
         "coaching": [_moment(c, segments) for c in scored.get("coaching") or []],
+        # Written under the plain-language rules; the one-off rewrite skips it.
+        "plain": True,
     }
     return analysis
 

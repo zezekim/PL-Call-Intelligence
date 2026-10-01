@@ -16,8 +16,6 @@ export interface PerformanceCard {
   count: number;
   of: number;
   goal: string;
-  problem: string;
-  praise: string;
   status: Status;
   target: number;
   change: number | null;

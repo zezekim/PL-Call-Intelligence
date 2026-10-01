@@ -100,8 +100,29 @@ def plain_step(key: str, fallback: str = "") -> tuple[str, str]:
     return PLAIN_STEPS.get(key, (fallback or key, ""))
 
 
-def _out_of(n: int, d: int) -> str:
-    return f"{n} out of {d}"
+
+# A rate is only called good or bad once it rests on this many calls: "0 of 1
+# kept" is one conversation, not a trend.
+MIN_JUDGE = 3
+
+
+def _judge(target: str, rate: float | None, decided: int) -> str:
+    return TARGETS[target].status(rate) if decided >= MIN_JUDGE else "none"
+
+
+def _few(decided: int) -> str:
+    return f" · only {_plural(decided, 'call')} so far" if 0 < decided < MIN_JUDGE else ""
+
+
+# What each area's status means, in words (no numbers: the card shows those).
+VERDICTS = {
+    "sales": {"bad": "New customers are not saying yes often enough",
+              "watch": "A few too many new customers are not saying yes"},
+    "retention": {"bad": "Customers who call to cancel are not being kept",
+                  "watch": "A few too many customers who call to cancel are leaving"},
+    "service": {"bad": "Customer problems are often not fixed on the call",
+                "watch": "A few customer problems are not fixed on the call"},
+}
 
 
 # A step counts as a strength or a gap only with enough calls to judge it.
@@ -192,15 +213,13 @@ def _sales(rows: list[Row]) -> dict[str, Any]:
         "value": rate,
         "count": out["sold"],
         "of": decided,
-        "status": TARGETS["close_rate"].status(rate),
+        "status": _judge("close_rate", rate, decided),
         "target": TARGETS["close_rate"].good,
         "goal": "Goal: at least 5 out of 10 say yes",
         "detail": (
             f"{out['sold']} said yes · {out['follow_up']} still deciding · "
-            f"{out['not_sold']} said no" if sales else "No calls from new customers"
+            f"{out['not_sold']} said no{_few(decided)}" if sales else "No calls from new customers"
         ),
-        "problem": f"Not enough new customers are saying yes: {_out_of(out['sold'], decided)}.",
-        "praise": f"New customers are saying yes ({_out_of(out['sold'], decided)}).",
         "why": why,
         "action": (
             {"label": "See who to call back", "href": "/v2/pipeline"} if deciding else None
@@ -244,17 +263,15 @@ def _retention(rows: list[Row]) -> dict[str, Any]:
         "value": rate,
         "count": out["saved"],
         "of": decided,
-        "status": TARGETS["save_rate"].status(rate),
+        "status": _judge("save_rate", rate, decided),
         "target": TARGETS["save_rate"].good,
         "goal": "Goal: keep at least 6 out of 10",
         "detail": (
             f"{out['saved']} kept · {out['cancelled']} cancelled"
             + (f" · {out['pending']} not decided" if out["pending"] else "")
+            + _few(decided)
             if ret else "Nobody called to cancel"
         ),
-        "problem": ("Customers who want to cancel are not being kept: "
-                    f"{_out_of(out['saved'], decided)} kept."),
-        "praise": f"Customers who wanted to cancel were kept ({_out_of(out['saved'], decided)}).",
         "why": why,
         "action": action,
     }
@@ -280,16 +297,14 @@ def _service(rows: list[Row]) -> dict[str, Any]:
         "value": rate,
         "count": out["resolved"],
         "of": decided,
-        "status": TARGETS["resolution_rate"].status(rate),
+        "status": _judge("resolution_rate", rate, decided),
         "target": TARGETS["resolution_rate"].good,
         "goal": "Goal: fix almost all of them (more than 8 out of 10)",
         "detail": (
             f"{out['resolved']} fixed · {out['partially']} partly fixed · "
-            f"{out['unresolved']} not fixed" if svc else "No customers with a problem"
+            f"{out['unresolved']} not fixed{_few(decided)}"
+            if svc else "No customers with a problem"
         ),
-        "problem": ("Customer problems are not always fixed on the call: "
-                    f"{_out_of(out['resolved'], decided)} fixed."),
-        "praise": f"Customer problems are being fixed ({_out_of(out['resolved'], decided)}).",
         "why": why,
         "action": (
             {"label": "Listen to that call", "href": f"/v2/calls/{open_[0].call.id}"}
@@ -317,8 +332,6 @@ def _quality(rows: list[Row]) -> dict[str, Any]:
             f"{meeting} of {len(scored)} calls followed enough steps" if scored
             else "No calls checked yet"
         ),
-        "problem": "",
-        "praise": "",
         "why": "",
         "action": None,
         "meeting": meeting,
@@ -701,30 +714,48 @@ def _todo(
     return sorted(items, key=lambda i: (-i["priority"], i["when"] or ""))
 
 
-def headline(cards: list[dict[str, Any]], coach: dict[str, Any] | None) -> dict[str, str]:
-    """The most important thing first: a title, then one or two supporting sentences."""
-    bad = [c for c in cards[:3] if c["status"] == "bad"]
-    watch = [c for c in cards[:3] if c["status"] == "watch"]
-    good = [c for c in cards[:3] if c["status"] == "good"]
-    behind = bad + watch
+def headline(
+    cards: list[dict[str, Any]], coach: dict[str, Any] | None, todo: list[dict[str, Any]]
+) -> dict[str, str]:
+    """The verdict and the next step, without repeating the numbers on the cards.
+
+    The title says what matters most in words; the detail says where to start
+    and what to teach. Areas with too few calls to judge are left out.
+    """
+    behind = [c for c in cards[:3] if c["status"] == "bad"] + [
+        c for c in cards[:3] if c["status"] == "watch"
+    ]
+    judged = [c for c in cards[:3] if c["status"] != "none"]
     quality = cards[3]
-    parts: list[str] = [c["problem"] for c in behind]
-    if not behind and good:
-        parts.append("Things are going well. New customers, cancellations and problems "
-                     "are all on track.")
-    elif good:
-        parts.extend(c["praise"] for c in good)
-    if quality["status"] in ("bad", "watch") and coach:
-        focus = coach["focus"]
-        meeting, scored = quality.get("count", 0), quality.get("of", 0)
-        share = (f"None of the {scored} calls" if meeting == 0
-                 else f"Only {meeting} of {scored} calls")
-        parts.append(f"{share} followed enough of the call steps. The step skipped most: "
-                     f"“{focus['plain']}”.")
-    status = "bad" if bad or quality["status"] == "bad" else ("watch" if watch else "good")
-    if not parts:
-        return {"status": "none", "title": "No calls checked yet.", "detail": ""}
-    return {"status": status, "title": parts[0], "detail": " ".join(parts[1:])}
+    skipping = quality["status"] in ("bad", "watch") and coach is not None
+
+    if behind:
+        title = VERDICTS[behind[0]["key"]][behind[0]["status"]] + "."
+        if len(behind) > 1:
+            others = " and ".join(VERDICTS[c["key"]][c["status"]].lower() for c in behind[1:])
+            title += f" Also, {others}."
+    elif judged and skipping:
+        title = "Customers are being looked after, but calls are skipping key steps."
+    elif judged:
+        title = "Things are going well."
+    else:
+        title = "There are not enough calls yet to say how things are going."
+
+    detail: list[str] = []
+    if todo:
+        detail.append(f"Start with: {todo[0]['title']}.")
+    if skipping:
+        detail.append(f"This week, teach the team to “{coach['focus']['plain'].lower()}”.")
+
+    if behind and behind[0]["status"] == "bad" or (not behind and quality["status"] == "bad"):
+        status = "bad"
+    elif behind or skipping:
+        status = "watch"
+    elif judged:
+        status = "good"
+    else:
+        status = "none"
+    return {"status": status, "title": title, "detail": " ".join(detail)}
 
 
 async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None) -> dict:
@@ -767,7 +798,7 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
     return {
         "as_of": now.isoformat(),
         "days": days,
-        "headline": headline(cards, coach),
+        "headline": headline(cards, coach, todo),
         "cards": cards,
         # The page shows the top five and can expand to the rest.
         "todo": todo[:15],

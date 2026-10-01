@@ -90,38 +90,50 @@ def test_a_single_miss_is_not_enough_to_call_it_a_gap():
     assert brief.focus_step(stats) is None
 
 
-def _card(label: str, status: str) -> dict:
-    return {"label": label, "status": status, "problem": f"{label} is behind.",
-            "praise": f"{label} is fine."}
+def _card(key: str, status: str) -> dict:
+    return {"key": key, "label": key.title(), "status": status}
 
 
-def test_headline_leads_with_the_worst_problem():
-    cards = [_card("Sales", "good"), _card("Retention", "bad"),
-             _card("Service", "good"), {**_card("Quality", "bad"), "count": 1, "of": 21}]
-    coach = {"focus": {"plain": "Say thank you", "missed": 18, "of": 21}}
-    result = brief.headline(cards, coach)
+TODO = [{"title": "Try to win back Dana"}]
+COACH = {"focus": {"plain": "Say thank you", "missed": 18, "of": 21}}
+
+
+def test_headline_gives_the_verdict_and_next_step_without_numbers():
+    cards = [_card("sales", "good"), _card("retention", "bad"), _card("service", "watch"),
+             _card("quality", "bad")]
+    result = brief.headline(cards, COACH, TODO)
     assert result["status"] == "bad"
-    assert result["title"] == "Retention is behind."
-    assert result["detail"] == (
-        "Sales is fine. Service is fine. Only 1 of 21 calls followed enough of the call "
-        "steps. The step skipped most: “Say thank you”."
+    assert result["title"] == (
+        "Customers who call to cancel are not being kept. Also, a few customer problems "
+        "are not fixed on the call."
     )
+    assert result["detail"] == (
+        "Start with: Try to win back Dana. This week, teach the team to “say thank you”."
+    )
+    assert not any(ch.isdigit() for ch in result["title"])
+
+
+def test_areas_with_too_few_calls_are_not_judged():
+    # One cancellation call is not a trend: its card is "none", not "bad".
+    assert brief._judge("save_rate", 0.0, 1) == "none"
+    assert brief._judge("save_rate", 0.0, 3) == "bad"
+    cards = [_card("sales", "good"), _card("retention", "none"), _card("service", "good"),
+             _card("quality", "bad")]
+    result = brief.headline(cards, COACH, TODO)
+    assert result["title"] == "Customers are being looked after, but calls are skipping key steps."
+    assert result["status"] == "bad"
 
 
 def test_headline_when_everything_is_on_target():
-    cards = [_card(n, "good") for n in ("Sales", "Retention", "Service", "Quality")]
-    result = brief.headline(cards, None)
-    assert result["status"] == "good"
-    assert result["title"].startswith("Things are going well.")
+    cards = [_card(k, "good") for k in ("sales", "retention", "service", "quality")]
+    assert brief.headline(cards, None, [])["title"] == "Things are going well."
 
 
-def test_headline_names_every_area_behind_target():
-    cards = [_card("Sales", "good"), _card("Retention", "bad"), _card("Service", "watch"),
-             {**_card("Quality", "bad"), "count": 0, "of": 21}]
-    coach = {"focus": {"plain": "Explain the plan", "missed": 19, "of": 19}}
-    result = brief.headline(cards, coach)
-    assert result["title"] == "Retention is behind."
-    assert result["detail"].startswith("Service is behind. Sales is fine. None of the 21 calls")
+def test_headline_with_no_judged_areas():
+    cards = [_card(k, "none") for k in ("sales", "retention", "service", "quality")]
+    result = brief.headline(cards, None, [])
+    assert result["status"] == "none"
+    assert result["title"].startswith("There are not enough calls yet")
 
 
 def test_every_scorecard_step_has_a_plain_name():
