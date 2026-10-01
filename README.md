@@ -1,4 +1,4 @@
-# PestLaunch Call Intelligence
+# PL Call Intelligence
 
 Call intelligence for pest control companies. Upload recorded calls and get, for
 every call:
