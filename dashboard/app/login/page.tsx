@@ -23,7 +23,7 @@ export default function LoginPage() {
       const result = await api.post<{ access_token: string }>("/auth/login", { email, password });
       setToken(result.access_token);
       askForEnvironmentNext();
-      router.replace("/calls");
+      router.replace("/v2");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
     } finally {

@@ -6,6 +6,8 @@ test("signs in and every page renders without errors", async ({ page }) => {
   page.on("pageerror", (err) => errors.push(err.message));
 
   await signIn(page);
+  // v1 is still there, one link away.
+  await page.goto("/calls");
   await expect(page).toHaveTitle(/Calls/);
 
   for (const [tab, title] of [

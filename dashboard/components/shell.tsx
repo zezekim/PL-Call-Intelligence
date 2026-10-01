@@ -119,8 +119,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <nav className="mt-5 flex flex-1 flex-col gap-px" aria-label="Main">
           {NAV.map(({ label, icon: Icon, href: base }) => {
-            // Inside v2, Calls stays in v2.
-            const href = base === "/calls" && v2 ? "/v2" : base;
+            // Calls opens v2; only inside v1 does it stay in v1.
+            const href = base === "/calls" && !pathname.startsWith("/calls") ? "/v2" : base;
             const active = href && pathname.startsWith(href);
             if (!href) {
               return (

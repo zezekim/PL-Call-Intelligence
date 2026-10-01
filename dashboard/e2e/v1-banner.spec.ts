@@ -18,3 +18,11 @@ for (const [v1, v2] of [
     await expect(page.getByRole("link", { name: "Open this page in v2 ›" })).toHaveAttribute("href", v2);
   });
 }
+
+test("the home page and the sidebar's Calls open v2", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/v2$/);
+  await page.goto("/settings");
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Calls" })).toHaveAttribute("href", "/v2");
+});

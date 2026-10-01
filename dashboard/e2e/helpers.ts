@@ -11,5 +11,7 @@ export async function signIn(page: Page) {
   // First sign-in asks which environment to use.
   await expect(page.getByRole("dialog", { name: "Choose an environment" })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: /Cloud/ }).click();
-  await expect(page.getByRole("heading", { name: "Calls", level: 1 })).toBeVisible();
+  // Signing in opens v2.
+  await expect(page).toHaveURL(/\/v2$/);
+  await expect(page.getByRole("heading", { name: /^Today/, level: 1 })).toBeVisible();
 }
