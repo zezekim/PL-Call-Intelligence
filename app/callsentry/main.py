@@ -143,7 +143,7 @@ _public = get_settings().public_base_url.startswith("https://")
 
 app = FastAPI(
     title="CallSentry",
-    version="1.0.0",
+    version="2.0.0",
     description="Self-hosted, local-first AI voice receptionist.",
     lifespan=lifespan,
     docs_url=None if _public else "/docs",

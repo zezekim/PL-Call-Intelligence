@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { dateTime } from "@/lib/format";
+import { businessZone, dateTime } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
 import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/environment";
 import { RefreshIcon, UploadIcon } from "@/components/icons";
@@ -29,6 +29,19 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
   const [envOpen, setEnvOpen] = useState(false);
   const { env } = useEnvironment();
   const [asOf, setAsOf] = useState(() => new Date().toISOString());
+  // Set in the browser, so it is today where the business is.
+  const [today, setToday] = useState("");
+  useEffect(() => {
+    setToday(
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: businessZone(),
+      }),
+    );
+  }, [asOf]);
 
   useEffect(() => {
     try {
@@ -69,7 +82,10 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="large-title">{tab.title}</h1>
+                <h1 className="large-title">
+                  {tab.title}
+                  {tab.href === "/v2" && today && <span className="font-normal text-muted">, {today}</span>}
+                </h1>
                 <Link
                   href={tab.v1}
                   className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-semibold text-link hover:underline"
