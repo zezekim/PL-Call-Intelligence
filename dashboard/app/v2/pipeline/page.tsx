@@ -146,7 +146,13 @@ function OpenLead({ lead, onChange }: { lead: PipelineLead; onChange: () => Prom
           <span className="text-[12px] text-muted">{STAGE_LABEL[lead.stage]}</span>
         </div>
         <p className="mt-1.5 text-[16px] font-semibold leading-snug tracking-tightish">
-          {a.label}
+          {lead.last_call_id ? (
+            <Link href={`/v2/calls/${lead.last_call_id}`} className="hover:text-link hover:underline">
+              {a.label}
+            </Link>
+          ) : (
+            a.label
+          )}
         </p>
         <p className="mt-0.5 text-[14px] text-muted">
           {a.why}
@@ -184,7 +190,7 @@ function OpenLead({ lead, onChange }: { lead: PipelineLead; onChange: () => Prom
 }
 
 function Closed({ leads, onChange }: { leads: PipelineLead[]; onChange: () => Promise<void> }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   if (!leads.length) return null;
   const won = leads.filter((l) => l.stage === "won").length;
   return (
