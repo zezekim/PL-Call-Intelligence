@@ -207,9 +207,11 @@ export async function mockApi(page: Page, overrides: Record<string, (route: Rout
     window.localStorage.setItem("pestlaunch.environment", "cloud");
   });
   const board = pipeline();
-  await page.route("**/api/**", async (route) => {
+  // The API sits under /api in production and at its own origin in CI.
+  await page.route(/\/(auth|intel|client-errors)(\/|\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/api/, "");
+    if (!/^\/(auth|intel|client-errors)/.test(path)) return route.fallback();
     const method = route.request().method();
     for (const [pattern, handler] of Object.entries(overrides)) {
       if (new RegExp(pattern).test(`${method} ${path}`)) return handler(route);
