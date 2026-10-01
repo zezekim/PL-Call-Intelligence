@@ -11,9 +11,11 @@ every call:
   from the call that is checked against the transcript
 - **coaching** for the rep, anchored to moments in the recording
 
-Across all calls, a manager sees close rate, cancellations saved, service
-resolution, what to train on, a sales pipeline that fills itself, and a
-breakdown by rep.
+**Version 2** turns all of that into answers an owner can act on in a few
+seconds. It says what's happening, whether it's good or bad, what matters most,
+and what to do next. It covers new customers, customers who want to cancel,
+and customers with a problem. It also includes a call-back list that fills
+itself, with the words to say, and coaching per team member.
 
 The build also includes a live **AI receptionist**. Callers can ask questions,
 book an inspection, or be put through to a person. Each receptionist call is
@@ -22,10 +24,11 @@ the human reps.
 
 | | |
 |---|---|
-| Live app | https://pestlaunch.ramil.org |
-| Walkthrough | https://www.loom.com/share/60cd05b4edc5427bbb23c99218f02363 |
+| Live app | https://pestlaunch.ramil.org (opens v2 after sign-in) |
+| **v2 walkthrough** | https://www.loom.com/share/f790cc5d2af3449392c13c176db230e9 |
+| v1 walkthrough | https://www.loom.com/share/60cd05b4edc5427bbb23c99218f02363 |
 | AI receptionist | +1 (385) 336-0152 |
-| Version | see `VERSION`; the running build is shown in the sidebar and at `/version` |
+| Version | 2.0 (see `VERSION`); the running build is at `/version` |
 
 ---
 
@@ -33,29 +36,99 @@ the human reps.
 
 1. [As-built plan](#1-as-built-plan)
 2. [Architecture](#2-architecture)
-3. [The analysis pipeline](#3-the-analysis-pipeline)
-4. [Scorecards](#4-scorecards)
-5. [Why the grades can be trusted](#5-why-the-grades-can-be-trusted)
-6. [The dashboard](#6-the-dashboard)
-7. [The AI receptionist](#7-the-ai-receptionist)
-8. [Data model](#8-data-model)
-9. [API](#9-api)
-10. [Security and privacy](#10-security-and-privacy)
-11. [Cost control](#11-cost-control)
-12. [Running it](#12-running-it)
-13. [Configuration](#13-configuration)
-14. [Deployment and operations](#14-deployment-and-operations)
-15. [Testing](#15-testing)
-16. [Results on the sample calls](#16-results-on-the-sample-calls)
-17. [Known limitations](#17-known-limitations)
-18. [What's next](#18-whats-next)
-19. [Repository layout](#19-repository-layout)
+3. [The owner views (v2)](#3-the-owner-views-v2)
+4. [The analysis pipeline](#4-the-analysis-pipeline)
+5. [Scorecards](#5-scorecards)
+6. [Why the grades can be trusted](#6-why-the-grades-can-be-trusted)
+7. [The original dashboard (v1)](#7-the-original-dashboard-v1)
+8. [The AI receptionist](#8-the-ai-receptionist)
+9. [Data model](#9-data-model)
+10. [API](#10-api)
+11. [Security and privacy](#11-security-and-privacy)
+12. [Cost control](#12-cost-control)
+13. [Running it](#13-running-it)
+14. [Configuration](#14-configuration)
+15. [Deployment and operations](#15-deployment-and-operations)
+16. [Testing](#16-testing)
+17. [Results on the sample calls](#17-results-on-the-sample-calls)
+18. [Known limitations](#18-known-limitations)
+19. [What's next](#19-whats-next)
+20. [Repository layout](#20-repository-layout)
 
 ---
 
 ## 1. As-built plan
 
-### 1.1 The brief, and where each part lives
+Part A covers the revision round (v2). Part B is the original plan for the
+first submission (v1), on which v2 is built.
+
+### Part A: Version 2
+
+#### A.1 The feedback, and how each point was answered
+
+The review of v1 found the analysis strong but the presentation made the owner
+think too much. The bar for v2: every page answers in 3–5 seconds what's
+happening, whether it's good or bad, what matters most, and what to do next.
+
+| Feedback | As built in v2 | Where |
+|---|---|---|
+| Overview leads with "calls analyzed" | Today opens with a one-sentence verdict in words (no numbers to interpret), then three cards: **New customers** (said yes), **Customers who want to cancel** (kept), **Customers with a problem** (fixed on the call). Call counts move to a quiet footer | `app/v2/page.tsx`, `brief.headline`, `brief._sales/_retention/_service` |
+| Each area needs a clear good or bad | Every card has a status in words and colour: *Good*, *Could be better*, *Needs work*, or *Not enough calls yet* (under 3 calls, an area isn't judged). Goals are editable in Settings | `brief._judge`, `MIN_JUDGE`, Settings → Goals |
+| Coaching bars looked positive when they meant misses | Bars always fill with what went right, in the status colour, with a tick at the goal. Misses are said in words ("Skipped on 19 of 19 calls"), never as a long red bar | `components/v2/kit.tsx` (`Meter`) |
+| Too much at once | One verdict, three cards, the top three things to do (the rest one tap away), and one coaching focus for the week. Detail is folded, never removed: "Show 2 more", "More", a ••• menu for rare actions | all v2 pages |
+| Say what to do next | "Do these first" ranks open work across the business: cancellations nobody tried to save, overdue call-backs, unfixed problems, promises made. Each links to where it gets done | `brief._todo` |
+| Call page: recording and transcript together | One panel: the player is pinned above the transcript. The line being spoken is highlighted and kept in view, and any line, marker or quote plays from that moment. Keyboard: space, ← / → | `components/v2/listen.tsx` |
+| Pipeline "next step" must be an owner action, none for Won | Call back lists people, not stages: "Call Jordan back", with urgency (*Late by 2 days*, *Call today*, *Waiting a long time*) and what was promised. Decided leads have no next step and fold away | `brief.lead_action`, `app/v2/pipeline/page.tsx` |
+| Rep pages: doing well / improve / coach on | Each person's page answers three questions in three cards: **Good at**, **Needs work on** (how often it's skipped), and **What to teach**, with the exact words and a real moment from their own calls to listen to together | `brief.rep_brief`, `app/v2/reps/[id]/page.tsx` |
+| Free to diverge from the existing UI | v2 is a new set of routes under `/v2`; v1 stays intact for comparison, one click away | `app/v2/`, `app/calls/layout.tsx` |
+
+Beyond the feedback:
+
+- **The AI suggests the words to say.** Each call-back has an opening line built
+  from what the call found: the name, the price, the pests, who they spoke to.
+  It has a Copy button and costs nothing extra in AI.
+- **Plain language throughout.** Scorecard steps have everyday names ("Explain
+  the plan", "Show you care"). Raw AI phrases are cleaned up: pest descriptions
+  become short names, and "unknown" never appears as a customer's name.
+- **Undo for decisions.** "Said yes" and "Said no" take effect at once, with a
+  toast and Undo. A failed save puts things back and says so.
+- **Text size** (Small, Normal, Larger) scales the whole app evenly, like the
+  system setting on a Mac or iPhone.
+- **Friendly states.** A deleted or broken link explains itself and offers a
+  way back. A page that fails offers Try again. Loading placeholders match the
+  shape of the page that's coming. Numbers refresh when you return to the tab.
+- **v2 is the default.** Sign-in, the bare address and the sidebar's Calls link
+  all open v2.
+
+#### A.2 Build phases
+
+| Phase | Delivered |
+|---|---|
+| 1. Owner brief API | `intel/brief.py`: verdicts per area against goals, change against the previous period, small-sample guard, prioritised to-do, coaching focus with a real example, owner actions for leads, per-person briefs. Additive endpoints under `/intel/v2/*`; v1 endpoints untouched |
+| 2. Owner views | Today, Call back, Team, All calls, call page and person page under `/v2` |
+| 3. Plain language and accessibility | Everyday step names, status always in words as well as colour, three text sizes, WCAG AA contrast in both themes |
+| 4. Sharper judgement | Headline covers every area behind target; coaching tip chosen to be mainly about the focus step; one or two calls shown but not judged as a pattern |
+| 5. Editable goals | Goals in Settings, read at request time |
+| 6. Restraint pass | Top three first, the rest folded; one-sentence summaries; ••• menu for rare actions; repeated information removed |
+| 7. Reliability | Undo toasts, instant updates with rollback, friendly error and missing states, page-shaped loading, error boundary, auto-refresh on return |
+| 8. AI assistance | Suggested opening lines; placeholder names and pest phrases cleaned |
+| 9. Tests and release | Browser tests for every v2 page on made-up data, with axe accessibility checks in light and dark; v1 banner; v2 as the default |
+
+#### A.3 Key decisions
+
+| Decision | Why |
+|---|---|
+| Build v2 beside v1, not over it | v1 was the submitted version; keeping it lets the two be compared side by side. The backend changed only by adding |
+| Words first, numbers second | An owner should know good or bad without reading a number. Every status is a word; numbers support it |
+| Never judge on one or two calls | With fewer than 3 calls an area says *Not enough calls yet*, and a person's page says the picture may change. Two calls is a story, not a pattern |
+| Bars show what went right | A bar that fills with misses looks like success at a glance. Filling with successes, with a goal tick, can't be misread |
+| Fold, don't hide | Restraint without losing anything: the important item is on screen, and the rest is always one tap away and says how many |
+| Rules, not another AI call, for v2's text | Verdicts, actions and opening lines are built in code from the existing analysis. They're instant, consistent, free, and every word is traceable to the call |
+| Test v2 on made-up data | The browser tests never touch real customer calls, and they run the same in CI and locally |
+
+### Part B: Version 1 (original submission)
+
+#### B.1 The brief, and where each part lives
 
 | Requirement | As built | Where |
 |---|---|---|
@@ -66,7 +139,7 @@ the human reps.
 | PestLaunch score and grade | The three scorecards from the manuals encoded as data; step verdicts from the model; totals, grades and automatic awards computed in code | `intel/rubrics.py`, `intel/analyze.py` |
 | Coaching | Two or three coaching moments per call, highest impact first, each tied to scorecard steps and a timestamp, with "try saying" wording; strengths with verified quotes | `intel/analyze.py` |
 | Simple review UI | Overview, Pipeline, Reps, Call Log, call detail with synced audio, manager overrides, Settings | `dashboard/` |
-| Deployed app, repo, README, Loom | https://pestlaunch.ramil.org, this repository, this file, the walkthrough above | — |
+| Deployed app, repo, README, Loom | https://pestlaunch.ramil.org, this repository, this file, the v1 walkthrough above | — |
 
 Beyond the brief:
 
@@ -79,7 +152,7 @@ Beyond the brief:
 - printable reports
 - CI/CD with browser tests
 
-### 1.2 Starting point
+#### B.2 Starting point
 
 The build extends **CallSentry**, a self-hosted voice-AI platform I had already
 written. It contributed a FastAPI service with async Postgres, a provider
@@ -88,7 +161,7 @@ credentials, a Twilio media-stream voice pipeline, and a knowledge-base agent.
 Call intelligence was added as a new domain (`app/callsentry/intel/`) on that
 foundation, rather than bolted onto the receptionist code.
 
-### 1.3 Build phases
+#### B.3 Build phases
 
 | Phase | Delivered |
 |---|---|
@@ -104,7 +177,7 @@ foundation, rather than bolted onto the receptionist code.
 | 10. Manager tools | Step overrides, rep and date correction, follow-up checklist with assignees, disputed-step review |
 | 11. Polish and hardening | Apple-style UI, accessibility audit (WCAG AA, both themes), security headers, rate limits, dark mode, print, digest, error reporting |
 
-### 1.4 Key decisions
+#### B.4 Key decisions
 
 | Decision | Why |
 |---|---|
@@ -116,6 +189,8 @@ foundation, rather than bolted onto the receptionist code.
 | Speaker roles from content on mono audio | Acoustic diarisation on 8 kHz mono phone audio was unreliable in testing; the conversation itself identifies the rep reliably |
 | Overrides stored apart from the analysis | Re-scoring a call keeps the manager's decisions |
 | Recordings outside the repo, with an expiry stamped at upload | The recordings are real customer calls; changing the policy later never retroactively deletes media |
+
+---
 
 ---
 
@@ -144,13 +219,17 @@ foundation, rather than bolted onto the receptionist code.
 | Service | Role |
 |---|---|
 | `caddy` | Only public entry point (80/443). Automatic TLS, HSTS, CSP, routing |
-| `dashboard` | Next.js App Router, Tailwind, client components against the API |
+| `dashboard` | Next.js App Router, Tailwind, client components against the API. Owner views (v2) under `/v2`, original views (v1) under `/calls` |
 | `app` | FastAPI + SQLAlchemy async. API, job runner, analysis, receptionist logic |
 | `pipecat` | Voice transport only: audio, endpointing, playback, recording. No conversation logic |
 | `worker` | Local speech to text (faster-whisper) |
 | `postgres` | Primary store; pgvector for the knowledge base |
 | `redis` | Ephemeral state: live calls, login throttling, digest de-duplication |
 | `ollama` | Optional local language model (compose profile `local-llm`) |
+
+v2 added no new service or table. Its four endpoints (`/intel/v2/*`) read the
+same analyses and turn them into verdicts, actions and coaching in
+`intel/brief.py`.
 
 The **provider registry** (`core/providers.py`) sits in front of every
 inference call. It records each attempt on the call, falls back
@@ -159,7 +238,63 @@ reached.
 
 ---
 
-## 3. The analysis pipeline
+## 3. The owner views (v2)
+
+Built for an owner with no training: every page answers *what's happening,
+good or bad, what matters most, what to do next* within a few seconds.
+
+**Design rules**
+
+- Apple-style restraint: system greys, one accent blue, white cards.
+- One meaning per colour: green good, amber below the goal, red a problem.
+  Colour always comes with a word.
+- Plain words everywhere: "Said yes", not "Won"; "Explain the plan", not
+  "Expectation Statement".
+- The most important thing first. Secondary detail is folded with a count
+  ("Show 4 more"), never lost.
+
+**Pages**
+
+| Page | What it answers |
+|---|---|
+| **Today** (`/v2`) | A one-sentence **verdict**: what matters most, where to start, what to teach. Three **area cards**: New customers, Customers who want to cancel, Customers with a problem. Each shows a status, the number against the goal, the change since the previous period, why, and one link to act. **Do these first**: the top three actions, the rest folded. **What to teach this week**: the step that would help the most calls, the words to teach, a link to hear it on a real call, and who to start with. A footer gives calls checked, calls still processing or unreadable, and calls needing a decision |
+| **Call back** (`/v2/pipeline`) | How many need a call now, how many are still deciding (and their value), how many said yes. Then each person to call, most urgent first. Each row shows urgency, what we promised, who they spoke to, the pests and the price. A **suggested opening line** has a Copy button. **Listen**, **Said no** and **Said yes** buttons update at once, with Undo. Decided leads fold under *Already decided*, with *Not decided after all* to reopen one. The list fills itself from sales calls and receptionist bookings |
+| **Team** (`/v2/reps`) | Everyone, whoever needs help most first, with their share of call steps, trend, the one thing to teach and one strength. People with fewer than 3 calls are listed last and marked *Too few calls to be sure* |
+| **Person** (`/v2/reps/{id}`) | A sentence verdict, then **Good at** (with an example to hear), **Needs work on** (how often it's skipped against an 8-in-10 goal) and **What to teach** (what happened, what to say next time, a link to listen together). Below: recent calls, and every step folded |
+| **All calls** (`/v2/calls`) | Search that follows typing (customer, team member, or words said), filter by kind of call, quick filters (*Need work*, *Need your decision*, *May be the wrong type*), paging that survives going back |
+| **Call** (`/v2/calls/{id}`) | The verdict: kind of call and outcome, a one-sentence summary (*More* for the rest), score and grade, one thing done well and one to do better, each playable. The **recording and transcript** sit in one panel. **Coaching**: the first tip with "try saying", the rest folded. **The call steps**: skipped first, one line each, with the reason, the quote and *Not right? Mark it as done* on tap; done steps folded. Promises made, details, and a ••• menu: check again, change the kind of call, print, open in v1, delete |
+
+**Call-back urgency.** A lead is due 1 day after first contact when new, or 2
+days after a price or a "let me think". After that it's *Late by N days*. On
+the day it's *Call today*, and after 14 days without contact *Waiting a long
+time*. Ranking: late, then today, then waiting long, then upcoming; within
+each, priced leads first.
+
+**What the AI adds, without another AI call.** Everything in v2 is computed in
+code from the existing analysis, so it's instant and free:
+
+- the verdicts
+- the to-do ranking
+- the coaching focus: the most-skipped step, ignoring automatic awards, plus
+  the tip that's mainly about it
+- each lead's action
+- the opening lines
+
+**Interaction details**
+
+- Toasts with Undo for decisions; failures say so plainly and put things back.
+- Space plays and pauses the recording, and ← / → skip 15 seconds. The
+  playback speed is remembered.
+- The period (7 days, 30 days, all) is remembered, and the page refreshes by
+  itself when you return to the tab.
+- Three text sizes scale the whole app evenly.
+- Phone layouts, dark mode and print are supported.
+- Missing or deleted pages explain themselves. Every v2 page has an error
+  boundary.
+
+---
+
+## 4. The analysis pipeline
 
 ```
 upload ─► fingerprint ─► queue ─► transcribe ─► triage ─► score ─► verify ─► store ─► leads / follow-ups
@@ -167,7 +302,7 @@ upload ─► fingerprint ─► queue ─► transcribe ─► triage ─► sc
                                   Whisper                 Enhanced: 2 models + deliberation
 ```
 
-### 3.1 Ingest
+### 4.1 Ingest
 
 - Accepts MP3, WAV and M4A up to 200 MB. Each file is probed with ffprobe and
   stored as `uploads/<business>/<call>.<ext>`.
@@ -179,7 +314,7 @@ upload ─► fingerprint ─► queue ─► transcribe ─► triage ─► sc
 - A recording expiry is stamped at upload (`RECORDING_RETENTION_DAYS`,
   default 90).
 
-### 3.2 Queue
+### 4.2 Queue
 
 The `calls` table is the queue. Statuses:
 
@@ -192,7 +327,7 @@ The `calls` table is the queue. Statuses:
   for transcription twice.
 - Calls stuck mid-flight by a restart are re-queued at startup.
 
-### 3.3 Transcription
+### 4.3 Transcription
 
 - **Cloud: Deepgram Nova-3.**
   - Stereo recordings use multichannel mode, one speaker per channel, so rep
@@ -207,7 +342,7 @@ The `calls` table is the queue. Statuses:
 - **Receptionist calls** are recorded in stereo with the agent on a fixed
   channel, so their roles are exact.
 
-### 3.4 Triage
+### 4.4 Triage
 
 One structured-output pass over the numbered transcript returns:
 
@@ -227,9 +362,9 @@ One structured-output pass over the numbered transcript returns:
 - whether the call is scorable at all (voicemail, wrong number, no
   conversation)
 
-### 3.5 Scoring
+### 4.5 Scoring
 
-The call type selects a scorecard (section 4). The model gets the scorecard's
+The call type selects a scorecard (section 5). The model gets the scorecard's
 step criteria, the manual's notes, and the numbered transcript. For every step
 it returns met or missed, a reason, and evidence quotes with line numbers.
 
@@ -256,7 +391,7 @@ it returns met or missed, a reason, and evidence quotes with line numbers.
     accepted.
   - Scorecard selection, totals, grade thresholds and timestamps are computed.
 
-### 3.6 Verification and storage
+### 4.6 Verification and storage
 
 - Every evidence quote is looked up in the line it cites, with fuzzy matching
   for punctuation and filler words. The call's **evidence verified %** is
@@ -274,7 +409,7 @@ it returns met or missed, a reason, and evidence quotes with line numbers.
 
 ---
 
-## 4. Scorecards
+## 5. Scorecards
 
 Encoded from the PestLaunch office and sales call manuals in
 `app/callsentry/intel/rubrics.py`. Each step is binary: met or missed.
@@ -315,7 +450,7 @@ has to name the customer's actual situation.
 
 ---
 
-## 5. Why the grades can be trusted
+## 6. Why the grades can be trusted
 
 - **Evidence you can check.** Every point cites a transcript line. Clicking it
   plays the recording from that moment. Quotes that can't be found are flagged.
@@ -333,7 +468,11 @@ has to name the customer's actual situation.
 
 ---
 
-## 6. The dashboard
+## 7. The original dashboard (v1)
+
+v1 is the version first submitted, kept under `/calls` for comparison. Each v1
+page carries a small banner linking to the same page in v2. Everything below
+still works as described.
 
 Apple-style, restrained UI: system greys, one accent blue, and status colours
 reserved for good, attention and problem, always shown beside a text label.
@@ -342,7 +481,7 @@ in Settings), and passes an automated WCAG 2 AA audit (axe) in both themes.
 
 | Page | What it answers |
 |---|---|
-| **Overview** | Calls analyzed, average score, sales close rate, cancellations saved, share meeting standard. **Needs attention**: open follow-ups, sales not closed, cancellations with no save offer, unresolved service calls, disputed steps, call types to confirm, failed recordings. The three views (sales, retention, customer service) and what to train on. Filter by 7 days, 30 days or all |
+| **Overview** (`/calls`) | Calls analyzed, average score, sales close rate, cancellations saved, share meeting standard. **Needs attention**: open follow-ups, sales not closed, cancellations with no save offer, unresolved service calls, disputed steps, call types to confirm, failed recordings. The three views (sales, retention, customer service) and what to train on. Filter by 7 days, 30 days or all |
 | **Pipeline** | Leads created by sales calls and receptionist bookings: New, Quoted, Follow-up, Won, Lost. Cards expand for service, price and next step. Drag to move; the next call with that customer moves the lead again |
 | **Reps** | Per rep: average score, grades, sales close rate, score trend by call, steps missed most, and hit rate on each step |
 | **Call Log** | Search across customer, rep, transcript and call ID. Filter by type, rep and grade. Sort by date, score, length, rep or type. Paged. Shows processing status and disputed steps |
@@ -364,7 +503,7 @@ Other details:
 
 ---
 
-## 7. The AI receptionist
+## 8. The AI receptionist
 
 A live phone agent on the Twilio number, built on the CallSentry voice stack.
 
@@ -407,7 +546,7 @@ A live phone agent on the Twilio number, built on the CallSentry voice stack.
 
 ---
 
-## 8. Data model
+## 9. Data model
 
 | Table | Holds |
 |---|---|
@@ -427,7 +566,7 @@ Migrations: `app/alembic/versions/0001` → `0009`.
 
 ---
 
-## 9. API
+## 10. API
 
 Served under `/api`, JSON with bearer tokens.
 
@@ -436,6 +575,7 @@ Served under `/api`, JSON with bearer tokens.
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
 | Calls | `POST /intel/uploads`, `GET /intel/calls` (filters: type, lens, rep, grade, status, review, disputed, source, q; sort and order; paging), `GET/PATCH/DELETE /intel/calls/{id}`, `POST /intel/calls/{id}/reprocess`, `GET /intel/calls/{id}/audio` (signed URL), `PUT /intel/calls/{id}/items/{key}/override` |
 | Insights | `GET /intel/overview`, `GET /intel/reps`, `GET /intel/reps/{id}`, `GET /intel/pipeline`, `PATCH /intel/leads/{id}` |
+| Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
 | Follow-ups | `GET /intel/follow-ups`, `PATCH /intel/follow-ups/{id}`, `GET /intel/team` |
 | Settings | `GET/PATCH /settings` (business), `GET/PUT /settings/platform`, `GET /settings/models`, `GET /settings/spend`, `POST /settings/twilio/connect`, receptionist playbook endpoints, users, `POST /settings/digest/test` |
 | Webhooks | `POST /webhooks/twilio`, `/twilio/status`, `/twilio/stream-ended/{id}`, `/twilio/whisper/{id}`, `/twilio/transfer-done/{id}` (all Twilio-signature verified) |
@@ -446,7 +586,7 @@ Interactive docs (`/docs`) are served in development only.
 
 ---
 
-## 10. Security and privacy
+## 11. Security and privacy
 
 - **The recordings are real customer calls.**
   - They are never committed (`*.mp3` and `data/` are ignored) and never
@@ -482,7 +622,7 @@ Interactive docs (`/docs`) are served in development only.
 
 ---
 
-## 11. Cost control
+## 12. Cost control
 
 - Every paid call (transcription, language model, speech, telephony) is written
   to the cost ledger. Per-call cost is shown on the call.
@@ -498,7 +638,7 @@ Interactive docs (`/docs`) are served in development only.
 
 ---
 
-## 12. Running it
+## 13. Running it
 
 Requires Docker.
 
@@ -538,7 +678,7 @@ cd ../dashboard && npm ci && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run d
 
 ---
 
-## 13. Configuration
+## 14. Configuration
 
 Server configuration lives in `.env` (see `.env.example`). Most of it can also
 be changed in **Settings**, which overrides `.env` at runtime without a
@@ -560,12 +700,13 @@ token.
 | `RECORDING_RETENTION_DAYS` / transcripts | 90 / 365 | |
 | `TWILIO_*`, `SMS_CONFIRMATIONS` | — | Receptionist; **Connect number** in Settings sets the webhooks |
 | Weekly digest, `SMTP_*` | off | Monday 8am, business time |
+| `GOAL_CLOSE_RATE`, `GOAL_SAVE_RATE`, `GOAL_FIX_RATE`, `GOAL_CALL_STEPS` | 50 / 60 / 85 / 85 | v2 goals (%), editable in Settings → Goals. Below a goal reads *Could be better*; 15 points below, *Needs work* |
 | `SENTRY_DSN` | — | Optional error reporting |
 | `CALLSENTRY_LOCAL_ONLY` | 0 | 1 = never call a paid API |
 
 ---
 
-## 14. Deployment and operations
+## 15. Deployment and operations
 
 **Server:**
 - Ubuntu 24.04, Docker Compose (project `pestlaunch`).
@@ -599,13 +740,13 @@ a newer build is live.
 
 ---
 
-## 15. Testing
+## 16. Testing
 
 | Suite | Count | Covers |
 |---|---|---|
-| Backend (`app/tests`) | 262 | See below |
+| Backend (`app/tests`) | 293 | See below |
 | Voice pipeline (`pipecat/tests`) | 25 | μ-law codec against a reference, endpointing, turn serialisation |
-| Browser (`dashboard/e2e`) | 3 | See below |
+| Browser (`dashboard/e2e`) | 24 | v2 owner views, v1→v2 links, v1 review flow, sign-in |
 
 **Backend tests cover what is silent when wrong:**
 - grade thresholds and automatic awards
@@ -616,28 +757,45 @@ a newer build is live.
 - viewer read-only enforcement and encryption bindings
 - rate limits
 - receptionist conversation guards, transfer TwiML and digest content
+- v2 judgement:
+  - areas judged against editable goals, and not judged under 3 calls
+  - the headline names every area behind target
+  - the coaching focus and tip selection
+  - lead actions and urgency, with no action once decided
+  - placeholder names treated as no name
 
-**Browser tests:**
-- signs in and renders every page
-- refuses a wrong password
-- reviews a synthetic call end to end: disputed-step filter, manager override
-  changes the score, follow-up stays ticked after reload, then everything is
-  restored
+**Browser tests (v2)** run on made-up data, never real calls:
+- Today shows the verdict, three areas and the top three actions
+- *Said yes* moves a lead at once and Undo restores it; a failed save rolls
+  back and says so
+- no caller is ever shown as "unknown"
+- the call page folds detail behind one tap, and its ••• menu works by
+  keyboard
+- a failed delete reports itself; a broken link explains itself
+- a person's page answers the three questions
+- search follows typing and can be cleared
+- nothing spills sideways at phone width
+- pest names are cleaned; the opening line is built correctly
+- an **axe WCAG 2.1 AA check** of every v2 page in light and dark mode
 
-Also run during the build:
-- an axe WCAG 2 AA audit of every page in light and dark mode (clean)
-- manual end-to-end runs of upload, duplicate detection, transfer webhooks and
-  the digest against a local mail server
+**Browser tests (v1 and sign-in):**
+- signing in opens v2
+- every v1 page links to its v2 twin
+- a wrong password is refused
+- a synthetic call is reviewed end to end: disputed-step filter, manager
+  override changes the score, follow-up stays ticked after reload
 
 ```bash
 make test                                        # backend
 cd pipecat && python -m pytest -q tests          # voice
-cd dashboard && E2E_EMAIL=… E2E_PASSWORD=… npx playwright test
+cd dashboard && npm run build && npx next start -p 3100 &
+E2E_BASE_URL=http://localhost:3100 npx playwright test v2 v1-banner   # v2, no server needed
+E2E_EMAIL=… E2E_PASSWORD=… npx playwright test                       # all, against a running API
 ```
 
 ---
 
-## 16. Results on the sample calls
+## 17. Results on the sample calls
 
 The 20 supplied recordings plus one receptionist call, as graded in production
 with Enhanced scoring:
@@ -659,11 +817,11 @@ across the calls are:
 - *Offer Final Information*
 - *Summary Statement*
 
-These are the coaching priorities the Overview surfaces.
+These are the coaching priorities Today (v2) and the Overview (v1) surface.
 
 ---
 
-## 17. Known limitations
+## 18. Known limitations
 
 - **Mono recordings rely on attribution by content.** When two people talk
   over each other in one sentence, that sentence goes to one of them.
@@ -677,10 +835,15 @@ These are the coaching priorities the Overview surfaces.
 - **The receptionist's replies take 2–4 seconds** to start (intent detection
   plus answer). It answers only from its FAQ, so anything outside it becomes a
   message or a transfer.
+- **v2's suggested opening lines repeat what the analysis found.** If a name
+  or price was transcribed wrong, the line repeats the mistake, so a quick look
+  before calling is worthwhile.
+- **v2's goals are starting points** for a typical pest control office, not
+  this company's own targets, until someone changes them in Settings.
 - **Single-tenant deployment.** The data model is multi-business, but
   onboarding a second business is done from the command line.
 
-## 18. What's next
+## 19. What's next
 
 - Pull calls, reps and customers from the CRM (FieldRoutes, PestPac,
   GorillaDesk) instead of uploading, so dates, reps and accounts are exact.
@@ -693,7 +856,7 @@ These are the coaching priorities the Overview surfaces.
 
 ---
 
-## 19. Repository layout
+## 20. Repository layout
 
 ```
 app/                         FastAPI service
@@ -708,6 +871,7 @@ app/                         FastAPI service
       overrides.py           manager step overrides
       pipeline.py            one call end to end
       insights.py            overview, reps, training aggregates
+      brief.py               v2 owner views: verdicts, actions, coaching, plain names
       leads.py               sales pipeline
       followups.py           follow-up extraction
       playbook.py            receptionist playbook from graded calls
@@ -720,10 +884,13 @@ app/                         FastAPI service
   alembic/                   migrations 0001-0009
   tests/
 dashboard/                   Next.js 15
-  app/calls/                 Overview, Pipeline, Reps, Call Log, call detail
+  app/v2/                    v2: Today, Call back, Team, All calls, call and person pages
+  app/calls/                 v1: Overview, Pipeline, Reps, Call Log, call detail
+  components/v2/             v2 kit: status, meters, menus, toasts, player, text size
   app/settings/              Settings
   components/                shell, UI kit, progress bar, error reporter
-  e2e/                       Playwright
+  e2e/                       Playwright (v2 runs on made-up data, with axe checks)
+  lib/v2.ts                  v2 types, status words, plain names and pest names
 pipecat/                     receptionist voice transport and recording
 worker/                      faster-whisper service
 caddy/                       reverse proxy, TLS, security headers
