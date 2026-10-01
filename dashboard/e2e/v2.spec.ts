@@ -156,6 +156,7 @@ test("the call-back list hands the owner the words to say", async ({ page }) => 
 for (const scheme of ["light", "dark"] as const) {
   test(`v2 screens pass an accessibility check (${scheme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
+    await page.addInitScript((t) => window.localStorage.setItem("theme", t), scheme);
     await mockApi(page);
     for (const path of ["/v2", "/v2/pipeline", "/v2/reps", "/v2/calls", `/v2/calls/${CALL_ID}`, `/v2/reps/${REP_ID}`]) {
       await page.goto(path);
@@ -170,3 +171,22 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("light by default, even on a device set to dark; Dark and Automatic on request", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await mockApi(page);
+  const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await page.goto("/v2");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await background()).toBe("rgb(245, 245, 247)");
+
+  await page.evaluate(() => window.localStorage.setItem("theme", "system"));
+  await page.reload();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
+  expect(await background()).toBe("rgb(0, 0, 0)");
+
+  await page.evaluate(() => window.localStorage.setItem("theme", "dark"));
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});

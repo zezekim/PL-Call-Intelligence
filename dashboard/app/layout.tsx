@@ -13,18 +13,16 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f5f7" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
-  ],
+  themeColor: "#f5f5f7",
 };
 
-// Applies a chosen theme before first paint, so a dark page never flashes light.
-const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+// Applies the theme before first paint, so the page never flashes the other one.
+// Light unless this browser chose Dark, or Automatic (follow the device).
+const THEME_SCRIPT = `try{var d=document.documentElement.dataset,t=localStorage.getItem("theme");if(t==="system")delete d.theme;else d.theme=t==="dark"?"dark":"light"}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={inter.variable} data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

@@ -35,7 +35,8 @@
     --gold-soft: 251 245 226;
     --hairline: rgba(0, 0, 0, 0.08);
   }
-  /* Dark follows the system unless the viewer picked a theme (data-theme). */
+  /* Light by default (data-theme="light"); with Automatic chosen, the
+     attribute is removed and the device's setting decides. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;

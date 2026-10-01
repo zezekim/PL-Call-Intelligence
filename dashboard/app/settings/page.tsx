@@ -977,7 +977,7 @@ function BusinessPanel({ canEdit }: { canEdit: boolean }) {
 }
 
 function AppearancePanel() {
-  const [theme, choose] = useState<Theme>("system");
+  const [theme, choose] = useState<Theme>("light");
   // Read after mount: the server render can't know this browser's choice.
   useEffect(() => choose(getTheme()), []);
   return (
