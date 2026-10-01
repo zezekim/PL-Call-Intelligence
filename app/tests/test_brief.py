@@ -185,3 +185,25 @@ def test_placeholder_names_are_treated_as_no_name(raw):
 
 def test_real_names_are_kept():
     assert brief.real_name("Pat Brown") == "Pat Brown"
+
+
+def test_agreement_counts_only_the_ais_own_verdicts_on_corrected_calls():
+    corrected = _row([
+        _item("validate", False, status="missed"),
+        _item("thank_customer", True, status="met"),
+        _item("investigate", False, status="missed"),
+        _item("agree", True, status="met", auto_awarded=True),       # a rule, not the AI
+        _item("close", False, status="missed", agreement="disputed"),  # never the AI's call
+    ])
+    corrected.analysis.overrides = {
+        "validate": {"status": "met"},      # the AI was wrong
+        "investigate": {"status": "missed"},  # a manager confirmed it
+        "close": {"status": "met"},          # deciding a dispute
+    }
+    untouched = _row([_item("validate", False, status="missed")])
+    acc = brief.accuracy([corrected, untouched])
+    assert acc == {"calls": 1, "steps": 3, "kept": 2, "pct": 66.7}
+
+
+def test_no_agreement_score_until_a_manager_corrects_something():
+    assert brief.accuracy([_row([_item("validate", True, status="met")])]) is None

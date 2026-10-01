@@ -273,6 +273,17 @@ function Footer({ brief }: { brief: Brief }) {
         {brief.review.type_checks} call{brief.review.type_checks === 1 ? "" : "s"} may be the wrong type
       </Link>,
     );
+  if (brief.accuracy) {
+    const a = brief.accuracy;
+    bits.push(
+      <span
+        key="a"
+        title={`Of ${a.steps} step marks the AI made on calls a manager corrected, ${a.kept} were kept. Calls a manager read without changing anything aren't counted, so the real figure is at least this.`}
+      >
+        Managers kept {Math.round(a.pct)}% of the AI's step marks ({a.calls} call{a.calls === 1 ? "" : "s"} corrected)
+      </span>,
+    );
+  }
   bits.push(
     <Link key="g" href="/settings" className="hover:text-link hover:underline">
       Change goals

@@ -257,7 +257,7 @@ good or bad, what matters most, what to do next* within a few seconds.
 
 | Page | What it answers |
 |---|---|
-| **Today** (`/v2`) | A one-sentence **verdict**: what matters most, where to start, what to teach. Three **area cards**: New customers, Customers who want to cancel, Customers with a problem. Each shows a status, the number against the goal, the change since the previous period, why, and one link to act. **Do these first**: the top three actions, the rest folded. **What to teach this week**: the step that would help the most calls, the words to teach, a link to hear it on a real call, and who to start with. A footer gives calls checked, calls still processing or unreadable, and calls needing a decision |
+| **Today** (`/v2`) | A one-sentence **verdict**: what matters most, where to start, what to teach. Three **area cards**: New customers, Customers who want to cancel, Customers with a problem. Each shows a status, the number against the goal, the change since the previous period, why, and one link to act. **Do these first**: the top three actions, the rest folded. **What to teach this week**: the step that would help the most calls, the words to teach, a link to hear it on a real call, and who to start with. A footer gives calls checked, calls still processing or unreadable, calls needing a decision, and the **AI agreement score** (see below) |
 | **Call back** (`/v2/pipeline`) | How many need a call now, how many are still deciding (and their value), how many said yes. Then each person to call, most urgent first. Each row shows urgency, what we promised, who they spoke to, the pests and the price. A **suggested opening line** has a Copy button. **Listen**, **Said no** and **Said yes** buttons update at once, with Undo. Decided leads fold under *Already decided*, with *Not decided after all* to reopen one. The list fills itself from sales calls and receptionist bookings |
 | **Team** (`/v2/reps`) | Everyone, whoever needs help most first, with their share of call steps, trend, the one thing to teach and one strength. People with fewer than 3 calls are listed last and marked *Too few calls to be sure* |
 | **Person** (`/v2/reps/{id}`) | A sentence verdict, then **Good at** (with an example to hear), **Needs work on** (how often it's skipped against an 8-in-10 goal) and **What to teach** (what happened, what to say next time, a link to listen together). Below: recent calls, and every step folded |
@@ -279,6 +279,14 @@ code from the existing analysis, so it's instant and free:
   the tip that's mainly about it
 - each lead's action
 - the opening lines
+
+**AI agreement score.** This shows how often managers keep the AI's step marks,
+on calls where a manager corrected at least one step. Only the AI's own
+verdicts count: automatic awards are rules, and a step the two models disputed
+was never the AI's call, so deciding one isn't a correction. Calls a manager
+read without changing anything leave no trace, so the score can only err on
+the low side. It's computed in `brief.accuracy` from the corrections already
+stored.
 
 **Interaction details**
 
@@ -575,7 +583,7 @@ Served under `/api`, JSON with bearer tokens.
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
 | Calls | `POST /intel/uploads`, `GET /intel/calls` (filters: type, lens, rep, grade, status, review, disputed, source, q; sort and order; paging), `GET/PATCH/DELETE /intel/calls/{id}`, `POST /intel/calls/{id}/reprocess`, `GET /intel/calls/{id}/audio` (signed URL), `PUT /intel/calls/{id}/items/{key}/override` |
 | Insights | `GET /intel/overview`, `GET /intel/reps`, `GET /intel/reps/{id}`, `GET /intel/pipeline`, `PATCH /intel/leads/{id}` |
-| Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
+| Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus, AI agreement score; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
 | Follow-ups | `GET /intel/follow-ups`, `PATCH /intel/follow-ups/{id}`, `GET /intel/team` |
 | Settings | `GET/PATCH /settings` (business), `GET/PUT /settings/platform`, `GET /settings/models`, `GET /settings/spend`, `POST /settings/twilio/connect`, receptionist playbook endpoints, users, `POST /settings/digest/test` |
 | Webhooks | `POST /webhooks/twilio`, `/twilio/status`, `/twilio/stream-ended/{id}`, `/twilio/whisper/{id}`, `/twilio/transfer-done/{id}` (all Twilio-signature verified) |
@@ -744,7 +752,7 @@ a newer build is live.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Backend (`app/tests`) | 293 | See below |
+| Backend (`app/tests`) | 295 | See below |
 | Voice pipeline (`pipecat/tests`) | 25 | μ-law codec against a reference, endpointing, turn serialisation |
 | Browser (`dashboard/e2e`) | 24 | v2 owner views, v1→v2 links, v1 review flow, sign-in |
 
@@ -763,6 +771,7 @@ a newer build is live.
   - the coaching focus and tip selection
   - lead actions and urgency, with no action once decided
   - placeholder names treated as no name
+  - the AI agreement score counts only the AI's own verdicts on corrected calls
 
 **Browser tests (v2)** run on made-up data, never real calls:
 - Today shows the verdict, three areas and the top three actions
@@ -848,7 +857,14 @@ These are the coaching priorities Today (v2) and the Overview (v1) surface.
 - Pull calls, reps and customers from the CRM (FieldRoutes, PestPac,
   GorillaDesk) instead of uploading, so dates, reps and accounts are exact.
 - Feed assigned follow-ups into PestLaunch Tasks.
-- Use managers' overrides to tune step criteria per company.
+- **Custom scorecards per company.** Start from the PestLaunch standard, or
+  have the AI draft one from a company's own manual, then add, edit or remove
+  steps and set the grade cut-offs. Each analysis keeps the version it was
+  graded on, so editing a scorecard never changes past grades.
+- **Fix who said a line** on mono calls (swap speaker, split a line), then
+  re-score. That's where mono recordings are weakest.
+- Use managers' corrections to tune step criteria per company. The agreement
+  score (v2 Today) shows where to start: the steps managers change most.
 - Trends per rep and per step over time as call history grows.
 - Company-specific scripts and pricing as scoring context.
 - Stream the receptionist's reply to speech as it's generated, to cut response

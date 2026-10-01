@@ -25,6 +25,7 @@ test("Today shows the verdict, three areas and the top three things to do", asyn
   await expect(todo).toHaveCount(5);
   await expect(page.getByText("Explain the plan").first()).toBeVisible();
   await expect(page.getByText(/Start with Dana/)).toBeVisible();
+  await expect(page.getByText("Managers kept 95% of the AI's step marks (3 calls corrected)")).toBeVisible();
 });
 
 test("a lead marked yes moves at once, and Undo puts it back", async ({ page }) => {

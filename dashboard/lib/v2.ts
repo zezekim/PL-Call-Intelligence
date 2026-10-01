@@ -72,6 +72,8 @@ export interface Brief {
     strength: StepStat | null;
   } | null;
   review: { disputed_calls: number; type_checks: number };
+  /** How often managers kept the AI's step verdicts, on calls they corrected. */
+  accuracy: { calls: number; steps: number; kept: number; pct: number } | null;
   calls: { analyzed: number; processing: number; failed: number };
   receptionist_number: string | null;
 }

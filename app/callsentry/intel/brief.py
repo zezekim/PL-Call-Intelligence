@@ -793,6 +793,36 @@ def headline(
     return {"status": status, "title": title, "detail": " ".join(detail)}
 
 
+def accuracy(rows: list[Row]) -> dict[str, Any] | None:
+    """How often managers kept the AI's step verdicts, on the calls they corrected.
+
+    Counts the model's own verdicts only: automatic awards are rules, and a
+    step the two models disputed was never the AI's call, so a manager
+    deciding it isn't a correction. Calls a manager read but didn't change
+    leave no trace, so this can only understate the agreement.
+    """
+    calls = steps = changed = 0
+    for r in rows:
+        overrides = r.analysis.overrides or {}
+        if not overrides:
+            continue
+        calls += 1
+        for item in r.analysis.items or []:
+            if item.get("auto_awarded") or item.get("agreement") == "disputed":
+                continue
+            model = item.get("model_status", item.get("status"))
+            if model not in ("met", "missed"):
+                continue
+            steps += 1
+            override = overrides.get(item.get("key", ""))
+            if override and override.get("status") != model:
+                changed += 1
+    if not steps:
+        return None
+    return {"calls": calls, "steps": steps, "kept": steps - changed,
+            "pct": round((steps - changed) / steps * 100, 1)}
+
+
 async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None) -> dict:
     now = datetime.now(UTC)
     window = await insights.load(session, business_id, days=days * 2 if days else None)
@@ -840,6 +870,7 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
         "todo_total": len(todo),
         "coaching": coach,
         "review": {"disputed_calls": disputed, "type_checks": review},
+        "accuracy": accuracy(rows),
         "calls": {
             "analyzed": len(rows),
             "processing": sum(v for k, v in status_counts.items()

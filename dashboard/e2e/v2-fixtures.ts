@@ -52,6 +52,7 @@ export const brief = {
     strength: step("Say thank you", 18, 21),
   },
   review: { disputed_calls: 1, type_checks: 0 },
+  accuracy: { calls: 3, steps: 38, kept: 36, pct: 94.7 },
   calls: { analyzed: 21, processing: 0, failed: 0 },
   receptionist_number: null,
 };
