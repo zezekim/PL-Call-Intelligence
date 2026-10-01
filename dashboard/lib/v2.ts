@@ -264,8 +264,12 @@ export function cleanPests(raw: string[] | null | undefined): string[] {
     const short = entry.trim().toLowerCase();
     if (!found && short && short.split(/\s+/).length <= 2 && !out.includes(short)) out.push(short);
   }
-  // "rodents" says less than "mice" or "rats" when those are there.
-  return out.includes("mice") || out.includes("rats") ? out.filter((p) => p !== "rodents") : out;
+  // A general name says less than a specific one beside it ("fire ants" over "ants").
+  const general: [string, string[]][] = [
+    ["ants", ["fire ants", "carpenter ants"]],
+    ["rodents", ["mice", "rats"]],
+  ];
+  return out.filter((p) => !general.some(([g, specific]) => p === g && specific.some((x) => out.includes(x))));
 }
 
 /** The first sentence, and whether there was more. */

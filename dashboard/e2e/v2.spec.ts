@@ -136,9 +136,9 @@ test("nothing spills sideways on a phone", async ({ page }) => {
 test("pest names read as short everyday words", () => {
   expect(cleanPests(["ants, described by the caller as possibly bed or fire ants", "Fire Ants", "Mice", "rodents"])).toEqual([
     "fire ants",
-    "ants",
     "mice",
   ]);
+  expect(cleanPests(["ants", "spiders"])).toEqual(["ants", "spiders"]);
   expect(cleanPests(["cockroaches", "German roach"])).toEqual(["roaches"]);
   expect(cleanPests(["something we have never heard of before today"])).toEqual([]);
   expect(cleanPests(["voles"])).toEqual(["moles"]);
