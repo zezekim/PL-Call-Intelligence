@@ -172,3 +172,16 @@ def test_goals_come_from_settings(monkeypatch):
     assert brief.TARGETS["save_rate"].status(60) == "watch"
     assert brief.TARGETS["save_rate"].status(50) == "bad"
     assert brief.goal_text("save_rate", "kept") == "Goal: at least 7 out of 10 kept"
+
+
+@pytest.mark.parametrize("raw", ["unknown", "Unknown", " N/A ", "not given", "", None])
+def test_placeholder_names_are_treated_as_no_name(raw):
+    assert brief.real_name(raw) == ""
+    lead = Lead(name=raw, stage=LeadStage.QUOTED.value, last_contact_at=NOW - timedelta(days=4))
+    action = brief.lead_action(lead, {}, NOW)
+    assert action["label"] == "Call the caller back"
+    assert action["why"].startswith("The caller was given a price")
+
+
+def test_real_names_are_kept():
+    assert brief.real_name("Pat Brown") == "Pat Brown"

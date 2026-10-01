@@ -62,6 +62,20 @@ export default {
       borderRadius: {
         card: "18px",
       },
+      keyframes: {
+        "toast-in": {
+          from: { opacity: "0", transform: "translateY(8px) scale(0.98)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "menu-in": {
+          from: { opacity: "0", transform: "scale(0.97)" },
+          to: { opacity: "1", transform: "none" },
+        },
+      },
+      animation: {
+        "toast-in": "toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "menu-in": "menu-in 140ms ease-out",
+      },
       letterSpacing: {
         tightish: "-0.011em",
         title: "-0.022em",

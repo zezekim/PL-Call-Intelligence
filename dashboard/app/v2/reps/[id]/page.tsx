@@ -2,26 +2,33 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clock, date } from "@/lib/format";
 import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN } from "@/lib/easy";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { RepBrief, StepStat } from "@/lib/v2";
-import { STATUS_TEXT, rateStatus } from "@/lib/v2";
+import { STATUS_TEXT, personName, rateStatus } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
-import { Avatar, Card, ErrorNote, Loading } from "@/components/ui";
-import { Meter, StatusPill, Trend } from "@/components/v2/kit";
+import { Avatar, Card } from "@/components/ui";
+import { Meter, PageError, PersonSkeleton, StatusPill, Trend } from "@/components/v2/kit";
 import type { Grade } from "@/lib/api";
 
 export default function RepPage() {
   const { id } = useParams<{ id: string }>();
-  const { query } = useCalls();
-  const { data: rep, error, loading } = useApi<RepBrief>(query(`/intel/v2/reps/${id}`));
-  useTitle(rep?.name ?? null);
+  const { query, refreshKey } = useCalls();
+  const { data: rep, error, status, loading, reload } = useApi<RepBrief>(query(`/intel/v2/reps/${id}`));
+  useTitle(rep?.name ?? "Team");
+  useEffect(() => {
+    if (refreshKey) void reload();
+  }, [refreshKey, reload]);
 
-  if (loading && !rep) return <Loading />;
-  if (error && !rep) return <ErrorNote message={error} />;
+  if (loading && !rep) return <PersonSkeleton />;
+  if (error && !rep) {
+    return (
+      <PageError status={status} thing="person" onRetry={() => void reload()} back={{ href: "/v2/reps", label: "Back to Team" }} />
+    );
+  }
   if (!rep) return null;
 
   return (
@@ -43,18 +50,20 @@ export default function RepPage() {
             <p className={`tnum text-[44px] font-semibold leading-none tracking-title ${STATUS_TEXT[rep.status]}`}>
               {rep.score === null ? "–" : `${Math.round(rep.score)}%`}
             </p>
-            <p className="mt-1 text-[12px] text-muted">of the call steps done</p>
+            <p className="mt-1 text-[12px] text-muted">
+              of call steps done
+              {rep.team_score !== null && ` · team ${Math.round(rep.team_score)}%`}
+            </p>
             <div className="mt-2 flex justify-end">
               <Trend trend={rep.trend} />
             </div>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4 text-[14px] sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-3 gap-4 border-t border-line pt-4 text-[14px]">
           <Fact label="Calls checked" value={String(rep.scored)} />
           <Fact label="Good calls" value={`${rep.meeting_standard} of ${rep.scored}`} />
-          <Fact label="Whole team" value={rep.team_score === null ? "–" : `${Math.round(rep.team_score)}%`} />
           <Fact
-            label="New customers who said yes"
+            label="New customers won"
             value={rep.close_rate === null ? "–" : `${Math.round(rep.close_rate)}%`}
             hint={rep.sales_calls ? `out of ${rep.sales_calls} call${rep.sales_calls === 1 ? "" : "s"}` : "No calls from new customers"}
           />
@@ -123,7 +132,7 @@ export default function RepPage() {
                 className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
               >
                 <PlayIcon className="h-3 w-3" />
-                Listen together: call with {rep.coach.customer ?? "a customer"}
+                Listen together: call with {personName(rep.coach.customer) ?? "a customer"}
                 {rep.coach.start !== null && ` at ${clock(rep.coach.start)}`}
               </Link>
             </>
@@ -179,17 +188,24 @@ function StepLine({ step }: { step: StepStat }) {
 }
 
 function RecentCalls({ rep }: { rep: RepBrief }) {
-  const calls = rep.calls_list.slice(0, 6);
+  const calls = rep.calls_list.slice(0, 5);
   if (!calls.length) return null;
   return (
     <section>
-      <h2 className="mb-3 px-1 text-[19px] font-semibold tracking-title">Their calls</h2>
+      <div className="mb-3 flex items-baseline justify-between px-1">
+        <h2 className="text-[19px] font-semibold tracking-title">Recent calls</h2>
+        {rep.calls_list.length > calls.length && (
+          <Link href={`/v2/calls?q=${encodeURIComponent(rep.name)}`} className="text-[13px] font-medium text-link hover:underline">
+            See all {rep.calls_list.length}
+          </Link>
+        )}
+      </div>
       <ul className="group-list">
         {calls.map((c) => (
           <li key={c.call_id}>
             <Link href={`/v2/calls/${c.call_id}`} className="flex items-center gap-4 px-5 py-3 text-[14px] transition-colors hover:bg-surface-hover">
               <span className="min-w-0 flex-1">
-                <span className="font-medium">{c.customer ?? "Customer not named"}</span>
+                <span className="font-medium">{personName(c.customer) ?? "Customer not named"}</span>
                 <span className="text-muted">
                   {" "}
                   · {CALL_TYPE_PLAIN[c.call_type] ?? c.call_type} · {date(c.when)}
@@ -212,7 +228,8 @@ function RecentCalls({ rep }: { rep: RepBrief }) {
 }
 
 function AllSteps({ steps }: { steps: StepStat[] }) {
-  const [open, setOpen] = useState(true);
+  // The detail behind the three cards above: there when wanted.
+  const [open, setOpen] = useState(false);
   if (!steps.length) return null;
   return (
     <section>

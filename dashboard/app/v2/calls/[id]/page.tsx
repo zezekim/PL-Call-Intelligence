@@ -14,15 +14,17 @@ import {
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN, stepName } from "@/lib/easy";
 import { FollowUpList } from "@/components/follow-up-list";
-import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon, PrintIcon } from "@/components/icons";
-import { Avatar, Card, ErrorNote, Loading, Modal, Spinner } from "@/components/ui";
+import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
+import { Avatar, Card, ErrorNote, Modal, Spinner } from "@/components/ui";
 import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/components/v2/listen";
-import { StatusPill } from "@/components/v2/kit";
+import { CallSkeleton, MoreMenu, MoreToggle, PageError, StatusPill } from "@/components/v2/kit";
+import { failMessage, useToast } from "@/components/v2/toast";
 import type { Status } from "@/lib/v2";
+import { personName } from "@/lib/v2";
 
 export default function CallRoute() {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<CallSkeleton />}>
       <CallPage />
     </Suspense>
   );
@@ -34,10 +36,10 @@ const OUTCOME_STATUS: Record<string, Status> = { good: "good", warn: "watch", ba
 function CallPage() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  const { data: call, error, loading, reload } = useApi<CallDetail>(`/intel/calls/${id}`, {
+  const { data: call, error, status, loading, reload } = useApi<CallDetail>(`/intel/calls/${id}`, {
     poll: (c) => IN_PROGRESS.has(c.processing_status),
   });
-  useTitle(call ? `Call with ${call.analysis?.customer_name ?? "a customer"}` : null);
+  useTitle(call ? `Call with ${personName(call.analysis?.customer_name) ?? "a customer"}` : "Call");
   const audio = useAudio();
 
   // A link to a moment (?t=seconds) opens the call ready at that moment.
@@ -53,8 +55,10 @@ function CallPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call?.id]);
 
-  if (loading && !call) return <Loading />;
-  if (error && !call) return <ErrorNote message={error} />;
+  if (loading && !call) return <CallSkeleton />;
+  if (error && !call) {
+    return <PageError status={status} thing="call" onRetry={() => void reload()} back={{ href: "/v2/calls", label: "Back to all calls" }} />;
+  }
   if (!call) return null;
 
   const a = call.analysis;
@@ -71,11 +75,14 @@ function CallPage() {
 
   return (
     <div className="space-y-5">
-      <Link href="/v2/calls" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline print:hidden">
-        <BackIcon className="h-4 w-4" /> All calls
-      </Link>
+      <div className="flex items-center justify-between gap-3 print:hidden">
+        <Link href="/v2/calls" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
+          <BackIcon className="h-4 w-4" /> All calls
+        </Link>
+        <CallActions call={call} onChanged={reload} />
+      </div>
 
-      <Verdict call={call} audio={audio} onChanged={reload} />
+      <Verdict call={call} audio={audio} />
 
       {processing && (
         <Card className="flex items-center gap-3 px-5 py-4">
@@ -86,7 +93,7 @@ function CallPage() {
       {call.processing_status === "failed" && (
         <Card className="space-y-3 p-5">
           <ErrorNote message={call.processing_error ?? "We could not read this recording."} />
-          <Rerun callId={call.id} label="Try again" transcript={call.segments.length ? "keep" : "redo"} onDone={reload} />
+          <Rerun callId={call.id} transcript={call.segments.length ? "keep" : "redo"} onDone={reload} />
         </Card>
       )}
       {a && a.call_type_confidence < 0.7 && !call.call_type_overridden && (
@@ -100,7 +107,7 @@ function CallPage() {
             duration={call.duration_seconds}
             segments={call.segments}
             repName={call.rep_name}
-            customerName={call.analysis?.customer_name ?? null}
+            customerName={personName(call.analysis?.customer_name)}
             audio={audio}
             markers={markers}
             expired={expired}
@@ -124,20 +131,17 @@ function CallPage() {
 
 // --- The verdict: what happened, and how it went -----------------------------------
 
-function Verdict({ call, audio, onChanged }: { call: CallDetail; audio: AudioControl; onChanged: () => Promise<void> }) {
+function Verdict({ call, audio }: { call: CallDetail; audio: AudioControl }) {
   const a = call.analysis;
-  const router = useRouter();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const title = `Call with ${a?.customer_name ?? "a customer"}`;
+  const title = `Call with ${personName(a?.customer_name) ?? "a customer"}`;
   const outcomeTone = call.outcome ? OUTCOME_TONE[call.outcome] ?? "none" : "none";
   const best = a?.coaching.strengths?.[0];
   const fix = a?.coaching.coaching?.[0];
   const needed = a?.score_max && a.grade === "below" ? greenAt(a) : null;
 
   return (
-    <Card className="p-6">
-      <div className="flex flex-wrap items-start justify-between gap-6">
+    <Card className="p-5 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="font-medium">{CALL_TYPE_PLAIN[call.call_type ?? ""] ?? "Call"}</span>
@@ -155,22 +159,21 @@ function Verdict({ call, audio, onChanged }: { call: CallDetail; audio: AudioCon
             )}
             <span>{dateTime(call.occurred_at ?? call.created_at)}</span>
             <span>{duration(call.duration_seconds)}</span>
-            {call.external_ref && <span>{call.external_ref}</span>}
           </p>
           {a?.summary && <p className="mt-4 max-w-3xl text-[16px] leading-relaxed">{a.summary}</p>}
         </div>
 
         {a?.score_max ? (
-          <div className="shrink-0 text-right">
-            <p className="tnum text-[44px] font-semibold leading-none tracking-title">
+          <div className="flex shrink-0 items-center gap-3 sm:block sm:text-right">
+            <p className="tnum text-[34px] font-semibold leading-none tracking-title sm:text-[44px]">
               {a.score}
-              <span className="text-[24px] font-medium text-muted">/{a.score_max}</span>
+              <span className="text-[20px] font-medium text-muted sm:text-[24px]">/{a.score_max}</span>
             </p>
-            <div className="mt-2 flex justify-end">
+            <div className="flex sm:mt-2 sm:justify-end">
               <StatusPill status={GRADE_STATUS[a.grade ?? ""] ?? "none"} label={a.grade ? GRADE_PLAIN[a.grade] : "Not checked"} />
             </div>
-            <p className="mt-1.5 text-[12px] text-muted">
-              {needed !== null ? `${needed} more step${needed === 1 ? "" : "s"} to be good` : "call steps done"}
+            <p className="text-[12px] text-muted sm:mt-1.5">
+              {needed ? `${needed} more step${needed === 1 ? "" : "s"} to be good` : "call steps done"}
             </p>
           </div>
         ) : null}
@@ -186,51 +189,69 @@ function Verdict({ call, audio, onChanged }: { call: CallDetail; audio: AudioCon
           )}
         </div>
       )}
+    </Card>
+  );
+}
 
-      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4 text-[13px] print:hidden">
-        {a && (
-          <Rerun
-            callId={call.id}
-            label="Check again"
-            transcript="keep"
-            onDone={onChanged}
-            disabled={IN_PROGRESS.has(call.processing_status)}
-          />
-        )}
-        {a && <ChangeType call={call} onDone={onChanged} />}
-        <button className="btn-secondary" onClick={() => window.print()} disabled={!a}>
-          <PrintIcon className="h-4 w-4" />
-          Print
-        </button>
-        <Link href={`/calls/${call.id}`} className="btn-ghost">
-          Old version
-        </Link>
-        <button className="btn-danger ml-auto" onClick={() => setConfirmDelete(true)}>
-          Delete
-        </button>
-      </div>
+/** Everything you might do to a call, folded into one ••• menu. */
+function CallActions({ call, onChanged }: { call: CallDetail; onChanged: () => Promise<void> }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [typeOpen, setTypeOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const working = IN_PROGRESS.has(call.processing_status);
+  const a = call.analysis;
 
-      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this call?">
+  async function checkAgain() {
+    try {
+      await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep" });
+      toast({ message: "Checking this call again. It takes about a minute." });
+      await onChanged();
+    } catch {
+      toast({ message: failMessage(), tone: "error" });
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    try {
+      await api.delete(`/intel/calls/${call.id}`);
+      toast({ message: "Call deleted" });
+      router.replace("/v2/calls");
+    } catch {
+      setBusy(false);
+      setConfirmDelete(false);
+      toast({ message: failMessage(), tone: "error" });
+    }
+  }
+
+  return (
+    <>
+      <MoreMenu
+        label="Call actions"
+        items={[
+          { label: "Check this call again", onSelect: () => void checkAgain(), disabled: !a || working },
+          { label: "Change the kind of call", onSelect: () => setTypeOpen(true), disabled: !a || working },
+          { label: "Print", onSelect: () => window.print(), disabled: !a },
+          { label: "Open in the old version", onSelect: () => router.push(`/calls/${call.id}`) },
+          { label: "Delete call…", onSelect: () => setConfirmDelete(true), danger: true, separated: true },
+        ]}
+      />
+      <TypeDialog call={call} open={typeOpen} onClose={() => setTypeOpen(false)} onDone={onChanged} />
+      <Modal open={confirmDelete} onClose={() => !busy && setConfirmDelete(false)} title="Delete this call?">
         <p className="text-[14px] text-muted">The recording and everything we wrote about it will be gone for good.</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-secondary" onClick={() => setConfirmDelete(false)}>
+          <button className="btn-secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>
             Cancel
           </button>
-          <button
-            className="btn bg-bad text-white hover:opacity-90"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await api.delete(`/intel/calls/${call.id}`);
-              router.replace("/v2/calls");
-            }}
-          >
+          <button className="btn bg-bad text-white hover:opacity-90" disabled={busy} onClick={() => void remove()}>
             {busy && <Spinner className="h-3.5 w-3.5" />}
             Delete
           </button>
         </div>
       </Modal>
-    </Card>
+    </>
   );
 }
 
@@ -291,15 +312,18 @@ function Moment({
 
 function Coaching({ analysis: a, audio }: { analysis: Analysis; audio: AudioControl }) {
   const tips = a.coaching.coaching ?? [];
+  const [all, setAll] = useState(false);
+  const shown = all ? tips : tips.slice(0, 1);
   return (
     <Card className="p-5">
       <h2 className="text-[17px] font-semibold tracking-title">What {a.rep_name ?? "they"} can learn</h2>
       <ol className="mt-4 space-y-4">
-        {tips.map((tip, i) => (
+        {shown.map((tip, i) => (
           <li key={i} className={i ? "border-t border-line pt-4" : ""}>
             <div className="flex items-start justify-between gap-3">
               <p className="text-[15px] font-semibold leading-snug tracking-tightish">
-                {i + 1}. {tip.title}
+                {tips.length > 1 && `${i + 1}. `}
+                {tip.title}
               </p>
               {tip.start !== null && (
                 <button
@@ -319,6 +343,9 @@ function Coaching({ analysis: a, audio }: { analysis: Analysis; audio: AudioCont
           </li>
         ))}
       </ol>
+      {tips.length > 1 && (
+        <MoreToggle className="mt-4" open={all} onToggle={() => setAll((x) => !x)} count={tips.length - 1} noun={tips.length === 2 ? "tip" : "tips"} />
+      )}
     </Card>
   );
 }
@@ -336,7 +363,7 @@ function Scorecard({
   callId: string;
   onChange: () => Promise<void>;
 }) {
-  const [showDone, setShowDone] = useState(true);
+  const [showDone, setShowDone] = useState(false);
   const missed = a.items.filter((i) => !i.awarded);
   const done = a.items.filter((i) => i.awarded);
   return (
@@ -364,7 +391,7 @@ function Scorecard({
         onClick={() => setShowDone((s) => !s)}
         aria-expanded={showDone}
       >
-        Done ({done.length})
+        {showDone ? `Done (${done.length})` : `Show the ${done.length} step${done.length === 1 ? "" : "s"} done`}
         <ChevronIcon className={`h-4 w-4 text-faint transition-transform ${showDone ? "rotate-90" : ""}`} />
       </button>
       {showDone && (
@@ -376,7 +403,7 @@ function Scorecard({
       )}
       {a.evidence_verified_pct !== null && (
         <p className="mt-4 text-[12px] text-muted">
-          Each step is backed by words from the call; we checked {a.evidence_verified_pct.toFixed(0)}% of them match exactly.
+          Tap a step to see why. Each one is backed by words from the call.
         </p>
       )}
     </Card>
@@ -394,8 +421,9 @@ function Step({
   callId: string;
   onChange: () => Promise<void>;
 }) {
-  // Skipped steps start open with their reason; done steps are a one-line list.
-  const [open, setOpen] = useState(!item.awarded);
+  // One line per step; the reason and the moment open on tap. Steps that need
+  // the owner's decision start open, since they ask for something.
+  const [open, setOpen] = useState(item.agreement === "disputed" && !item.override);
   const evidence = item.evidence.find((e) => e.start !== null);
   return (
     <li>
@@ -442,6 +470,7 @@ function Step({
 }
 
 function Override({ item, callId, onChange }: { item: ScoreItem; callId: string; onChange: () => Promise<void> }) {
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
@@ -452,6 +481,9 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
       setEditing(false);
       setNote("");
       await onChange();
+      toast({ message: status === null ? "Change undone" : `Marked as ${status === "met" ? "done" : "skipped"}` });
+    } catch {
+      toast({ message: failMessage(), tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -534,52 +566,34 @@ function Details({ analysis: a }: { analysis: Analysis }) {
 
 function Rerun({
   callId,
-  label,
   transcript,
   onDone,
-  disabled,
 }: {
   callId: string;
-  label: string;
   transcript: "keep" | "redo";
   onDone: () => Promise<void>;
-  disabled?: boolean;
 }) {
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   return (
     <button
       className="btn-secondary"
-      disabled={busy || disabled}
-      title={error ?? "Check this call again"}
+      disabled={busy}
       onClick={async () => {
         setBusy(true);
-        setError(null);
         try {
           await api.post(`/intel/calls/${callId}/reprocess`, { transcript });
           await onDone();
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "That did not work. Please try again.");
+        } catch {
+          toast({ message: failMessage(), tone: "error" });
         } finally {
           setBusy(false);
         }
       }}
     >
       {busy && <Spinner className="h-3.5 w-3.5" />}
-      {label}
+      Try again
     </button>
-  );
-}
-
-function ChangeType({ call, onDone }: { call: CallDetail; onDone: () => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="btn-secondary" onClick={() => setOpen(true)} disabled={IN_PROGRESS.has(call.processing_status)}>
-        Change call kind
-      </button>
-      <TypeDialog call={call} open={open} onClose={() => setOpen(false)} onDone={onDone} />
-    </>
   );
 }
 
@@ -633,8 +647,8 @@ function TypeDialog({
               await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: value });
               onClose();
               await onDone();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "That did not work. Please try again.");
+            } catch {
+              setError(failMessage());
             } finally {
               setBusy(false);
             }
@@ -649,7 +663,9 @@ function TypeDialog({
 }
 
 function TypeCheck({ call, analysis, onDone }: { call: CallDetail; analysis: Analysis; onDone: () => Promise<void> }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-4 print:hidden">
       <div className="flex items-start gap-2.5 text-[14px]">
@@ -665,11 +681,20 @@ function TypeCheck({ call, analysis, onDone }: { call: CallDetail; analysis: Ana
       <div className="flex gap-2">
         <button
           className="btn-secondary"
+          disabled={busy}
           onClick={async () => {
-            await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: analysis.call_type });
-            await onDone();
+            setBusy(true);
+            try {
+              await api.post(`/intel/calls/${call.id}/reprocess`, { transcript: "keep", call_type: analysis.call_type });
+              await onDone();
+            } catch {
+              toast({ message: failMessage(), tone: "error" });
+            } finally {
+              setBusy(false);
+            }
           }}
         >
+          {busy && <Spinner className="h-3.5 w-3.5" />}
           Yes
         </button>
         <button className="btn-primary" onClick={() => setOpen(true)}>

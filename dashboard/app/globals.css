@@ -213,7 +213,9 @@
     animation: page-in 220ms ease-out;
   }
   @media (prefers-reduced-motion: reduce) {
-    .animate-page-in {
+    .animate-page-in,
+    .animate-toast-in,
+    .animate-menu-in {
       animation: none;
     }
   }

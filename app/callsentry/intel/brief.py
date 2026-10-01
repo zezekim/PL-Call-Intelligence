@@ -189,9 +189,23 @@ def _plural(n: int, one: str, many: str | None = None) -> str:
     return f"{n} {one if n == 1 else (many or one + 's')}"
 
 
+# What the analysis writes when the caller never said their name.
+_NO_NAME = {
+    "unknown", "unknown caller", "unknown customer", "not given", "not provided",
+    "not stated", "not mentioned", "n/a", "na", "none", "null", "caller", "customer",
+    "anonymous", "unnamed", "-",
+}
+
+
+def real_name(raw: str | None) -> str:
+    """A customer's name, or "" when the call never gave one."""
+    name = (raw or "").strip().strip('."\'')
+    return "" if name.lower() in _NO_NAME else name
+
+
 def _customer(row: Row) -> str:
     """The customer's name, or a description when the call never gave one."""
-    name = (row.analysis.customer_name or "").strip()
+    name = real_name(row.analysis.customer_name)
     if name:
         return name
     return f"the caller on {row.call.external_ref}" if row.call.external_ref else "the caller"
@@ -446,7 +460,7 @@ def _tip_for(rows: list[Row], step: StepStat) -> dict[str, Any] | None:
         return {
             "call_id": str(row.call.id),
             "ref": row.call.external_ref,
-            "customer": row.analysis.customer_name,
+            "customer": real_name(row.analysis.customer_name) or None,
             "rep": row.call.rep.name if row.call.rep else row.analysis.rep_name,
             "title": tip.get("title"),
             "what_happened": tip.get("what_happened"),
@@ -554,19 +568,20 @@ def lead_action(
         return None
     promise = owner_promise(triage)
     value = quoted_value(lead.price_quoted)
-    name = lead.name
+    name = real_name(lead.name) or "the caller"
+    who = name[:1].upper() + name[1:]
     if booked:
         label = f"Confirm {name}'s visit"
-        why = f"{name} booked a visit with the AI receptionist. Call to make sure it's right."
+        why = f"{who} booked a visit with the AI receptionist. Call to make sure it's right."
     elif stage == LeadStage.QUOTED:
         label = f"Call {name} back"
         price = f" (${value:,.0f})" if value else ""
-        why = f"{name} was given a price{price} and hasn't decided yet."
+        why = f"{who} was given a price{price} and hasn't decided yet."
     elif stage == LeadStage.FOLLOW_UP:
-        label, why = f"Call {name} back", f"{name} wanted time to think about it."
+        label, why = f"Call {name} back", f"{who} wanted time to think about it."
     else:
         label = f"Call {name}"
-        why = f"{name} asked about a service. Nobody has talked it through with them yet."
+        why = f"{who} asked about a service. Nobody has talked it through with them yet."
     contact = lead.last_contact_at
     age = _age_days(contact, now)
     due = contact + timedelta(days=DUE_DAYS.get(LeadStage(stage), 2)) if contact else None
@@ -614,7 +629,7 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
         action = lead_action(lead, triage, now, booked=booked)
         item = {
             "id": str(lead.id),
-            "name": lead.name,
+            "name": real_name(lead.name) or "Name not given",
             "stage": lead.stage,
             "stage_source": lead.stage_source,
             "service": lead.service,
@@ -666,7 +681,7 @@ def _todo(
         retention = (r.analysis.triage or {}).get("retention") or {}
         if r.analysis.outcome == "cancelled" and not retention.get("offers_made"):
             because = CANCEL_BECAUSE.get(retention.get("cancel_reason") or "")
-            name = (r.analysis.customer_name or "").strip()
+            name = real_name(r.analysis.customer_name)
             items.append({
                 "kind": "retention",
                 "priority": 100,
@@ -718,7 +733,8 @@ def _todo(
             continue
         if not _SALES_VERBS.search(f.action) or _SERVICE_ONLY.match(f.action):
             continue
-        who = (analysis.customer_name if analysis else None) or call.external_ref or "a caller"
+        named = real_name(analysis.customer_name) if analysis else ""
+        who = named or call.external_ref or "a caller"
         items.append({
             "kind": "follow_up",
             "priority": 50,
@@ -941,7 +957,7 @@ async def rep_brief(
         "steps": steps,
         "calls_list": [
             {"call_id": str(r.call.id), "ref": r.call.external_ref,
-             "customer": r.analysis.customer_name, "when": r.when.isoformat(),
+             "customer": real_name(r.analysis.customer_name) or None, "when": r.when.isoformat(),
              "score": round(r.pct, 1) if r.pct is not None else None,
              "grade": r.analysis.grade, "call_type": r.analysis.call_type,
              "outcome": r.analysis.outcome}

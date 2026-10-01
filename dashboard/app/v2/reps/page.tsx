@@ -7,23 +7,23 @@ import type { RepCard } from "@/lib/v2";
 import { STATUS_TEXT } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
-import { Avatar, Card, Empty, ErrorNote, Loading } from "@/components/ui";
-import { Trend } from "@/components/v2/kit";
+import { Avatar, Card, Empty } from "@/components/ui";
+import { ListSkeleton, PageError, Trend } from "@/components/v2/kit";
 
 // One or two calls are shown, but not judged as a pattern.
 const FEW_CALLS = 3;
 
 export default function RepsPage() {
-  useTitle("Reps");
+  useTitle("Team");
   const { query, refreshKey } = useCalls();
-  const { data, error, loading, reload } = useApi<RepCard[]>(query("/intel/v2/reps"));
+  const { data, error, status, loading, reload } = useApi<RepCard[]>(query("/intel/v2/reps"));
 
   useEffect(() => {
     if (refreshKey) void reload();
   }, [refreshKey, reload]);
 
-  if (loading && !data) return <Loading />;
-  if (error && !data) return <ErrorNote message={error} />;
+  if (loading && !data) return <ListSkeleton rows={4} />;
+  if (error && !data) return <PageError status={status} onRetry={() => void reload()} />;
   if (!data?.length) {
     return (
       <Card>
@@ -35,8 +35,7 @@ export default function RepsPage() {
   return (
     <div className="space-y-4">
       <p className="px-1 text-[14px] text-muted">
-        The person who needs help most is at the top. The number is how many call steps they do; a good call does
-        8 or 9 out of 10.
+        Who needs help most is at the top. The number is how many call steps they follow; good is 80% or more.
       </p>
       <ul className="group-list">
         {data.map((r) => (

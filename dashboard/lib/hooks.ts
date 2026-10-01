@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, responseCache } from "./api";
+import { ApiError, api, responseCache } from "./api";
 
 /**
  * Fetch `path` and keep it fresh. `poll` re-fetches on an interval while it
@@ -16,6 +16,8 @@ export function useApi<T>(
   const cached = path ? (responseCache.get(path) as T | undefined) : undefined;
   const [data, setDataState] = useState<T | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
+  /** HTTP status of the last failure (0 when the network failed). */
+  const [status, setStatus] = useState<number | null>(null);
   const [loading, setLoading] = useState(cached === undefined);
   const pollRef = useRef(options.poll);
   pollRef.current = options.poll;
@@ -35,8 +37,10 @@ export function useApi<T>(
       responseCache.set(path, result);
       setDataState(result);
       setError(null);
+      setStatus(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setStatus(err instanceof ApiError ? err.status : 0);
     } finally {
       setLoading(false);
     }
@@ -55,7 +59,7 @@ export function useApi<T>(
     return () => window.clearTimeout(timer);
   }, [data, load, options.interval]);
 
-  return { data, error, loading, reload: load, setData };
+  return { data, error, status, loading, reload: load, setData };
 }
 
 /** Sets the browser tab title for a page. */

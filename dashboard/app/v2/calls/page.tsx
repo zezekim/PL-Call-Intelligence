@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { api, type CallPage, type CallRow } from "@/lib/api";
 import { CALL_TYPES, OUTCOME_TONE, date, duration } from "@/lib/format";
 import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN } from "@/lib/easy";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import type { Status } from "@/lib/v2";
+import { personName } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { ChevronIcon, SearchIcon } from "@/components/icons";
-import { Avatar, Card, Empty, ErrorNote, Loading, Spinner } from "@/components/ui";
-import { StatusPill } from "@/components/v2/kit";
+import { Card, Empty, Spinner } from "@/components/ui";
+import { ListSkeleton, PageError, StatusPill } from "@/components/v2/kit";
+import { failMessage, useToast } from "@/components/v2/toast";
 
 const PAGE = 50;
 const FILTERS = [
@@ -21,23 +23,29 @@ const FILTERS = [
   { key: "review", label: "May be the wrong type" },
 ];
 const OUTCOME_STATUS: Record<string, Status> = { good: "good", warn: "watch", bad: "bad", none: "none" };
+// Pages loaded with "Show more", kept per search so Back returns to the same list.
+const extraPages = new Map<string, CallRow[]>();
 
 export default function CallsPage() {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<ListSkeleton />}>
       <Calls />
     </Suspense>
   );
 }
 
 function Calls() {
-  useTitle("Calls");
+  useTitle("All calls");
+  const toast = useToast();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const { refreshKey } = useCalls();
   const [search, setSearch] = useState(params.get("q") ?? "");
-  useEffect(() => setSearch(params.get("q") ?? ""), [params]);
+  const typed = useRef(false);
+  useEffect(() => {
+    if (!typed.current) setSearch(params.get("q") ?? "");
+  }, [params]);
 
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params.toString());
@@ -65,12 +73,27 @@ function Calls() {
   q.set("limit", String(PAGE));
   const qs = q.toString();
 
-  const { data, error, loading, reload } = useApi<CallPage>(`/intel/calls?${qs}`, {
+  // Results follow the typing, a moment after it pauses.
+  useEffect(() => {
+    if (!typed.current) return;
+    const timer = window.setTimeout(() => {
+      typed.current = false;
+      if (search.trim() !== (params.get("q") ?? "")) set("q", search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  const { data, error, status, loading, reload } = useApi<CallPage>(`/intel/calls?${qs}`, {
     poll: (d) => d.items.some((c) => IN_PROGRESS.has(c.processing_status)),
   });
-  const [more, setMore] = useState<CallRow[]>([]);
+  const [more, setMoreState] = useState<CallRow[]>(() => extraPages.get(qs) ?? []);
+  const setMore = (rows: CallRow[]) => {
+    extraPages.set(qs, rows);
+    setMoreState(rows);
+  };
   const [loadingMore, setLoadingMore] = useState(false);
-  useEffect(() => setMore([]), [qs]);
+  useEffect(() => setMoreState(extraPages.get(qs) ?? []), [qs]);
   useEffect(() => {
     if (refreshKey) void reload();
   }, [refreshKey, reload]);
@@ -81,19 +104,46 @@ function Calls() {
       <div className="flex flex-wrap items-center gap-2">
         <form
           className="relative min-w-[220px] flex-1"
+          role="search"
           onSubmit={(e) => {
             e.preventDefault();
+            typed.current = false;
             set("q", search.trim());
           }}
         >
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-muted" />
           <input
-            className="input rounded-full pl-9"
-            placeholder="Find a customer, a team member, or words that were said"
-            aria-label="Search calls"
+            type="search"
+            className="input rounded-full pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
+            placeholder="Search names or words said"
+            aria-label="Search calls by customer, team member or words said"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              typed.current = true;
+              setSearch(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && search) {
+                typed.current = false;
+                setSearch("");
+                set("q", "");
+              }
+            }}
           />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                typed.current = false;
+                setSearch("");
+                set("q", "");
+              }}
+              className="absolute right-2.5 top-1/2 flex h-[18px] w-[18px] -translate-y-1/2 items-center justify-center rounded-full bg-muted/60 text-[10px] font-bold text-surface hover:bg-muted"
+            >
+              ✕
+            </button>
+          )}
         </form>
         <select
           className="select w-auto rounded-full"
@@ -125,12 +175,27 @@ function Calls() {
         ))}
       </div>
 
-      {error && <ErrorNote message={error} />}
       {loading && !data ? (
-        <Loading />
+        <ListSkeleton />
+      ) : error && !data ? (
+        <PageError status={status} onRetry={() => void reload()} />
       ) : !items.length ? (
         <Card>
-          <Empty title="No calls found">Try “All calls”, or clear the search.</Empty>
+          <Empty title="No calls found">
+            {params.get("q") ? `Nothing matches “${params.get("q")}”.` : "Nothing here right now."}{" "}
+            {(params.toString() !== "") && (
+              <button
+                className="text-link hover:underline"
+                onClick={() => {
+                  typed.current = false;
+                  setSearch("");
+                  router.replace(pathname);
+                }}
+              >
+                Show all calls
+              </button>
+            )}
+          </Empty>
         </Card>
       ) : (
         <>
@@ -153,7 +218,9 @@ function Calls() {
                     const next = new URLSearchParams(qs);
                     next.set("offset", String(items.length));
                     const page = await api.get<CallPage>(`/intel/calls?${next}`);
-                    setMore((m) => [...m, ...page.items]);
+                    setMore([...more, ...page.items]);
+                  } catch {
+                    toast({ message: failMessage(), tone: "error" });
                   } finally {
                     setLoadingMore(false);
                   }
@@ -174,37 +241,38 @@ function Row({ call: c }: { call: CallRow }) {
   const busy = IN_PROGRESS.has(c.processing_status);
   const failed = c.processing_status === "failed";
   const tone = c.outcome ? OUTCOME_TONE[c.outcome] ?? "none" : "none";
+  const meta = [
+    CALL_TYPE_PLAIN[c.call_type ?? ""] ?? "Call",
+    c.rep_name,
+    date(c.occurred_at ?? c.created_at),
+    duration(c.duration_seconds),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <li>
-      <Link href={`/v2/calls/${c.id}`} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-hover">
+      <Link href={`/v2/calls/${c.id}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-hover sm:gap-4 sm:px-5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium">{c.customer_name ?? "Customer not named"}</p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
-            <span>{CALL_TYPE_PLAIN[c.call_type ?? ""] ?? "Call"}</span>
-            {c.rep_name && (
-              <span className="inline-flex items-center gap-1">
-                · <Avatar name={c.rep_name} size={14} /> {c.rep_name}
-              </span>
-            )}
-            <span>· {date(c.occurred_at ?? c.created_at)}</span>
-            <span>· {duration(c.duration_seconds)}</span>
+          <p className="truncate text-[15px] font-medium">
+            {personName(c.customer_name) ?? <span className="text-muted">Customer not named</span>}
           </p>
+          <p className="mt-0.5 truncate text-[13px] text-muted">{meta}</p>
         </div>
         <div className="hidden w-32 sm:block">
           {c.outcome && c.outcome !== "not_applicable" && (
             <StatusPill status={OUTCOME_STATUS[tone]} label={OUTCOME_PLAIN[c.outcome] ?? c.outcome} />
           )}
         </div>
-        <div className="w-40 text-right">
+        <div className="shrink-0 text-right sm:w-40">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 text-[13px] text-muted">
-              <Spinner className="h-3 w-3" /> Still checking
+              <Spinner className="h-3 w-3" /> Checking
             </span>
           ) : failed ? (
             <span className="text-[13px] font-medium text-bad">Could not read</span>
           ) : c.score !== null && c.score_max ? (
             <span className="inline-flex items-center gap-2">
-              <span className="tnum text-[14px] font-medium">
+              <span className="tnum hidden text-[14px] font-medium sm:inline">
                 {c.score}/{c.score_max}
               </span>
               <StatusPill status={c.grade === "below" ? "bad" : "good"} label={c.grade ? GRADE_PLAIN[c.grade] : "–"} />

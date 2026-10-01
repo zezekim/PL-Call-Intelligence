@@ -40,6 +40,10 @@ export function useAudio(): AudioControl {
   return { ref, time, playing, seek, toggle, setTime, setPlaying, target };
 }
 
+const RATE_KEY = "pestlaunch.playbackRate";
+const RATES = [1, 1.5, 2];
+const SKIP = 15;
+
 export interface Marker {
   at: number;
   tone: "good" | "bad";
@@ -75,7 +79,52 @@ export function ListenPanel({
   large?: boolean;
 }) {
   const [length, setLength] = useState(duration);
-  const [rate, setRate] = useState(1);
+  const [rate, setRateState] = useState(1);
+  const setRate = useCallback(
+    (next: number) => {
+      setRateState(next);
+      if (audio.ref.current) audio.ref.current.playbackRate = next;
+      try {
+        window.localStorage.setItem(RATE_KEY, String(next));
+      } catch {
+        /* storage unavailable */
+      }
+    },
+    [audio.ref],
+  );
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(RATE_KEY));
+      if (RATES.includes(saved)) setRateState(saved);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  // Space plays and pauses; the arrow keys skip 15 seconds. Typing, and keys
+  // meant for a focused button or slider, are left alone.
+  const { ref: audioRef, toggle, setTime } = audio;
+  useEffect(() => {
+    if (!src) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, textarea, select, button, a, [role=menu], [role=dialog], [contenteditable=true]")) return;
+      const audioEl = audioRef.current;
+      if (!audioEl) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        toggle();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const t = Math.min(Math.max(0, audioEl.currentTime + (e.key === "ArrowLeft" ? -SKIP : SKIP)), length || audioEl.duration || 0);
+        audioEl.currentTime = t;
+        setTime(t);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [src, audioRef, toggle, setTime, length]);
   const scroller = useRef<HTMLDivElement>(null);
   const userScrolledAt = useRef(0);
 
@@ -128,7 +177,7 @@ export function ListenPanel({
             {large ? "Listen to the call" : "Recording & transcript"}
           </h2>
           {markers.length > 0 && (
-            <div className={`flex items-center gap-3 ${large ? "text-[16px] text-ink" : "text-[12px] text-muted"}`}>
+            <div className={`hidden items-center gap-3 sm:flex ${large ? "text-[16px] text-ink" : "text-[12px] text-muted"}`}>
               <span className="inline-flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-bad" /> To do better
               </span>
@@ -147,16 +196,18 @@ export function ListenPanel({
               onTimeUpdate={(e) => audio.setTime(e.currentTarget.currentTime)}
               onPlay={() => audio.setPlaying(true)}
               onPause={() => audio.setPlaying(false)}
-              onLoadedMetadata={(e) =>
-                Number.isFinite(e.currentTarget.duration) && setLength(e.currentTarget.duration)
-              }
+              onLoadedMetadata={(e) => {
+                if (Number.isFinite(e.currentTarget.duration)) setLength(e.currentTarget.duration);
+                e.currentTarget.playbackRate = rate;
+              }}
             />
             <button
-              className={`flex shrink-0 items-center justify-center rounded-full bg-[#0055aa] text-white transition-opacity hover:opacity-90 ${
+              className={`flex shrink-0 items-center justify-center rounded-full bg-accent text-white transition-opacity hover:opacity-90 ${
                 large ? "h-16 w-16" : "h-11 w-11"
               }`}
               onClick={audio.toggle}
               aria-label={audio.playing ? "Pause" : "Play the call"}
+              title={audio.playing ? "Pause (space)" : "Play (space)"}
             >
               {audio.playing ? (
                 <PauseIcon className={large ? "h-6 w-6" : "h-4 w-4"} />
@@ -185,7 +236,7 @@ export function ListenPanel({
                   markers.map((m, i) => (
                     <button
                       key={i}
-                      onClick={() => audio.seek(m.at)}
+                      onClick={() => audio.seek(m.at, segmentAt(segments, m.at))}
                       title={`${clock(m.at)} · ${m.label}`}
                       aria-label={`Play ${m.label} at ${clock(m.at)}`}
                       className={`absolute top-0 -translate-x-1/2 rounded-full ring-2 ring-surface ${
@@ -204,12 +255,9 @@ export function ListenPanel({
             </div>
             <button
               className={`btn-secondary tnum px-0 ${large ? "min-h-[48px] w-20 text-[17px]" : "w-12 py-1 text-[12px]"}`}
-              onClick={() => {
-                const next = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1;
-                setRate(next);
-                if (audio.ref.current) audio.ref.current.playbackRate = next;
-              }}
-              aria-label="Playback speed"
+              onClick={() => setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length])}
+              aria-label={`Playback speed ${rate} times`}
+              title="Playback speed"
             >
               {rate}×
             </button>
@@ -281,4 +329,14 @@ export function ListenPanel({
       </div>
     </section>
   );
+}
+
+/** The transcript line being spoken at `t`. */
+function segmentAt(segments: Segment[], t: number): number | undefined {
+  let id: number | undefined;
+  for (const s of segments) {
+    if (s.start <= t + 0.5) id = s.id;
+    else break;
+  }
+  return id;
 }

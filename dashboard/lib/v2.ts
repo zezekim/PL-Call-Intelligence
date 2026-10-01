@@ -193,3 +193,15 @@ export function rateStatus(rate: number | null | undefined): Status {
 
 export const money = (n: number) =>
   `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
+// What the analysis writes when the caller never said their name.
+const NO_NAME = new Set([
+  "unknown", "unknown caller", "unknown customer", "not given", "not provided", "not stated",
+  "not mentioned", "n/a", "na", "none", "null", "caller", "customer", "anonymous", "unnamed", "-",
+]);
+
+/** A customer's name, or null when the call never gave one. */
+export function personName(raw: string | null | undefined): string | null {
+  const name = (raw ?? "").trim().replace(/^["'.]+|["'.]+$/g, "");
+  return name && !NO_NAME.has(name.toLowerCase()) ? name : null;
+}
