@@ -23,6 +23,10 @@ test("the home page and the sidebar's Calls open v2", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/v2$/);
+  // Settings reads endpoints the made-up data doesn't cover; keep them off the real API.
+  await page.route(/\/settings/, (route) =>
+    ["fetch", "xhr"].includes(route.request().resourceType()) ? route.abort() : route.fallback(),
+  );
   await page.goto("/settings");
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Calls" })).toHaveAttribute("href", "/v2");
 });
