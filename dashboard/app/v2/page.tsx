@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { clock } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { Brief, PerformanceCard, Todo } from "@/lib/v2";
@@ -42,9 +42,16 @@ export default function OverviewPage() {
           <Performance key={c.key} card={c} />
         ))}
       </div>
+      <p className="-mt-4 px-1 text-[12px] text-muted">
+        The goals are starting points for a typical pest control office.{" "}
+        <Link href="/settings" className="text-link hover:underline">
+          Change them in Settings
+        </Link>
+        .
+      </p>
 
       <div className="grid items-start gap-8 min-[1180px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <DoToday items={data.todo} total={data.todo_total} />
+        <DoToday items={data.todo} />
         <CoachingFocus brief={data} quality={quality} />
       </div>
 
@@ -126,45 +133,47 @@ const KIND_LABEL: Record<Todo["kind"], string> = {
   follow_up: "Promise",
 };
 
-const TOP = 5;
+const TOP = 3;
 
-function DoToday({ items, total }: { items: Todo[]; total: number }) {
-  const [all, setAll] = useState(true);
-  const shown = all ? items : items.slice(0, TOP);
-  const hidden = total - shown.length;
+/** Everything is listed; the top three get full rows, the rest one line each. */
+function DoToday({ items }: { items: Todo[] }) {
   return (
-    <Section
-      title="Do these first"
-      subtitle="The most important one is at the top."
-      action={
-        items.length > TOP ? (
-          <button className="text-[13px] text-link hover:underline" onClick={() => setAll((a) => !a)}>
-            {all ? "Show fewer" : `Show ${hidden} more`}
-          </button>
-        ) : undefined
-      }
-    >
-      {shown.length ? (
+    <Section title="Do these first" subtitle="The most important one is at the top.">
+      {items.length ? (
         <ol className="group-list">
-          {shown.map((t, i) => (
-            <li key={`${t.title}-${i}`}>
-              <Link href={t.href} className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-surface-hover">
-                <span
-                  className={`tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
-                    i === 0 ? "bg-bad text-white" : "bg-fill text-ink"
-                  }`}
+          {items.map((t, i) =>
+            i < TOP ? (
+              <li key={`${t.title}-${i}`}>
+                <Link href={t.href} className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-surface-hover">
+                  <span
+                    className={`tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
+                      i === 0 ? "bg-bad text-white" : "bg-fill text-ink"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-medium leading-snug">{t.title}</p>
+                    <p className="mt-0.5 text-[13px] leading-snug text-muted">{t.why}</p>
+                  </div>
+                  <span className="mt-0.5 hidden shrink-0 text-[12px] text-muted sm:block">{KIND_LABEL[t.kind]}</span>
+                  <ChevronIcon className="mt-1 h-4 w-4 shrink-0 text-faint" />
+                </Link>
+              </li>
+            ) : (
+              <li key={`${t.title}-${i}`}>
+                <Link
+                  href={t.href}
+                  className="flex items-center gap-4 px-5 py-2.5 text-[14px] transition-colors hover:bg-surface-hover"
                 >
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-medium leading-snug">{t.title}</p>
-                  <p className="mt-0.5 text-[13px] leading-snug text-muted">{t.why}</p>
-                </div>
-                <span className="mt-0.5 hidden shrink-0 text-[12px] text-muted sm:block">{KIND_LABEL[t.kind]}</span>
-                <ChevronIcon className="mt-1 h-4 w-4 shrink-0 text-faint" />
-              </Link>
-            </li>
-          ))}
+                  <span className="tnum w-6 shrink-0 text-center text-[12px] text-muted">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  <span className="hidden shrink-0 text-[12px] text-muted sm:block">{KIND_LABEL[t.kind]}</span>
+                  <ChevronIcon className="h-4 w-4 shrink-0 text-faint" />
+                </Link>
+              </li>
+            ),
+          )}
         </ol>
       ) : (
         <Card className="flex items-center gap-3 px-5 py-4">

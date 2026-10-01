@@ -68,6 +68,13 @@ const SECTIONS: { title: string; description: string; keys: string[] }[] = [
     ],
   },
   {
+    title: "Goals",
+    description:
+      "What counts as good on the owner's Today page. These are starting points for a typical pest control office; " +
+      "set them to your own targets.",
+    keys: ["goal_close_rate", "goal_save_rate", "goal_fix_rate", "goal_call_steps"],
+  },
+  {
     title: "Spending",
     description: "Paid services pause for the rest of the day once the cap is reached.",
     keys: ["daily_spend_cap_usd"],

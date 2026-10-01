@@ -394,7 +394,8 @@ function Step({
   callId: string;
   onChange: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState(true);
+  // Skipped steps start open with their reason; done steps are a one-line list.
+  const [open, setOpen] = useState(!item.awarded);
   const evidence = item.evidence.find((e) => e.start !== null);
   return (
     <li>

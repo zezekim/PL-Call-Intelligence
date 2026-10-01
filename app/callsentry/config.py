@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     daily_spend_cap_usd: float = 20.0
     # Text callers a booking confirmation (needs an SMS-registered number).
     sms_confirmations: bool = False
+    # Goals for the owner's brief, as percentages. Typical for a residential pest
+    # control office; each company sets its own in Settings.
+    goal_close_rate: float = 50.0
+    goal_save_rate: float = 60.0
+    goal_fix_rate: float = 85.0
+    goal_call_steps: float = 85.0
     # Weekly email digest. Off until SMTP is configured and it is switched on.
     weekly_digest: bool = False
     digest_recipients: str = ""

@@ -160,3 +160,15 @@ def test_coaching_tip_prefers_one_mainly_about_the_step():
     stat = brief.step_stats([row])["Thank"]
     assert brief._tip_for([row], stat)["try_saying"] == "Thanks for calling us."
 
+
+
+def test_goals_come_from_settings(monkeypatch):
+    from callsentry.config import get_settings
+
+    settings = get_settings()
+    assert brief.goal_text("save_rate", "kept") == "Goal: at least 6 out of 10 kept"
+    assert brief.goal_text("resolution_rate", "fixed") == "Goal: at least 85 out of 100 fixed"
+    monkeypatch.setattr(settings, "goal_save_rate", 70.0)
+    assert brief.TARGETS["save_rate"].status(60) == "watch"
+    assert brief.TARGETS["save_rate"].status(50) == "bad"
+    assert brief.goal_text("save_rate", "kept") == "Goal: at least 7 out of 10 kept"

@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from callsentry.config import get_settings
 from callsentry.intel import insights
 from callsentry.intel.insights import Row
 from callsentry.intel.rubrics import LENS_BY_CALL_TYPE, SCORECARDS
@@ -53,13 +54,31 @@ class Target:
         return "watch" if value >= self.watch else "bad"
 
 
-TARGETS = {
-    "close_rate": Target(good=50, watch=35),
-    "save_rate": Target(good=60, watch=40),
-    "resolution_rate": Target(good=85, watch=70),
-    # Share of scorecard steps done; Green on every scorecard is about 85-90%.
-    "call_quality": Target(good=85, watch=65),
+# Each goal is a platform setting (Settings → Goals), read live so a change
+# shows on the next page load. Below the goal by up to 15 points is "could be
+# better"; further below is "needs work".
+_GOAL_SETTINGS = {
+    "close_rate": "goal_close_rate",
+    "save_rate": "goal_save_rate",
+    "resolution_rate": "goal_fix_rate",
+    "call_quality": "goal_call_steps",
 }
+
+
+class _Targets:
+    def __getitem__(self, key: str) -> Target:
+        good = float(getattr(get_settings(), _GOAL_SETTINGS[key]))
+        return Target(good=good, watch=max(0.0, good - 15))
+
+
+TARGETS = _Targets()
+
+
+def goal_text(key: str, ending: str) -> str:
+    """'Goal: at least 6 out of 10 kept' - tens when the goal is round, else out of 100."""
+    good = TARGETS[key].good
+    share = f"{good / 10:g} out of 10" if good % 10 == 0 else f"{good:g} out of 100"
+    return f"Goal: at least {share} {ending}"
 
 # Everyday names for the scorecard steps, so anyone can read them. The manual's
 # own names ("Expectation Statement") mean little outside a training session.
@@ -215,7 +234,7 @@ def _sales(rows: list[Row]) -> dict[str, Any]:
         "of": decided,
         "status": _judge("close_rate", rate, decided),
         "target": TARGETS["close_rate"].good,
-        "goal": "Goal: at least 5 out of 10 say yes",
+        "goal": goal_text("close_rate", "say yes"),
         "detail": (
             f"{out['sold']} said yes · {out['follow_up']} still deciding · "
             f"{out['not_sold']} said no{_few(decided)}" if sales else "No calls from new customers"
@@ -265,7 +284,7 @@ def _retention(rows: list[Row]) -> dict[str, Any]:
         "of": decided,
         "status": _judge("save_rate", rate, decided),
         "target": TARGETS["save_rate"].good,
-        "goal": "Goal: keep at least 6 out of 10",
+        "goal": goal_text("save_rate", "kept"),
         "detail": (
             f"{out['saved']} kept · {out['cancelled']} cancelled"
             + (f" · {out['pending']} not decided" if out["pending"] else "")
@@ -299,7 +318,7 @@ def _service(rows: list[Row]) -> dict[str, Any]:
         "of": decided,
         "status": _judge("resolution_rate", rate, decided),
         "target": TARGETS["resolution_rate"].good,
-        "goal": "Goal: fix almost all of them (more than 8 out of 10)",
+        "goal": goal_text("resolution_rate", "fixed on the call"),
         "detail": (
             f"{out['resolved']} fixed · {out['partially']} partly fixed · "
             f"{out['unresolved']} not fixed{_few(decided)}"
@@ -327,7 +346,7 @@ def _quality(rows: list[Row]) -> dict[str, Any]:
         "of": len(scored),
         "status": TARGETS["call_quality"].status(avg),
         "target": TARGETS["call_quality"].good,
-        "goal": "Goal: do almost every step on every call",
+        "goal": goal_text("call_quality", "steps done"),
         "detail": (
             f"{meeting} of {len(scored)} calls followed enough steps" if scored
             else "No calls checked yet"
