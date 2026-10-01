@@ -296,7 +296,7 @@ export function ListenPanel({
                   className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left leading-[1.45] [overflow-wrap:anywhere] ${
                     large ? "text-[19px]" : "text-[15px]"
                   } ${
-                    rep ? "bg-bubble text-ink" : large ? "bg-[#0055aa] text-white" : "bg-accent text-white"
+                    rep ? "bg-bubble text-ink" : "bg-accent-soft text-ink"
                   }`}
                 >
                   {turn.items.map((s) => (
@@ -306,16 +306,10 @@ export function ListenPanel({
                       onClick={() => audio.seek(s.start)}
                       className={`cursor-pointer rounded px-0.5 transition-colors ${
                         s.id === activeId
-                          ? rep
-                            ? "bg-highlight"
-                            : "bg-white/30"
+                          ? "bg-highlight"
                           : s.id === cited
-                            ? rep
-                              ? "bg-highlight/60"
-                              : "bg-white/20"
-                            : rep
-                              ? "hover:bg-ink/5"
-                              : "hover:bg-white/15"
+                            ? "bg-highlight/60"
+                            : "hover:bg-ink/5"
                       }`}
                     >
                       {s.text}{" "}

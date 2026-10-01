@@ -169,7 +169,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {me && <p className="truncate px-2.5 pb-1 pt-1 text-[12px] text-muted">{me.email}</p>}
           <p className="px-2.5 pb-1 text-[11px] text-faint" title={`Build ${BUILD_ID}`}>
             Version {APP_VERSION}
-            {BUILD_ID !== "local" && <span className="tnum"> ({BUILD_ID})</span>}
+            {BUILD_ID !== "local" && !v2 && <span className="tnum"> ({BUILD_ID})</span>}
           </p>
           <button
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-ink/[0.04] hover:text-ink"

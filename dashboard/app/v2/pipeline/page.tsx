@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, type Me } from "@/lib/api";
 import { date } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { PipelineBoard, PipelineLead, Urgency } from "@/lib/v2";
-import { money } from "@/lib/v2";
+import { cleanPests, listWords, money } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
 import { Avatar, Card, Empty } from "@/components/ui";
@@ -35,6 +35,30 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 type Stage = "won" | "lost" | "follow_up";
+
+/**
+ * What to say when they pick up, from what the call already told us: their
+ * name, the price, the pests, who they spoke to. Plain enough to read out.
+ */
+function openingLine(lead: PipelineLead, business: string | null): string {
+  const first = lead.name === "Name not given" ? null : lead.name.split(/\s+/)[0];
+  const hi = first ? `Hi ${first}` : "Hi there";
+  const person = lead.rep && !/receptionist|\bai\b/i.test(lead.rep) ? lead.rep.split(/\s+/)[0] : null;
+  const from = person && business ? `, it's ${person} from ${business}` : business ? `, it's ${business}` : person ? `, it's ${person}` : "";
+  const pests = cleanPests(lead.pests);
+  const about = pests.length ? `the ${listWords(pests.slice(0, 2))}` : lead.service ? lead.service.toLowerCase() : "your pest problem";
+  const price = lead.value !== null ? `the ${money(lead.value)} quote` : lead.price_quoted ? `the quote we gave you` : null;
+  if (lead.action?.label.startsWith("Confirm")) {
+    return `${hi}${from}. I'm calling to confirm your visit for ${about}. Does the time still work for you?`;
+  }
+  if (lead.stage === "quoted" && price) {
+    return `${hi}${from}. I'm following up on ${price} for ${about}. Do you have any questions I can answer?`;
+  }
+  if (lead.stage === "follow_up" || lead.stage === "quoted") {
+    return `${hi}${from}. You wanted some time to think about ${about}. Is now a good time to talk it through?`;
+  }
+  return `${hi}${from}. You called us about ${about}. I'd love to help. When would be a good time for us to come out?`;
+}
 
 /** Moves a lead on the board at once, before the server answers. */
 function moveLead(board: PipelineBoard, id: string, stage: Stage): PipelineBoard {
@@ -67,6 +91,8 @@ export default function PipelinePage() {
   const { refreshKey } = useCalls();
   const toast = useToast();
   const { data, error, status, loading, reload, setData } = useApi<PipelineBoard>("/intel/v2/pipeline");
+  const me = useApi<Me>("/auth/me").data;
+  const business = me?.business_name ?? null;
 
   useEffect(() => {
     if (refreshKey) void reload();
@@ -127,7 +153,7 @@ export default function PipelinePage() {
         {data.open.length ? (
           <ul className="group-list">
             {data.open.map((lead) => (
-              <OpenLead key={lead.id} lead={lead} onDecide={(stage) => change(lead, stage)} />
+              <OpenLead key={lead.id} lead={lead} business={business} onDecide={(stage) => change(lead, stage)} />
             ))}
           </ul>
         ) : (
@@ -163,31 +189,37 @@ function Summary({ board }: { board: PipelineBoard }) {
   );
 }
 
-function OpenLead({ lead, onDecide }: { lead: PipelineLead; onDecide: (stage: "won" | "lost") => void }) {
+function OpenLead({
+  lead,
+  business,
+  onDecide,
+}: {
+  lead: PipelineLead;
+  business: string | null;
+  onDecide: (stage: "won" | "lost") => void;
+}) {
   const a = lead.action!;
   const u = URGENCY[a.urgency];
-  const meta = [lead.pests.length ? lead.pests.slice(0, 3).join(", ") : null, lead.value !== null ? money(lead.value) : null]
+  const say = openingLine(lead, business);
+  const [copied, setCopied] = useState(false);
+  // "Late by 3 days" already says how long; otherwise say when we last talked.
+  const lastTalk =
+    a.urgency !== "overdue" && a.days_since_contact !== null
+      ? `last talk ${a.days_since_contact === 0 ? "today" : `${a.days_since_contact} days ago`}`
+      : null;
+  const meta = [listWords(cleanPests(lead.pests).slice(0, 3)) || null, lead.value !== null ? money(lead.value) : null, lastTalk]
     .filter(Boolean)
     .join(" · ");
   return (
-    <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
+    <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${u.cls}`}>{u.label(lead)}</span>
           <span className="text-[12px] text-muted">{STAGE_LABEL[lead.stage]}</span>
         </div>
         <p className="mt-1.5 text-[16px] font-semibold leading-snug tracking-tightish">{a.label}</p>
-        <p className="mt-0.5 text-[14px] text-muted">
-          {a.why}
-          {a.days_since_contact !== null && ` Last talk: ${a.days_since_contact === 0 ? "today" : `${a.days_since_contact} days ago`}.`}
-        </p>
-        {a.promised && (
-          <p className="mt-1 text-[13px]">
-            <span className="font-medium">We promised:</span> {a.promised}
-          </p>
-        )}
         {(lead.rep || meta) && (
-          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[12px] text-muted">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
             {lead.rep && (
               <span className="inline-flex items-center gap-1.5">
                 <Avatar name={lead.rep} size={16} />
@@ -195,11 +227,36 @@ function OpenLead({ lead, onDecide }: { lead: PipelineLead; onDecide: (stage: "w
               </span>
             )}
             {lead.rep && meta && <span aria-hidden>·</span>}
-            {meta && <span className="capitalize">{meta}</span>}
+            {meta && <span>{meta}</span>}
           </p>
         )}
+        {a.promised && (
+          <p className="mt-1.5 text-[13px]">
+            <span className="font-medium">We promised:</span> {a.promised}
+          </p>
+        )}
+        <div className="mt-2.5 flex items-start gap-3 rounded-xl bg-panel px-3.5 py-2.5">
+          <p className="min-w-0 flex-1 text-[14px] leading-relaxed text-ink/90">
+            <span className="mr-1.5 text-[12px] font-medium text-muted">Say</span>“{say}”
+          </p>
+          <button
+            className="shrink-0 pt-0.5 text-[12px] font-medium text-link hover:underline"
+            aria-label="Copy what to say"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(say);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              } catch {
+                /* clipboard blocked: the words are on screen anyway */
+              }
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:pt-6">
         {lead.last_call_id && (
           <Link href={`/v2/calls/${lead.last_call_id}`} className="btn-ghost px-3 py-1 text-[13px]">
             Listen
@@ -241,7 +298,7 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
       {open && (
         <ul className="group-list mt-3">
           {leads.map((l) => {
-            const what = l.service ?? (l.pests.length ? l.pests.join(", ") : null);
+            const what = l.service ?? (listWords(cleanPests(l.pests)) || null);
             return (
               <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-[14px]">
                 <span

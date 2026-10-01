@@ -20,7 +20,7 @@ import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/compone
 import { CallSkeleton, MoreMenu, MoreToggle, PageError, StatusPill } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 import type { Status } from "@/lib/v2";
-import { personName } from "@/lib/v2";
+import { cleanPests, firstSentence, listWords, personName } from "@/lib/v2";
 
 export default function CallRoute() {
   return (
@@ -160,7 +160,7 @@ function Verdict({ call, audio }: { call: CallDetail; audio: AudioControl }) {
             <span>{dateTime(call.occurred_at ?? call.created_at)}</span>
             <span>{duration(call.duration_seconds)}</span>
           </p>
-          {a?.summary && <p className="mt-4 max-w-3xl text-[16px] leading-relaxed">{a.summary}</p>}
+          {a?.summary && <Summary text={a.summary} />}
         </div>
 
         {a?.score_max ? (
@@ -190,6 +190,22 @@ function Verdict({ call, audio }: { call: CallDetail; audio: AudioControl }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/** One sentence says what happened; the full account is one tap away. */
+function Summary({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const { first, more } = firstSentence(text);
+  return (
+    <p className="mt-4 max-w-3xl text-[16px] leading-relaxed">
+      {open || !more ? text : first}
+      {more && (
+        <button className="ml-1.5 text-[14px] font-medium text-link hover:underline print:hidden" onClick={() => setOpen((o) => !o)}>
+          {open ? "Less" : "More"}
+        </button>
+      )}
+    </p>
   );
 }
 
@@ -542,7 +558,8 @@ function Details({ analysis: a }: { analysis: Analysis }) {
     }
     if (a.lens === "retention" && t.retention.root_cause) out.push(["Why they want to cancel", t.retention.root_cause]);
     if (a.lens === "service" && t.service.request) out.push(["What they needed", t.service.request]);
-    if (t.pests.length) out.push(["Pests", t.pests.join(", ")]);
+    const pests = listWords(cleanPests(t.pests));
+    if (pests) out.push(["Pests", pests[0].toUpperCase() + pests.slice(1)]);
     if (t.appointment.booked) out.push(["Visit booked", t.appointment.when || "Yes"]);
     return out;
   }, [a, t]);

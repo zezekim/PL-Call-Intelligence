@@ -1,4 +1,6 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { cleanPests } from "../lib/v2";
 import { CALL_ID, LEAD_ID, REP_ID, mockApi } from "./v2-fixtures";
 
 /*
@@ -130,3 +132,40 @@ test("nothing spills sideways on a phone", async ({ page }) => {
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
 });
+
+test("pest names read as short everyday words", () => {
+  expect(cleanPests(["ants, described by the caller as possibly bed or fire ants", "Fire Ants", "Mice", "rodents"])).toEqual([
+    "fire ants",
+    "ants",
+    "mice",
+  ]);
+  expect(cleanPests(["cockroaches", "German roach"])).toEqual(["roaches"]);
+  expect(cleanPests(["something we have never heard of before today"])).toEqual([]);
+  expect(cleanPests(["voles"])).toEqual(["moles"]);
+});
+
+test("the call-back list hands the owner the words to say", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2/pipeline");
+  const row = page.locator("li", { hasText: "Call Jordan Lee back" });
+  await expect(row).toContainText("Hi Jordan, it's Dana from ABC Pest Control. I'm following up on the $649 quote for the ants.");
+});
+
+// Every v2 screen, light and dark, against WCAG 2.1 AA.
+for (const scheme of ["light", "dark"] as const) {
+  test(`v2 screens pass an accessibility check (${scheme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await mockApi(page);
+    for (const path of ["/v2", "/v2/pipeline", "/v2/reps", "/v2/calls", `/v2/calls/${CALL_ID}`, `/v2/reps/${REP_ID}`]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+      const { violations } = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .include("main")
+        .analyze();
+      expect(
+        violations.map((v) => `${path}: ${v.id} — ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(", ")}`),
+      ).toEqual([]);
+    }
+  });
+}

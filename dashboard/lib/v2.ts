@@ -165,7 +165,7 @@ export const STATUS_TEXT: Record<Status, string> = {
 
 export const STATUS_BG: Record<Status, string> = {
   good: "bg-good",
-  watch: "bg-[#ff9f0a]",
+  watch: "bg-warn",
   bad: "bg-bad",
   none: "bg-neutral",
 };
@@ -204,4 +204,79 @@ const NO_NAME = new Set([
 export function personName(raw: string | null | undefined): string | null {
   const name = (raw ?? "").trim().replace(/^["'.]+|["'.]+$/g, "");
   return name && !NO_NAME.has(name.toLowerCase()) ? name : null;
+}
+
+// Everyday pest names, longest first so "fire ants" wins over "ants".
+const PESTS: [RegExp, string][] = [
+  [/\bfire ants?\b/, "fire ants"],
+  [/\bcarpenter ants?\b/, "carpenter ants"],
+  [/\bbed ?bugs?\b/, "bed bugs"],
+  [/\bstink ?bugs?\b/, "stink bugs"],
+  [/\byellow ?jackets?\b/, "yellow jackets"],
+  [/\b(cock)?roach(es)?\b/, "roaches"],
+  [/\bants?\b/, "ants"],
+  [/\btermites?\b/, "termites"],
+  [/\b(mice|mouse)\b/, "mice"],
+  [/\brats?\b/, "rats"],
+  [/\brodents?\b/, "rodents"],
+  [/\bspiders?\b/, "spiders"],
+  [/\bscorpions?\b/, "scorpions"],
+  [/\bwasps?\b/, "wasps"],
+  [/\bhornets?\b/, "hornets"],
+  [/\bbees?\b/, "bees"],
+  [/\bmosquito(e?s)?\b/, "mosquitoes"],
+  [/\bticks?\b/, "ticks"],
+  [/\bfleas?\b/, "fleas"],
+  [/\bcrickets?\b/, "crickets"],
+  [/\bsilverfish\b/, "silverfish"],
+  [/\bearwigs?\b/, "earwigs"],
+  [/\bcentipedes?\b/, "centipedes"],
+  [/\bmillipedes?\b/, "millipedes"],
+  [/\bbeetles?\b/, "beetles"],
+  [/\bmoths?\b/, "moths"],
+  [/\bflies\b|\bfly\b/, "flies"],
+  [/\bsquirrels?\b/, "squirrels"],
+  [/\braccoons?\b/, "raccoons"],
+  [/\bsnakes?\b/, "snakes"],
+  [/\bbats?\b/, "bats"],
+  [/\bbirds?\b/, "birds"],
+  [/\b(moles?|voles?|gophers?)\b/, "moles"],
+  [/\bweeds?\b/, "weeds"],
+];
+
+/**
+ * Short, everyday pest names from what the analysis wrote, which can be a
+ * phrase ("ants, described by the caller as possibly fire ants").
+ */
+export function cleanPests(raw: string[] | null | undefined): string[] {
+  const out: string[] = [];
+  for (const entry of raw ?? []) {
+    let text = entry.toLowerCase();
+    let found = false;
+    for (const [re, name] of PESTS) {
+      if (re.test(text)) {
+        found = true;
+        if (!out.includes(name)) out.push(name);
+        text = text.replace(new RegExp(re.source, "g"), " ");
+      }
+    }
+    // Something we don't know by name: keep it only if it's short.
+    const short = entry.trim().toLowerCase();
+    if (!found && short && short.split(/\s+/).length <= 2 && !out.includes(short)) out.push(short);
+  }
+  // "rodents" says less than "mice" or "rats" when those are there.
+  return out.includes("mice") || out.includes("rats") ? out.filter((p) => p !== "rodents") : out;
+}
+
+/** The first sentence, and whether there was more. */
+export function firstSentence(text: string): { first: string; more: boolean } {
+  const match = text.trim().match(/^.+?[.!?](?=\s+[A-Z“"]|$)/s);
+  const first = match ? match[0] : text.trim();
+  return { first, more: first.length < text.trim().length };
+}
+
+/** "ants, mice and spiders" */
+export function listWords(words: string[]): string {
+  if (words.length <= 1) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
