@@ -22,6 +22,29 @@ const TABS = [
 
 const RANGE_KEY = "pestlaunch.range";
 
+/** The same page in v2. */
+function v2Of(pathname: string): string {
+  if (pathname === "/calls") return "/v2";
+  if (pathname === "/calls/log") return "/v2/calls";
+  const rest = pathname.replace(/^\/calls/, "");
+  if (rest === "/pipeline" || rest.startsWith("/reps")) return `/v2${rest}`;
+  return `/v2/calls${rest}`;
+}
+
+function V2Banner({ pathname }: { pathname: string }) {
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl bg-accent-soft px-4 py-2.5 text-[13px] print:hidden">
+      <p className="text-ink/80">
+        <span className="font-semibold text-ink">You're viewing version 1.</span> A simpler version 2 of this page is
+        ready.
+      </p>
+      <Link href={v2Of(pathname)} className="font-medium text-link hover:underline">
+        Open this page in v2 ›
+      </Link>
+    </div>
+  );
+}
+
 export default function CallsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [range, setRange] = useState<Range>("all");
@@ -60,6 +83,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
 
   return (
     <CallsContext.Provider value={{ days, refreshKey, query }}>
+      <V2Banner pathname={pathname} />
       {isTab && (
         <div className="mb-8">
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
