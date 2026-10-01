@@ -336,7 +336,7 @@ function Scorecard({
   callId: string;
   onChange: () => Promise<void>;
 }) {
-  const [showDone, setShowDone] = useState(false);
+  const [showDone, setShowDone] = useState(true);
   const missed = a.items.filter((i) => !i.awarded);
   const done = a.items.filter((i) => i.awarded);
   return (
@@ -394,7 +394,7 @@ function Step({
   callId: string;
   onChange: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const evidence = item.evidence.find((e) => e.start !== null);
   return (
     <li>

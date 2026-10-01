@@ -212,7 +212,7 @@ function RecentCalls({ rep }: { rep: RepBrief }) {
 }
 
 function AllSteps({ steps }: { steps: StepStat[] }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   if (!steps.length) return null;
   return (
     <section>

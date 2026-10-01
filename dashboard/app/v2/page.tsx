@@ -129,7 +129,7 @@ const KIND_LABEL: Record<Todo["kind"], string> = {
 const TOP = 5;
 
 function DoToday({ items, total }: { items: Todo[]; total: number }) {
-  const [all, setAll] = useState(false);
+  const [all, setAll] = useState(true);
   const shown = all ? items : items.slice(0, TOP);
   const hidden = total - shown.length;
   return (
