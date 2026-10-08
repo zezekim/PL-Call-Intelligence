@@ -19,6 +19,9 @@ from callsentry import logging as app_logging
 from callsentry.api.deps import UserDep
 from callsentry.api.readonly import viewer_allowed
 from callsentry.api.routes import (
+    actions as actions_routes,
+)
+from callsentry.api.routes import (
     admin,
     analytics,
     appointments,
@@ -60,8 +63,32 @@ async def _background_loop() -> None:
                     log.info("reminders.sent", count=sent)
             async with get_sessionmaker()() as session:
                 await digest.maybe_send(session)
+            await _done_for_you()
         except Exception as exc:  # noqa: BLE001 - a failed sweep must not kill the loop
             log.error("background.failed", error=str(exc))
+
+
+async def _done_for_you() -> None:
+    """Keep each business's prepared actions current, do the ones on
+    autopilot, and send the morning text when it's due."""
+    from sqlalchemy import select
+
+    from callsentry.intel import actions, morning
+    from callsentry.models import Business
+
+    async with get_sessionmaker()() as session:
+        for business in (await session.scalars(select(Business))).all():
+            try:
+                await actions.refresh(session, business)
+                done = await actions.run_autopilot(session, business)
+                await session.commit()
+                if done:
+                    log.info("autopilot.done", business=str(business.id), count=done)
+            except Exception as exc:  # noqa: BLE001 - one business must not stop the rest
+                await session.rollback()
+                log.error("autopilot.failed", business=str(business.id), error=str(exc))
+    async with get_sessionmaker()() as session:
+        await morning.maybe_send(session)
 
 
 @asynccontextmanager
@@ -255,5 +282,6 @@ for router in (
     webhooks.router,
     admin.router,
     internal.router,
+    actions_routes.router,
 ):
     app.include_router(router)

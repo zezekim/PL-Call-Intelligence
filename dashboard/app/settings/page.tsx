@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { ApiError, api, type ScoringRules } from "@/lib/api";
+import type { ActionsSummary, PreparedAction } from "@/lib/v2";
+import { KIND_WORDS } from "@/components/v2/act";
 import { setBusinessZone } from "@/lib/format";
 import { type Theme, getTheme, setTheme } from "@/lib/theme";
 import { useApi, useTitle } from "@/lib/hooks";
@@ -207,6 +209,8 @@ export default function SettingsPage() {
         </section>
       ))}
 
+      <DoneForYouPanel />
+      <ScoringRulesPanel />
       <PlaybookPanel canEdit={data.can_edit} />
       <TeamPanel canEdit={data.can_edit} />
       <AccountPanel />
@@ -513,6 +517,323 @@ interface PlaybookVersion {
 interface Playbook {
   draft: PlaybookVersion | null;
   published: PlaybookVersion | null;
+}
+
+interface BusinessSettings {
+  owner_phone: string | null;
+  morning_text: boolean;
+}
+
+/** The morning text to the owner, and what the app may do without asking. */
+function DoneForYouPanel() {
+  const biz = useApi<BusinessSettings>("/settings");
+  const summary = useApi<ActionsSummary>("/intel/actions/summary");
+  const [phone, setPhone] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
+
+  async function run(label: string, action: () => Promise<unknown>, done?: string) {
+    setBusy(label);
+    setNote(null);
+    try {
+      await action();
+      await Promise.all([biz.reload(), summary.reload()]);
+      if (done) setNote({ tone: "good", text: done });
+    } catch (err) {
+      setNote({ tone: "bad", text: err instanceof ApiError && err.status === 400 ? err.message : "That didn't work. Please try again." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const current = biz.data?.owner_phone ?? "";
+  const value = phone ?? current;
+  const pretty = (p: string) => (/^\+1\d{10}$/.test(p) ? `(${p.slice(2, 5)}) ${p.slice(5, 8)}-${p.slice(8)}` : p);
+
+  return (
+    <section id="autopilot" className="scroll-mt-6 pt-3">
+      <h2 className="section-title px-1">Done for you</h2>
+      <p className="footnote mb-3 mt-1 max-w-2xl px-1">
+        Every to-do on Today comes with the text already written. Choose what gets sent without asking, and get the
+        day&apos;s list as a text you can answer.
+      </p>
+      <div className="card divide-y divide-line">
+        <div className="p-5">
+          <p className="text-[15px] font-semibold">Morning text</p>
+          <p className="mt-0.5 max-w-2xl text-[14px] text-ink/80">
+            At 8am you get a text with what&apos;s at stake and the top three things to do. Reply 1, 2 or 3 and it&apos;s
+            done. Replies from customers come to you the same way.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              className="input min-h-[44px] sm:w-[260px]"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="Your mobile, e.g. (555) 123-4567"
+              aria-label="Your mobile number"
+              value={phone ?? pretty(current)}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            {phone !== null && phone !== pretty(current) && (
+              <button
+                className="btn-primary min-h-[44px]"
+                disabled={!!busy}
+                onClick={() =>
+                  run("phone", async () => {
+                    await api.patch("/settings", { owner_phone: value });
+                    setPhone(null);
+                  }, value.trim() ? "Saved." : "Number removed.")
+                }
+              >
+                {busy === "phone" && <Spinner className="h-4 w-4" />}
+                Save
+              </button>
+            )}
+          </div>
+          <label className="mt-3 inline-flex min-h-[44px] cursor-pointer items-center gap-2.5 text-[14px]">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-[#0071e3]"
+              checked={!!biz.data?.morning_text}
+              disabled={!current || !!busy}
+              onChange={(e) => run("morning", () => api.patch("/settings", { morning_text: e.target.checked }))}
+            />
+            Send me the morning text
+            {!current && <span className="text-muted">(add your mobile first)</span>}
+          </label>
+          {current && (
+            <div>
+              <button
+                className="btn-secondary mt-1 min-h-[44px]"
+                disabled={!!busy}
+                onClick={() => run("test", () => api.post("/intel/morning/test"), `Sent to ${pretty(current)}.`)}
+              >
+                {busy === "test" && <Spinner className="h-4 w-4" />}
+                Text me today&apos;s list now
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="p-5">
+          <p className="text-[15px] font-semibold">Autopilot</p>
+          <p className="mt-0.5 max-w-2xl text-[14px] text-ink/80">
+            Turned on, these are sent without asking, between 9am and 7pm Monday to Saturday. Everything sent shows on
+            Today, and nobody who replied STOP is texted again.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {(Object.keys(KIND_WORDS) as PreparedAction["kind"][]).map((kind) => {
+              const on = !!summary.data?.autopilot[kind];
+              const sent = summary.data?.approvals[kind] ?? 0;
+              return (
+                <li key={kind}>
+                  <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-5 w-5 shrink-0 accent-[#0071e3]"
+                      checked={on}
+                      disabled={!summary.data || !!busy}
+                      onChange={(e) =>
+                        run(kind, () => api.put("/intel/actions/autopilot", { kind, on: e.target.checked }))
+                      }
+                    />
+                    <span className="text-[14px]">
+                      <span className="font-medium">Send {KIND_WORDS[kind].many} for me</span>
+                      <span className="block text-ink/80">{KIND_WORDS[kind].detail}</span>
+                      {sent > 0 && (
+                        <span className="block text-[12px] text-muted">
+                          You&apos;ve sent {sent} yourself in the last 60 days.
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {note && (
+          <p className={`px-5 py-3 text-[14px] ${note.tone === "good" ? "text-good" : "text-bad"}`} role="status">
+            {note.text}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScoringRulesPanel() {
+  const { data, setData, reload, error } = useApi<ScoringRules>("/intel/rules");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [queued, setQueued] = useState<number | null>(null);
+
+  async function run(label: string, action: () => Promise<unknown>) {
+    setBusy(label);
+    setFailure(null);
+    try {
+      await action();
+      await reload();
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const rules = data?.rules ?? [];
+  const scope = data?.rescore ?? [];
+  const calls = scope.reduce((n, s) => n + s.calls, 0);
+  const cost = scope.reduce((n, s) => n + s.est_cost_usd, 0);
+
+  return (
+    <section id="scoring-rules" className="scroll-mt-6 pt-3">
+      <h2 className="section-title px-1">Your scoring rules</h2>
+      <p className="footnote mb-3 mt-1 max-w-2xl px-1">
+        When you correct a step on a call and tick <em>Check future calls this way too</em>, your rule is saved here.
+        Every call graded after that follows it. The PestLaunch scorecard&apos;s own rules, like free objection points
+        when there were no objections, still apply.
+      </p>
+      <div className="card p-5">
+        {error && !data && <ErrorNote message={error} />}
+        {data && rules.length === 0 && (
+          <p className="text-[14px] text-muted">
+            No rules yet. Open a call, tap a step, choose <em>Not right?</em>, and tick the box to make one.
+          </p>
+        )}
+        {rules.length > 0 && (
+          <ul className="divide-y divide-line">
+            {rules.map((r) => (
+              <li key={r.id} className="py-3 first:pt-0">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] text-muted">
+                      {r.scorecard_name} · <span className="font-medium text-ink">{r.step_label}</span>
+                    </p>
+                    {editing?.id === r.id ? (
+                      <textarea
+                        className="input mt-1.5 w-full py-1.5 text-[14px]"
+                        rows={2}
+                        maxLength={300}
+                        value={editing.text}
+                        aria-label="Rule"
+                        onChange={(e) => setEditing({ id: r.id, text: e.target.value })}
+                      />
+                    ) : (
+                      <p className={`mt-0.5 text-[14px] leading-snug ${r.active ? "" : "text-muted line-through"}`}>{r.text}</p>
+                    )}
+                    <p className="mt-1 text-[12px] text-muted">
+                      {r.created_by ?? "A manager"} · {new Date(r.created_at).toLocaleDateString()}
+                      {r.source_call_id && (
+                        <>
+                          {" · "}
+                          <a className="text-link hover:underline" href={`/v2/calls/${r.source_call_id}`}>
+                            From this call
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {editing?.id === r.id ? (
+                      <>
+                        <button
+                          className="btn-primary px-3 py-1 text-[13px]"
+                          disabled={!!busy || !editing.text.trim()}
+                          onClick={() =>
+                            run(`save-${r.id}`, async () => {
+                              const updated = await api.patch(`/intel/rules/${r.id}`, { text: editing.text });
+                              setEditing(null);
+                              return updated;
+                            })
+                          }
+                        >
+                          {busy === `save-${r.id}` && <Spinner className="h-3 w-3" />}
+                          Save
+                        </button>
+                        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(null)}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="btn-ghost px-3 py-1 text-[13px]" disabled={!!busy} onClick={() => setEditing({ id: r.id, text: r.text })}>
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary px-3 py-1 text-[13px]"
+                          disabled={!!busy}
+                          onClick={() => run(`toggle-${r.id}`, () => api.patch(`/intel/rules/${r.id}`, { active: !r.active }))}
+                        >
+                          {busy === `toggle-${r.id}` && <Spinner className="h-3 w-3" />}
+                          {r.active ? "Turn off" : "Turn on"}
+                        </button>
+                        <button
+                          className="btn-ghost px-3 py-1 text-[13px] text-bad"
+                          disabled={!!busy}
+                          onClick={() => {
+                            setData({ ...(data as ScoringRules), rules: rules.filter((x) => x.id !== r.id) });
+                            void run(`delete-${r.id}`, () => api.delete(`/intel/rules/${r.id}`));
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {calls > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+            <p className="text-[13px] text-muted">
+              {queued !== null
+                ? `Checking ${queued} call${queued === 1 ? "" : "s"} again. Grades update as each one finishes.`
+                : `Past calls were graded before some of these rules. ${calls} call${calls === 1 ? "" : "s"} can be checked again.`}
+            </p>
+            <button className="btn-secondary" disabled={!!busy || queued !== null} onClick={() => setConfirm(true)}>
+              Check past calls again
+            </button>
+          </div>
+        )}
+        {failure && (
+          <div className="mt-3">
+            <ErrorNote message={failure} />
+          </div>
+        )}
+      </div>
+      <Modal open={confirm} onClose={() => busy !== "rescore" && setConfirm(false)} title="Check past calls again?">
+        <p className="text-[14px] text-muted">
+          {calls} call{calls === 1 ? "" : "s"} will be graded again with your rules
+          {cost > 0 ? `, for about $${cost.toFixed(2)} in AI usage` : ""}. Transcripts and your own step changes are kept.
+          The daily spending cap still applies.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-secondary" onClick={() => setConfirm(false)} disabled={busy === "rescore"}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={busy === "rescore"}
+            onClick={() =>
+              run("rescore", async () => {
+                const result = await api.post<{ queued: number }>("/intel/rules/rescore", {});
+                setQueued(result.queued);
+                setConfirm(false);
+              })
+            }
+          >
+            {busy === "rescore" && <Spinner className="h-3.5 w-3.5" />}
+            Check {calls} call{calls === 1 ? "" : "s"}
+          </button>
+        </div>
+      </Modal>
+    </section>
+  );
 }
 
 function PlaybookPanel({ canEdit }: { canEdit: boolean }) {

@@ -13,17 +13,38 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Select, cast, func, or_, select
+from sqlalchemy import Select, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.orm import selectinload
 
 from callsentry.api.deps import BusinessDep, SessionDep, UserDep
 from callsentry.config import get_settings
-from callsentry.intel import audio, brief, followups, ingest, insights, jobs, overrides, pipeline
+from callsentry.intel import (
+    audio,
+    brief,
+    followups,
+    ingest,
+    insights,
+    jobs,
+    overrides,
+    pipeline,
+    transcript_edit,
+)
 from callsentry.intel import leads as leads_service
+from callsentry.intel import rules as scoring_rules
 from callsentry.intel.rubrics import CALL_TYPE_LABELS, LENS_BY_CALL_TYPE, SCORECARDS, CallType
 from callsentry.intel.transcribe import Engine
-from callsentry.models import Call, CallAnalysis, FollowUp, Lead, ProcessingStatus, Rep, User
+from callsentry.intel.transcript import Segment, plain_text
+from callsentry.models import (
+    Call,
+    CallAnalysis,
+    FollowUp,
+    Lead,
+    ProcessingStatus,
+    Rep,
+    ScoringRule,
+    User,
+)
 
 router = APIRouter(prefix="/intel", tags=["call-intelligence"])
 
@@ -135,6 +156,9 @@ class CallDetailOut(CallRow):
     analysis: AnalysisOut | None
     provider_log: list[dict[str, Any]]
     cost_usd: float
+    transcript_edited_at: datetime | None = None
+    # A manager fixed the transcript after this grade was made.
+    transcript_stale: bool = False
 
 
 class ReprocessRequest(BaseModel):
@@ -450,6 +474,12 @@ async def get_call(call_id: uuid.UUID, session: SessionDep, business: BusinessDe
         analysis=_analysis_out(call.analysis) if call.analysis else None,
         provider_log=call.provider_log or [],
         cost_usd=round(float(call.cost_usd or 0), 6),
+        transcript_edited_at=call.transcript_edited_at,
+        transcript_stale=bool(
+            call.transcript_edited_at
+            and call.analysis
+            and call.transcript_edited_at > call.analysis.updated_at
+        ),
     )
 
 
@@ -768,6 +798,8 @@ class OverrideRequest(BaseModel):
     # met | missed, or null to clear the override.
     status: str | None
     note: str = Field(default="", max_length=500)
+    # Also grade this step this way on future calls, in the manager's words.
+    rule: str | None = Field(default=None, max_length=scoring_rules.MAX_TEXT)
 
 
 @router.put("/calls/{call_id}/items/{key}/override", response_model=CallRow)
@@ -801,5 +833,213 @@ async def override_item(
     analysis.items = items
     analysis.score, analysis.grade = score, grade
     call.score, call.grade = score, grade
+    rule = " ".join((payload.rule or "").split())
+    if payload.status is not None and rule and analysis.scorecard_key:
+        session.add(ScoringRule(
+            business_id=business.id, scorecard_key=analysis.scorecard_key, step_key=key,
+            text=rule, created_by=user.email, source_call_id=call.id,
+        ))
     await session.commit()
     return _row(call)
+
+
+# --- Scoring rules ---------------------------------------------------------------
+
+
+class RuleOut(BaseModel):
+    id: str
+    scorecard_key: str
+    scorecard_name: str
+    step_key: str
+    step_label: str
+    text: str
+    active: bool
+    created_by: str | None
+    created_at: datetime
+    source_call_id: str | None
+
+
+class RescoreScope(BaseModel):
+    scorecard_key: str
+    scorecard_name: str
+    calls: int
+    # What re-scoring them all costs at this business's recent per-call cost.
+    est_cost_usd: float
+
+
+class RulesOut(BaseModel):
+    rules: list[RuleOut]
+    rescore: list[RescoreScope]
+
+
+class RuleUpdate(BaseModel):
+    active: bool | None = None
+    text: str | None = Field(default=None, max_length=scoring_rules.MAX_TEXT)
+
+
+class RescoreRequest(BaseModel):
+    # One scorecard, or every scorecard that has a rule.
+    scorecard_key: str | None = None
+
+
+def _rule_out(r: ScoringRule) -> RuleOut:
+    card = SCORECARDS.get(r.scorecard_key)
+    item = card.item(r.step_key) if card else None
+    return RuleOut(
+        id=str(r.id), scorecard_key=r.scorecard_key,
+        scorecard_name=card.name if card else r.scorecard_key,
+        step_key=r.step_key, step_label=item.label if item else r.step_key,
+        text=r.text, active=r.active, created_by=r.created_by, created_at=r.created_at,
+        source_call_id=str(r.source_call_id) if r.source_call_id else None,
+    )
+
+
+def _rescorable(business_id: uuid.UUID, keys: list[str]) -> Select[Any]:
+    """Graded calls on these scorecards that can be scored again now."""
+    return (
+        select(CallAnalysis.scorecard_key, func.count(), func.avg(CallAnalysis.cost_usd))
+        .join(Call, Call.id == CallAnalysis.call_id)
+        .where(
+            CallAnalysis.business_id == business_id,
+            CallAnalysis.scorecard_key.in_(keys),
+            Call.processing_status == ProcessingStatus.DONE,
+            Call.segments != [],
+        )
+        .group_by(CallAnalysis.scorecard_key)
+    )
+
+
+@router.get("/rules", response_model=RulesOut)
+async def list_rules(session: SessionDep, business: BusinessDep) -> RulesOut:
+    rows = list(await session.scalars(
+        select(ScoringRule).where(ScoringRule.business_id == business.id)
+        .order_by(ScoringRule.created_at.desc())
+    ))
+    keys = sorted({r.scorecard_key for r in rows if r.active})
+    scopes = []
+    if keys:
+        for key, count, avg in (await session.execute(_rescorable(business.id, keys))).all():
+            card = SCORECARDS.get(key)
+            scopes.append(RescoreScope(
+                scorecard_key=key, scorecard_name=card.name if card else key, calls=int(count),
+                est_cost_usd=round(float(avg or 0) * int(count), 2),
+            ))
+    return RulesOut(rules=[_rule_out(r) for r in rows], rescore=scopes)
+
+
+async def _owned_rule(
+    session: SessionDep, business_id: uuid.UUID, rule_id: uuid.UUID
+) -> ScoringRule:
+    rule = await session.get(ScoringRule, rule_id)
+    if rule is None or rule.business_id != business_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
+    return rule
+
+
+@router.patch("/rules/{rule_id}", response_model=RuleOut)
+async def update_rule(
+    rule_id: uuid.UUID, payload: RuleUpdate, session: SessionDep, business: BusinessDep
+) -> RuleOut:
+    rule = await _owned_rule(session, business.id, rule_id)
+    if payload.text is not None:
+        text = " ".join(payload.text.split())
+        if not text:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "rule text is empty")
+        rule.text = text
+    if payload.active is not None:
+        rule.active = payload.active
+    await session.commit()
+    return _rule_out(rule)
+
+
+@router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_rule(rule_id: uuid.UUID, session: SessionDep, business: BusinessDep) -> None:
+    await session.delete(await _owned_rule(session, business.id, rule_id))
+    await session.commit()
+
+
+@router.post("/rules/rescore", response_model=dict[str, int])
+async def rescore_with_rules(
+    payload: RescoreRequest, session: SessionDep, business: BusinessDep
+) -> dict[str, int]:
+    """Grade past calls again so they follow the current rules. Transcripts
+    are kept; a manager's own step rulings still sit on top."""
+    if payload.scorecard_key:
+        keys = [payload.scorecard_key]
+    else:
+        keys = sorted(set(await session.scalars(
+            select(ScoringRule.scorecard_key).where(
+                ScoringRule.business_id == business.id, ScoringRule.active.is_(True)
+            )
+        )))
+    if not keys:
+        return {"queued": 0}
+    graded = select(CallAnalysis.call_id).where(
+        CallAnalysis.business_id == business.id, CallAnalysis.scorecard_key.in_(keys)
+    )
+    # Only finished calls: one already in the queue keeps its place.
+    result = await session.execute(
+        update(Call)
+        .where(
+            Call.business_id == business.id,
+            Call.id.in_(graded),
+            Call.processing_status == ProcessingStatus.DONE,
+            Call.segments != [],
+        )
+        .values(processing_status=pipeline.QUEUED_ANALYSIS, processing_error=None)
+    )
+    await session.commit()
+    jobs.notify()
+    return {"queued": int(getattr(result, "rowcount", 0) or 0)}
+
+
+# --- Transcript fixes ------------------------------------------------------------
+
+
+class TranscriptEdit(BaseModel):
+    # text | role | split | insert | delete
+    op: str
+    id: int | None = None
+    text: str | None = Field(default=None, max_length=transcript_edit.MAX_TEXT)
+    role: str | None = None
+    # split: character offset in the line where the other person starts.
+    at: int | None = None
+    # split / insert: seconds into the recording.
+    start: float | None = None
+
+
+@router.post("/calls/{call_id}/transcript", response_model=CallDetailOut)
+async def edit_transcript(
+    call_id: uuid.UUID, payload: TranscriptEdit, session: SessionDep, business: BusinessDep
+) -> CallDetailOut:
+    """Fix one line of a transcript. The grade isn't changed until the call is
+    scored again, so the manager can make several fixes first."""
+    call = await _owned_call(session, business.id, call_id)
+    if call.processing_status != ProcessingStatus.DONE and call.processing_status != (
+        ProcessingStatus.FAILED
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "call is being processed")
+    segments = [Segment.from_dict(s) for s in call.segments or []]
+    try:
+        if payload.op == "text" and payload.id is not None and payload.text is not None:
+            segments = transcript_edit.set_text(segments, payload.id, payload.text)
+        elif payload.op == "role" and payload.id is not None and payload.role:
+            segments = transcript_edit.set_role(segments, payload.id, payload.role)
+        elif payload.op == "split" and payload.id is not None and payload.at is not None:
+            segments = transcript_edit.split(
+                segments, payload.id, payload.at, payload.role or "", payload.start
+            )
+        elif payload.op == "insert" and payload.start is not None and payload.text:
+            segments = transcript_edit.insert(segments, payload.start, payload.role or "",
+                                              payload.text)
+        elif payload.op == "delete" and payload.id is not None:
+            segments = transcript_edit.delete(segments, payload.id)
+        else:
+            raise transcript_edit.EditError("unknown or incomplete edit")
+    except transcript_edit.EditError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    call.segments = [s.to_dict() for s in segments]
+    call.transcript = plain_text(segments)
+    call.transcript_edited_at = datetime.now(UTC)
+    await session.commit()
+    return await get_call(call.id, session, business)

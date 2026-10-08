@@ -10,7 +10,9 @@ import type { RepBrief, StepStat } from "@/lib/v2";
 import { STATUS_TEXT, personName, rateStatus } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
-import { Avatar, Card } from "@/components/ui";
+import { ApiError, api } from "@/lib/api";
+import { Avatar, Card, Spinner } from "@/components/ui";
+import { failMessage, useToast } from "@/components/v2/toast";
 import { Meter, PageError, PersonSkeleton, StatusPill, Trend } from "@/components/v2/kit";
 import type { Grade } from "@/lib/api";
 
@@ -106,6 +108,7 @@ export default function RepPage() {
           ) : (
             <p className="mt-3 text-[14px] text-muted">Nothing stands out to teach right now.</p>
           )}
+          <TextMe rep={rep} onSaved={reload} />
         </Card>
 
         <Card className="p-5">
@@ -140,6 +143,65 @@ export default function RepPage() {
 
       <RecentCalls rep={rep} />
       <AllSteps steps={rep.steps} />
+    </div>
+  );
+}
+
+/** Their mobile: for their weekly tip, and for call-back requests from Today. */
+function TextMe({ rep, onSaved }: { rep: RepBrief; onSaved: () => Promise<void> }) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(!rep.phone);
+  const [value, setValue] = useState(rep.phone_pretty ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const first = rep.name.split(/\s+/)[0];
+  if (/receptionist/i.test(rep.name)) return null;
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.put(`/intel/reps/${rep.id}/phone`, { phone: value });
+      toast({ message: value.trim() ? `Saved. ${first} will get their tip by text.` : "Number removed" });
+      setEditing(false);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 400 ? err.message : failMessage());
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-5 border-t border-line pt-4 text-[14px]">
+      <p className="font-medium">Send {first} this tip by text</p>
+      <p className="mt-0.5 text-ink/80">
+        Every Monday, {first} gets the one thing to work on, the words to say, and a link to hear it on their own call.
+        Today can also ask {first} to call customers back.
+      </p>
+      {editing ? (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            className="input min-h-[44px] flex-1"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="Mobile number, e.g. (555) 123-4567"
+            aria-label={`${first}'s mobile number`}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <button className="btn-primary min-h-[44px]" disabled={busy || (!value.trim() && !rep.phone)} onClick={() => void save()}>
+            {busy && <Spinner className="h-4 w-4" />}
+            Save
+          </button>
+        </div>
+      ) : (
+        <p className="mt-2">
+          Texts go to <span className="font-medium">{rep.phone_pretty}</span>.{" "}
+          <button className="text-link hover:underline" onClick={() => setEditing(true)}>
+            Change
+          </button>
+        </p>
+      )}
+      {error && <p className="mt-2 text-[13px] text-bad">{error}</p>}
     </div>
   );
 }

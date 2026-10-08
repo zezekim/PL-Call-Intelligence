@@ -121,6 +121,57 @@ found and fixed:
 | *Following the call steps* was judged on a single call, and counted the AI receptionist in the team's numbers | Same 3-call guard as the other areas; the receptionist is kept apart, as it already was in coaching |
 | A person's page had two cards about one step | One **Teach next** card, the same shape as Today's coaching |
 
+**Done for you.** The app now decides what to do and does it when the owner
+says yes:
+
+- **Every to-do comes ready to send.** "Call Sarah back" has a **Text Sarah**
+  button (or **Ask Mike to call**, when Mike's mobile is on file). One tap
+  shows the exact text, written from what the call found (her name, the $49
+  quote, the ants), which the owner can change, then **Send**. If a number is
+  missing, they type it once and it's kept. Done items sink to a **Done** list
+  saying what was sent, with the customer's reply when there is one.
+- **Autopilot.** After someone sends three of one kind, the app offers to send
+  them from then on. Settings → **Done for you** has a switch per kind:
+  follow-up texts to customers, call-back requests to the team, weekly
+  coaching texts. Autopilot only texts 9am to 7pm, Monday to Saturday, in the
+  business's time zone. Today says what ran.
+- **The morning text.** At 8am the owner gets a text with the money at stake
+  and the top three actions, numbered. Replying "1", "1 3" or "ALL" does them
+  and texts back what was sent; "LIST" sends a fresh list. When a customer
+  texts back, the reply goes to the owner. STOP is honoured and that number is
+  never offered again.
+- **Dollars, not rates.** Quotes are valued over a year ("$49 a month" is
+  $588), and the headline says how much is slipping: "$588 a year in quotes is
+  slipping: 1 customer waiting too long for a call back." Each sales to-do
+  shows its value. A lead someone has just followed up on stops counting as
+  slipping.
+- **Coaching that reaches the rep.** With a rep's mobile on their page, each
+  Monday they get their one thing to work on, the words to say, and a link to
+  a no-login card with the moment from their own call. The owner sees "sent
+  to 4, opened by 3, 2 listened to their call."
+
+Texts are templates over the analysis, not model output: free, predictable,
+and always shown before sending. They go through Twilio, count toward the
+spending cap, and the first text to a customer says how to opt out.
+
+Corrections now teach the grader instead of fixing one call at a time:
+
+- **Scoring rules.** When a manager marks a step done or skipped, they can tick
+  *Check future calls this way too* and say where the line is, in their own
+  words ("Reading the address back counts as a summary"). Every later grading
+  of that scorecard is told the rule, and the step shows *Your rule* where it
+  applied. Rules are listed in **Settings → Your scoring rules** (edit, turn
+  off, delete), with **Check past calls again** to re-grade earlier calls,
+  showing the cost first. The scorecard's own rules (free objection points,
+  save-attempt exemptions) still apply on top, so a rule can't award what
+  the manual forbids.
+- **Fix the transcript.** On any call: tap a name to swap who said a line, tap
+  the words to fix them, split a line where the other person starts talking,
+  or add a line the transcriber missed. The transcribed words are kept, only
+  added lines can be removed, and a banner offers to check the call again.
+  A manager's speaker fix outlasts re-scoring, which is where mono
+  recordings were weakest.
+
 #### A.3 Build phases
 
 | Phase | Delivered |
@@ -490,6 +541,10 @@ has to name the customer's actual situation.
 - **Humans have the last word.**
   - A manager can overrule any step, with a note. The grade is recomputed,
     and the change is attributed and dated.
+  - A correction can become a rule for future calls on that scorecard, and
+    past calls can be graded again with it.
+  - Transcript lines can be fixed: the words, who said them, a split line,
+    a missed line. Re-scoring keeps the fixes.
   - Call type, rep and call date can all be corrected.
 - **Uncertainty is surfaced, not hidden.** Low-confidence call types show
   **Check type**. Disputed steps appear under **Needs attention**. Failed
@@ -581,17 +636,20 @@ A live phone agent on the Twilio number, built on the CallSentry voice stack.
 |---|---|
 | `businesses` | Name, time zone, hours, transfer number, Twilio number, voice, greeting |
 | `users` | Email, bcrypt hash, role (operator, admin, viewer) |
-| `calls` | Upload or phone call. Audio path, fingerprint, channels, duration, when it happened, recording expiry, processing status and error, transcription engine and provider, segments (JSONB), denormalised call type / rep / score / grade for fast filtering, manual rep and call-type overrides, lead, cost |
+| `calls` | Upload or phone call. Audio path, fingerprint, channels, duration, when it happened, recording expiry, processing status and error, transcription engine and provider, segments (JSONB), denormalised call type / rep / score / grade for fast filtering, manual rep and call-type overrides, when the transcript was last fixed, lead, cost |
 | `call_analyses` | One per call. Models, scoring mode, prompt version, call type and confidence, outcome, names, summary, scorecard, score, grade, evidence verified %, triage (JSONB), step items (JSONB), coaching (JSONB), manager overrides (JSONB), cost |
 | `reps` | Identified from greetings; first names normalised (Michelle = Michelle S.) |
 | `leads` | Customer, stage, stage source (auto or manual), pests, service, price, next step, last contact |
 | `follow_ups` | Action, owner, due, status, done by/at, assignee |
 | `receptionist_playbooks` | Draft and published playbook per business |
+| `owner_actions` | A prepared text for one open situation (lead, cancel, problem, promise, weekly coaching): kind, recipient, message, value, status, who sent it and when, autopilot or not, the customer's reply, and for coaching when the card was opened and played |
+| `sms_opt_outs` | Numbers that texted STOP |
+| `scoring_rules` | A business's own rule for one scorecard step, in the manager's words: scorecard, step, text, on/off, who made it and from which call |
 | `appointments`, `kb_documents`, `kb_chunks` | Receptionist bookings and knowledge base (pgvector) |
 | `cost_entries` | Every paid interaction: provider, units, cost. Backs the spending cap and per-call cost |
 | `platform_settings` | Dashboard-set configuration. Secrets as AES-GCM envelopes |
 
-Migrations: `app/alembic/versions/0001` → `0009`.
+Migrations: `app/alembic/versions/0001` → `0011`.
 
 ---
 
@@ -602,12 +660,14 @@ Served under `/api`, JSON with bearer tokens.
 | Group | Endpoints |
 |---|---|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
-| Calls | `POST /intel/uploads`, `GET /intel/calls` (filters: type, lens, rep, grade, status, review, disputed, source, q; sort and order; paging), `GET/PATCH/DELETE /intel/calls/{id}`, `POST /intel/calls/{id}/reprocess`, `GET /intel/calls/{id}/audio` (signed URL), `PUT /intel/calls/{id}/items/{key}/override` |
+| Calls | `POST /intel/uploads`, `GET /intel/calls` (filters: type, lens, rep, grade, status, review, disputed, source, q; sort and order; paging), `GET/PATCH/DELETE /intel/calls/{id}`, `POST /intel/calls/{id}/reprocess`, `GET /intel/calls/{id}/audio` (signed URL), `PUT /intel/calls/{id}/items/{key}/override` (optional `rule` for future calls), `POST /intel/calls/{id}/transcript` (fix a line: text, role, split, insert, delete) |
+| Done for you | `POST /intel/actions/refresh`, `GET /intel/actions/summary`, `POST /intel/actions/{id}/perform` (optional edited text and number), `POST /intel/actions/{id}/dismiss`, `PUT /intel/actions/autopilot`, `POST /intel/morning/test`, `PUT /intel/reps/{id}/phone`; public: `GET /public/coach/{token}`, `POST /public/coach/{token}/listened` (signed, expiring link) |
+| Scoring rules | `GET /intel/rules` (with how many calls a re-grade covers and its cost), `PATCH/DELETE /intel/rules/{id}`, `POST /intel/rules/rescore` |
 | Insights | `GET /intel/overview`, `GET /intel/reps`, `GET /intel/reps/{id}`, `GET /intel/pipeline`, `PATCH /intel/leads/{id}` |
 | Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus, AI agreement score; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
 | Follow-ups | `GET /intel/follow-ups`, `PATCH /intel/follow-ups/{id}`, `GET /intel/team` |
 | Settings | `GET/PATCH /settings` (business), `GET/PUT /settings/platform`, `GET /settings/models`, `GET /settings/spend`, `POST /settings/twilio/connect`, receptionist playbook endpoints, users, `POST /settings/digest/test` |
-| Webhooks | `POST /webhooks/twilio`, `/twilio/status`, `/twilio/stream-ended/{id}`, `/twilio/whisper/{id}`, `/twilio/transfer-done/{id}` (all Twilio-signature verified) |
+| Webhooks | `POST /webhooks/twilio`, `/twilio/status`, `/twilio/stream-ended/{id}`, `/twilio/whisper/{id}`, `/twilio/transfer-done/{id}`, `/twilio/sms` (owner replies, customer replies, STOP) (all Twilio-signature verified) |
 | Internal | `/internal/turn`, `/stt`, `/tts`, `/recording`, `/hangup` (voice container only, shared-token auth) |
 | Health | `GET /health`; `GET /health/deep` (signed in) |
 
@@ -773,7 +833,7 @@ a newer build is live.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Backend (`app/tests`) | 302 | See below |
+| Backend (`app/tests`) | 363 | See below |
 | Voice pipeline (`pipecat/tests`) | 25 | μ-law codec against a reference, endpointing, turn serialisation |
 | Browser (`dashboard/e2e`) | 24 | v2 owner views, v1→v2 links, v1 review flow, sign-in |
 
@@ -796,6 +856,15 @@ a newer build is live.
 - scoring across call types: voicemails never graded, a manager's call type
   reaches triage, rulings stay on their own scorecard, cancellation steps
   coached apart, tips only from calls where the step was missed
+- done for you: who each text is from and what it mentions, never naming an
+  invented customer or texting the AI receptionist, the opt-out line, the
+  better option first and a ready-to-send one before one missing a number,
+  yearly values, coaching links that reject tampering and expiry, autopilot's
+  daytime window, the morning text's wording and reply parsing
+- corrections that outlive re-scoring: a rule reaches the grader only for its
+  own scorecard and is shown on its step; transcript fixes keep the original
+  words, only added lines can be deleted, and a manager's speaker fix wins
+  over the model's on the next grade
 
 **Browser tests (v2)** run on made-up data, never real calls:
 - Today shows the verdict, three areas and the top three actions
@@ -859,7 +928,12 @@ These are the coaching priorities Today (v2) and the Overview (v1) surface.
 ## 18. Known limitations
 
 - **Mono recordings rely on attribution by content.** When two people talk
-  over each other in one sentence, that sentence goes to one of them.
+  over each other in one sentence, that sentence goes to one of them until a
+  manager splits it.
+- **Scoring rules are followed by the model, not enforced in code.** They're
+  prompt guidance, so a rule written vaguely is applied vaguely. Each step
+  shows the rule that was in force, so it's easy to spot one that needs
+  rewording.
 - **No call metadata in the recordings.** The call date is the file's modified
   time (editable), and reps are identified from their greeting. A rep who
   never says their name isn't attributed, but can be assigned by hand.
@@ -879,6 +953,18 @@ These are the coaching priorities Today (v2) and the Overview (v1) surface.
   automatically (no objections on a sales call) count toward a person's
   percentage, so someone taking more sales calls starts slightly higher.
   Coaching and focus steps leave those points out.
+- **Texting customers has rules.** Follow-up texts to people who called are
+  usually fine. Win-back texts to cancelled customers can count as marketing,
+  which needs their consent. Autopilot is off by default, and a business
+  should check its own consent before turning it on. US long-code texting
+  also needs A2P 10DLC registration with Twilio.
+- **The morning text trusts the owner's number.** Replies are accepted from the
+  owner's mobile on a Twilio-signed request. Faking a sender number on SMS is
+  hard but not impossible, and the worst a fake reply can do is send texts
+  the owner was already offered.
+- **Customer numbers come from the call.** Uploaded recordings have no caller
+  ID, so a number is known only if the customer said it (calls analysed
+  before this change need re-scoring to pick it up) or the owner types it.
 - **Single-tenant deployment.** The data model is multi-business, but
   onboarding a second business is done from the command line.
 
@@ -891,10 +977,8 @@ These are the coaching priorities Today (v2) and the Overview (v1) surface.
   have the AI draft one from a company's own manual, then add, edit or remove
   steps and set the grade cut-offs. Each analysis keeps the version it was
   graded on, so editing a scorecard never changes past grades.
-- **Fix who said a line** on mono calls (swap speaker, split a line), then
-  re-score. That's where mono recordings are weakest.
-- Use managers' corrections to tune step criteria per company. The agreement
-  score (v2 Today) shows where to start: the steps managers change most.
+- Suggest scoring rules from patterns in managers' corrections (the same
+  step changed the same way on several calls), for a manager to accept.
 - Trends per rep and per step over time as call history grows.
 - Company-specific scripts and pricing as scoring context.
 - Stream the receptionist's reply to speech as it's generated, to cut response
@@ -913,8 +997,13 @@ app/                         FastAPI service
       jobs.py                database-backed queue and workers
       transcribe.py          Deepgram / Whisper, speaker handling
       transcript.py          segments, quote verification
+      transcript_edit.py     a manager's transcript fixes
       analyze.py             triage, scoring, consensus, deliberation, manual rules
       overrides.py           manager step overrides
+      rules.py               a business's own scoring rules
+      actions.py             done for you: drafts, sending, autopilot
+      morning.py             the morning text and SMS replies
+      phones.py              phone numbers
       pipeline.py            one call end to end
       insights.py            overview, reps, training aggregates
       brief.py               v2 owner views: verdicts, actions, coaching, plain names

@@ -39,6 +39,8 @@ class SettingsOut(BaseModel):
     # Never the value itself - only whether one is set.
     cal_com_api_key: str
     local_only: bool
+    owner_phone: str | None = None
+    morning_text: bool = False
 
 
 class SettingsPatch(BaseModel):
@@ -50,6 +52,8 @@ class SettingsPatch(BaseModel):
     greeting_override: str | None = None
     twilio_number: str | None = None
     voice_id: str | None = None
+    owner_phone: str | None = None
+    morning_text: bool | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -62,7 +66,7 @@ class SettingsPatch(BaseModel):
             raise ValueError("Unknown time zone") from exc
         return value
 
-    @field_validator("escalation_phone")
+    @field_validator("escalation_phone", "owner_phone")
     @classmethod
     def _phone(cls, value: str | None) -> str | None:
         # "" clears it: the receptionist then takes a message instead.
@@ -108,6 +112,8 @@ def _out(business: Any) -> SettingsOut:
         # Write-only: report that a key is stored, never any part of it.
         cal_com_api_key="set" if read_credential(business, "cal_com_api_key_enc") else "",
         local_only=get_settings().local_only,
+        owner_phone=business.owner_phone,
+        morning_text=business.morning_text,
     )
 
 
@@ -121,7 +127,8 @@ async def patch_settings(
     payload: SettingsPatch, session: SessionDep, business: BusinessDep
 ) -> SettingsOut:
     for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(business, field, value if value != "" or field != "escalation_phone" else None)
+        clears = field in ("escalation_phone", "owner_phone")
+        setattr(business, field, None if clears and value == "" else value)
     await session.flush()
     return _out(business)
 
@@ -387,6 +394,8 @@ async def connect_twilio(
     base = settings.public_base_url.rstrip("/")
     voice_url = f"{base}/webhooks/twilio"
     status_url = f"{base}/webhooks/twilio/status"
+    # Replies to the morning text, and customers texting back.
+    sms_url = f"{base}/webhooks/twilio/sms"
 
     def _apply() -> None:
         client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
@@ -396,6 +405,7 @@ async def connect_twilio(
         client.incoming_phone_numbers(matches[0].sid).update(
             voice_url=voice_url, voice_method="POST",
             status_callback=status_url, status_callback_method="POST",
+            sms_url=sms_url, sms_method="POST",
         )
 
     import asyncio

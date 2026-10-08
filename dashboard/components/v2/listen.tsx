@@ -66,6 +66,9 @@ export function ListenPanel({
   expired,
   customerName = null,
   large = false,
+  fixing = false,
+  onFix,
+  fixer,
 }: {
   src: string | null;
   duration: number;
@@ -77,6 +80,10 @@ export function ListenPanel({
   customerName?: string | null;
   /** Bigger text and controls, for the Normal and Larger text sizes. */
   large?: boolean;
+  /** Fixing the transcript: `fixer` replaces the reading view. */
+  fixing?: boolean;
+  onFix?: (on: boolean) => void;
+  fixer?: React.ReactNode;
 }) {
   const [length, setLength] = useState(duration);
   const [rate, setRateState] = useState(1);
@@ -176,16 +183,27 @@ export function ListenPanel({
           <h2 className={`${large ? "text-[24px] font-bold" : "text-[17px] font-semibold"} tracking-title`}>
             {large ? "Listen to the call" : "Recording & transcript"}
           </h2>
-          {markers.length > 0 && (
-            <div className={`hidden items-center gap-3 sm:flex ${large ? "text-[16px] text-ink" : "text-[12px] text-muted"}`}>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-bad" /> To do better
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-good" /> Done well
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {markers.length > 0 && !fixing && (
+              <div className={`hidden items-center gap-3 sm:flex ${large ? "text-[16px] text-ink" : "text-[12px] text-muted"}`}>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-bad" /> To do better
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-good" /> Done well
+                </span>
+              </div>
+            )}
+            {onFix && segments.length > 0 && (
+              <button
+                className={fixing ? "btn-primary px-3 py-1 text-[13px]" : "text-[13px] text-link hover:underline print:hidden"}
+                onClick={() => onFix(!fixing)}
+                aria-pressed={fixing}
+              >
+                {fixing ? "Done fixing" : "Fix the transcript"}
+              </button>
+            )}
+          </div>
         </div>
         {src ? (
           <div className="flex items-center gap-3">
@@ -277,11 +295,12 @@ export function ListenPanel({
         onTouchMove={() => (userScrolledAt.current = Date.now())}
         className="relative max-h-[68vh] min-h-[240px] flex-1 space-y-3 overflow-y-auto px-5 py-5 print:max-h-none print:overflow-visible"
       >
-        {large && turns.length > 0 && src && (
+        {fixing && fixer}
+        {!fixing && large && turns.length > 0 && src && (
           <p className="text-[17px] text-ink/80">Tap any line to hear it.</p>
         )}
-        {turns.length === 0 && <p className={large ? "text-[18px]" : "text-[14px] text-muted"}>Nothing yet.</p>}
-        {turns.map((turn, i) => {
+        {!fixing && turns.length === 0 && <p className={large ? "text-[18px]" : "text-[14px] text-muted"}>Nothing yet.</p>}
+        {!fixing && turns.map((turn, i) => {
           const rep = turn.role === "rep";
           return (
             <div key={i} className={`flex min-w-0 ${rep ? "" : "justify-end"}`}>

@@ -124,6 +124,9 @@ class Call(Base, TimestampMixin):
     rep_locked: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # Last time a manager fixed the transcript; newer than the analysis means
+    # the grade hasn't seen the fix yet.
+    transcript_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lead_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), index=True
     )

@@ -23,6 +23,7 @@ import structlog
 
 from callsentry.config import get_settings
 from callsentry.intel import rubrics
+from callsentry.intel import rules as scoring_rules
 from callsentry.intel.rubrics import CallType, Scorecard
 from callsentry.intel.transcript import (
     CUSTOMER,
@@ -32,12 +33,13 @@ from callsentry.intel.transcript import (
     render,
     resolve_evidence,
 )
+from callsentry.intel.transcript_edit import apply_manual_roles
 from callsentry.services.llm import LLMResult, get_llm
 
 log = structlog.get_logger(__name__)
 
 # Bump when a prompt or schema changes, so re-scored calls can be told apart.
-PROMPT_VERSION = "2026-10-01.1"
+PROMPT_VERSION = "2026-10-08.1"
 
 SOLUTION_BANK = [
     "free_reservice",
@@ -112,6 +114,11 @@ TRIAGE_SCHEMA: dict[str, Any] = _obj(
         "rep_name": {"type": "string"},
         "rep_name_segment_id": {"type": "integer"},
         "customer_name": {"type": "string"},
+        "customer_phone": {
+            "type": "string",
+            "description": "The customer's phone number if they say it on the call (digits, "
+            "as said). Empty if not said.",
+        },
         "company_name": {"type": "string"},
         "direction": _enum("inbound", "outbound", "unknown"),
         "call_type": _enum(*[t.value for t in CallType]),
@@ -487,9 +494,11 @@ async def analyse(
     forced_type: str | None = None,
     mode: str = "standard",
     fixed_roles: dict[str, str] | None = None,
+    rules: dict[str, list[scoring_rules.Rule]] | None = None,
 ) -> Analysis:
     """`forced_type` is a manager's correction of the call type: triage still
-    extracts the details, but the call is graded on that type's scorecard."""
+    extracts the details, but the call is graded on that type's scorecard.
+    `rules` are the business's own scoring rules, by scorecard key."""
     llm = get_llm()
 
     if fixed_roles:
@@ -518,6 +527,7 @@ async def analyse(
 
     if not fixed_roles:
         assign_roles(segments, triage, diarized=diarized)
+    apply_manual_roles(segments)
     if not any(s.role == REP for s in segments):
         raise AnalysisFailed("could not tell which speaker is the rep")
 
@@ -549,7 +559,14 @@ async def analyse(
         return analysis
 
     context = _call_context(call_type, triage)
+    applied = scoring_rules.for_scorecard(scorecard, (rules or {}).get(scorecard.key, []))
     system = SCORING_SYSTEM + "\n\n" + _scorecard_text(scorecard)
+    if applied:
+        system += "\n\n" + scoring_rules.prompt_section(scorecard, applied)
+        triage["rules_applied"] = [r.id for r in applied]
+    rule_text: dict[str, list[str]] = {}
+    for r in applied:
+        rule_text.setdefault(r.step_key, []).append(r.text)
     user = f"{context}\n\nTranscript:\n\n{render(segments, by_role=True)}"
     analysis.scoring_mode = mode
     if mode == "enhanced":
@@ -580,6 +597,7 @@ async def analyse(
                 "evidence": evidence,
                 "agreement": judgements.get(item.key, {}).get("agreement"),
                 "deliberation": judgements.get(item.key, {}).get("deliberation"),
+                "rules": rule_text.get(item.key, []),
             }
         )
 

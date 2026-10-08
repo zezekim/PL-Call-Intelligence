@@ -24,7 +24,26 @@ export interface PerformanceCard {
   action: Action | null;
 }
 
+/** Something prepared for the owner to send, or already sent. */
+export interface PreparedAction {
+  id: string;
+  kind: "text_customer" | "remind_rep" | "coach_rep";
+  status: "proposed" | "done" | "failed" | "dismissed" | "expired";
+  label: string;
+  to_name: string | null;
+  to_phone: string | null;
+  to_phone_pretty: string;
+  body: string;
+  done_at: string | null;
+  done_by: string | null;
+  auto: boolean;
+  error: string | null;
+  reply_text: string | null;
+  replied_at: string | null;
+}
+
 export interface Todo {
+  key?: string;
   kind: "retention" | "sales" | "service" | "follow_up";
   priority: number;
   title: string;
@@ -32,6 +51,21 @@ export interface Todo {
   cta: string;
   href: string;
   when: string | null;
+  /** Yearly value of the work, when there's a price. */
+  value?: number | null;
+  /** Ways to act on it, best first. */
+  actions?: PreparedAction[];
+  /** What was done about it in the last few days. */
+  handled?: PreparedAction | null;
+}
+
+export interface ActionsSummary {
+  autopilot: Record<PreparedAction["kind"], boolean>;
+  approvals: Partial<Record<PreparedAction["kind"], number>>;
+  coaching_waiting: PreparedAction[];
+  done_today: PreparedAction[];
+  replies: (PreparedAction & { title: string; href: string | null })[];
+  daytime: boolean;
 }
 
 export interface StepStat {
@@ -61,7 +95,8 @@ export interface CoachTip {
 export interface Brief {
   as_of: string;
   days: number | null;
-  headline: { status: Status; title: string; detail: string };
+  headline: { status: Status; title: string; detail: string; money?: string | null };
+  money?: { open_yearly: number; at_risk_yearly: number; at_risk_count: number; won_value: number };
   cards: PerformanceCard[];
   todo: Todo[];
   todo_total: number;
@@ -70,6 +105,8 @@ export interface Brief {
     tip: CoachTip | null;
     reps: { rep: string; missed: number; of: number }[];
     strength: StepStat | null;
+    /** This week's coaching texts to reps. */
+    delivery?: { week: string; sent: number; opened: number; listened: number; waiting: number };
   } | null;
   review: { disputed_calls: number; type_checks: number };
   /** How often managers kept the AI's step verdicts, on calls they corrected. */
@@ -134,6 +171,9 @@ export interface RepCard {
 
 export interface RepBrief extends RepCard {
   verdict: string;
+  /** Mobile for their coaching texts and call-back requests. */
+  phone?: string | null;
+  phone_pretty?: string;
   team_score: number | null;
   coach: CoachTip | null;
   strength_example: {

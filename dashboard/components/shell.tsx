@@ -42,7 +42,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [zoneKey, setZoneKey] = useState(0);
-  const bare = pathname.startsWith("/login");
+  // Sign-in, and the coaching card a rep opens from a text without an account.
+  const bare = pathname.startsWith("/login") || pathname.startsWith("/coach/");
   // The pipeline board fills the window height, so it needs less padding below.
   const wide = pathname.startsWith("/calls/pipeline");
   // Top-level area, e.g. "calls" or "settings": crossing between them fades in.

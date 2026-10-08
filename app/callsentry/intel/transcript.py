@@ -34,9 +34,19 @@ class Segment:
     # the role it resolves to once the rep is identified.
     speaker: str = ""
     role: str = UNKNOWN
+    # A manager's fixes (see `transcript_edit`). `manual_role` wins over the
+    # role re-scoring works out; `original_text` keeps what was transcribed.
+    manual_role: str | None = None
+    original_text: str | None = None
+    added: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # Most lines are never edited; keep their stored form as it was.
+        for key, default in (("manual_role", None), ("original_text", None), ("added", False)):
+            if data[key] == default:
+                del data[key]
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Segment:
@@ -47,6 +57,9 @@ class Segment:
             text=str(data.get("text", "")),
             speaker=str(data.get("speaker", "")),
             role=str(data.get("role", UNKNOWN)),
+            manual_role=data.get("manual_role"),
+            original_text=data.get("original_text"),
+            added=bool(data.get("added", False)),
         )
 
 
@@ -93,7 +106,8 @@ def exact_speakers(segments: list[Segment]) -> bool:
     not: they are shown to the model as hints and roles are attributed per
     sentence from the conversation.
     """
-    labels = {s.speaker for s in segments}
+    # A line a manager added has no recording channel.
+    labels = {s.speaker for s in segments if not s.added}
     return len(labels) > 1 and all(label.startswith("ch") for label in labels)
 
 
@@ -159,7 +173,9 @@ def resolve_evidence(
     Each entry cites a segment id and a quote. The quote is searched in the
     cited segment and its neighbours (a sentence can straddle a turn split).
     """
-    by_id = {s.id: s for s in segments}
+    # Neighbours by position, not id: a split or added line takes the next
+    # free id, so ids stop being consecutive once a manager fixes a transcript.
+    index = {s.id: i for i, s in enumerate(segments)}
     out: list[dict[str, Any]] = []
     for entry in raw or []:
         try:
@@ -167,14 +183,13 @@ def resolve_evidence(
         except (TypeError, ValueError):
             seg_id = 0
         quote = str(entry.get("quote") or "").strip()
-        segment = by_id.get(seg_id)
-        if segment is None:
+        at = index.get(seg_id)
+        if at is None:
             out.append({"segment_id": seg_id, "quote": quote, "start": None,
                         "role": None, "verified": False})
             continue
-        neighbourhood = " ".join(
-            by_id[i].text for i in (seg_id - 1, seg_id, seg_id + 1) if i in by_id
-        )
+        segment = segments[at]
+        neighbourhood = " ".join(s.text for s in segments[max(0, at - 1):at + 2])
         score = quote_score(quote, neighbourhood) if quote else 0.0
         out.append(
             {

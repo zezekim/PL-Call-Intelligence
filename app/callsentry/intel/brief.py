@@ -22,7 +22,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
-from callsentry.intel import insights
+from callsentry.intel import insights, phones
 from callsentry.intel.insights import Row
 from callsentry.intel.rubrics import LENS_BY_CALL_TYPE, SCORECARDS
 from callsentry.models import (
@@ -31,6 +31,7 @@ from callsentry.models import (
     FollowUp,
     Lead,
     LeadStage,
+    OwnerAction,
     ProcessingStatus,
     Rep,
 )
@@ -607,6 +608,37 @@ def quoted_value(price: str | None) -> float | None:
     return float(match.group(1).replace(",", "")) if match else None
 
 
+_MONTHLY = re.compile(r"(/\s*mo\b|\bmonth|\bmonthly|\bper mo\b)", re.I)
+_QUARTERLY = re.compile(r"\bquarter", re.I)
+_YEARLY = re.compile(r"(/\s*yr\b|\byear|\bannual)", re.I)
+
+
+def yearly_value(price: str | None) -> float | None:
+    """What a quote is worth over a year, so "$49 a month" and "$540 a year"
+    can be added up. A price with no period counts once."""
+    value = quoted_value(price)
+    if value is None:
+        return None
+    text = price or ""
+    if _MONTHLY.search(text):
+        return value * 12
+    if _QUARTERLY.search(text) and not _YEARLY.search(text):
+        return value * 4
+    return value
+
+
+def money(amount: float) -> str:
+    return f"${amount:,.0f}"
+
+
+def _about(pests: list[str], service: str | None) -> str:
+    """What a customer called about, in a few words: "the ants", "termite treatment"."""
+    names = [p.strip().lower() for p in pests if p and p.strip()][:2]
+    if names:
+        return "the " + " and ".join(names)
+    return (service or "").strip().lower() or "your pest problem"
+
+
 def lead_action(
     lead: Lead, triage: dict[str, Any], now: datetime, *, booked: bool = False
 ) -> dict[str, Any] | None:
@@ -666,7 +698,8 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
             .where(Lead.business_id == business_id)
         )
     ).all()
-    open_, closed = [], []
+    open_: list[dict[str, Any]] = []
+    closed: list[dict[str, Any]] = []
     for lead, rep_name, triage, source in rows:
         triage = triage or {}
         booked = (
@@ -683,8 +716,12 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
             "service": lead.service,
             "price_quoted": lead.price_quoted,
             "value": quoted_value(lead.price_quoted),
+            "yearly": yearly_value(lead.price_quoted),
             "pests": list(lead.pests or []),
             "rep": rep_name,
+            "rep_id": str(lead.rep_id) if lead.rep_id else None,
+            "phone": lead.phone,
+            "appointment": (triage.get("appointment") or {}).get("when") or None,
             "last_call_id": str(lead.last_call_id) if lead.last_call_id else None,
             "last_contact_at": lead.last_contact_at.isoformat() if lead.last_contact_at else None,
             "action": action,
@@ -711,6 +748,13 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
             "won": len(won),
             "won_value": sum(i["value"] or 0 for i in won),
             "lost": stages.get(LeadStage.LOST, 0),
+            # Yearly value: what the open quotes are worth, and how much of it
+            # is late or going cold.
+            "open_yearly": sum(i["yearly"] or 0 for i in open_),
+            "at_risk_yearly": sum(i["yearly"] or 0 for i in open_
+                                  if i["action"]["urgency"] in ("overdue", "cold")),
+            "at_risk_count": sum(1 for i in open_
+                                 if i["action"]["urgency"] in ("overdue", "cold")),
         },
     }
 
@@ -731,6 +775,7 @@ def _todo(
             because = CANCEL_BECAUSE.get(retention.get("cancel_reason") or "")
             name = real_name(r.analysis.customer_name)
             items.append({
+                "key": f"winback:{r.call.id}",
                 "kind": "retention",
                 "priority": 100,
                 "title": f"Try to win back {name or 'a customer who cancelled'}",
@@ -739,6 +784,8 @@ def _todo(
                 "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
+                "value": None,
+                "context": _call_context(r, "winback"),
             })
             seen_calls.add(str(r.call.id))
 
@@ -750,6 +797,7 @@ def _todo(
         stage_bonus = {"quoted": 6, "follow_up": 4, "new": 2}.get(lead["stage"], 0)
         age = action["days_since_contact"]
         items.append({
+            "key": f"lead:{lead['id']}:{lead['last_call_id']}",
             "kind": "sales",
             "priority": base + stage_bonus,
             "title": action["label"],
@@ -757,6 +805,19 @@ def _todo(
             "cta": "See call-back list",
             "href": "/v2/pipeline",
             "when": lead["last_contact_at"],
+            "value": lead.get("yearly"),
+            "context": {
+                "situation": "confirm" if action["label"].startswith("Confirm") else lead["stage"],
+                "customer": lead["name"] if lead["name"] != "Name not given" else "",
+                "phone": lead.get("phone"),
+                "rep": lead.get("rep"),
+                "rep_id": lead.get("rep_id"),
+                "lead_id": lead["id"],
+                "call_id": lead["last_call_id"],
+                "about": _about(lead.get("pests") or [], lead.get("service")),
+                "price": lead.get("value"),
+                "when": lead.get("appointment"),
+            },
         })
         if lead["last_call_id"]:
             seen_calls.add(lead["last_call_id"])
@@ -764,6 +825,7 @@ def _todo(
     for r in rows:
         if r.analysis.outcome in ("unresolved", "partially") and str(r.call.id) not in seen_calls:
             items.append({
+                "key": f"service:{r.call.id}",
                 "kind": "service",
                 "priority": 70 if r.analysis.outcome == "unresolved" else 55,
                 "title": f"Check on {_customer(r)}",
@@ -772,6 +834,8 @@ def _todo(
                 "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
+                "value": None,
+                "context": _call_context(r, "checkin"),
             })
             seen_calls.add(str(r.call.id))
 
@@ -783,7 +847,9 @@ def _todo(
             continue
         named = real_name(analysis.customer_name) if analysis else ""
         who = named or call.external_ref or "a caller"
+        triage = (analysis.triage if analysis else None) or {}
         items.append({
+            "key": f"promise:{f.id}",
             "kind": "follow_up",
             "priority": 50,
             "title": f.action[:1].upper() + f.action[1:],
@@ -791,15 +857,75 @@ def _todo(
             "cta": "Listen to the call",
             "href": f"/v2/calls/{call.id}",
             "when": (call.occurred_at or call.created_at).isoformat(),
+            "value": None,
+            "context": {
+                "situation": "promise",
+                "customer": named,
+                "phone": phones.for_call(call, analysis),
+                "rep": call.rep.name if call.rep else None,
+                "rep_id": str(call.rep_id) if call.rep_id else None,
+                "call_id": str(call.id),
+                "about": _about(triage.get("pests") or [],
+                                (triage.get("service") or {}).get("request")),
+                "promise": f.action,
+            },
         })
         seen_calls.add(str(call.id))
 
     return sorted(items, key=lambda i: (-i["priority"], i["when"] or ""))
 
 
+def _call_context(r: Row, situation: str) -> dict[str, Any]:
+    triage = r.analysis.triage or {}
+    service = (triage.get("service") or {}).get("request") or (
+        (triage.get("sales") or {}).get("service_discussed"))
+    return {
+        "situation": situation,
+        "customer": real_name(r.analysis.customer_name),
+        "phone": phones.for_call(r.call, r.analysis),
+        "rep": r.call.rep.name if r.call.rep else r.analysis.rep_name,
+        "rep_id": str(r.call.rep_id) if r.call.rep_id else None,
+        "call_id": str(r.call.id),
+        "about": _about(triage.get("pests") or [], service),
+    }
+
+
+def without_handled(summary: dict[str, Any], open_leads: list[dict[str, Any]],
+                    handled: set[str]) -> dict[str, Any]:
+    """The pipeline summary, not counting a lead someone has just followed up
+    on as slipping: the owner has done what they can for now."""
+    slipping = [i for i in open_leads if i["action"]["urgency"] in ("overdue", "cold")
+                and i["id"] not in handled]
+    return {**summary, "at_risk_yearly": sum(i["yearly"] or 0 for i in slipping),
+            "at_risk_count": len(slipping)}
+
+
+async def recently_handled_leads(session: AsyncSession, business_id: uuid.UUID) -> set[str]:
+    since = datetime.now(UTC) - timedelta(days=HANDLED_DAYS)
+    keys = await session.scalars(
+        select(OwnerAction.item_key).where(
+            OwnerAction.business_id == business_id, OwnerAction.status == "done",
+            OwnerAction.done_at >= since, OwnerAction.item_key.like("lead:%"))
+    )
+    return {k.split(":")[1] for k in keys}
+
+
+def money_line(summary: dict[str, Any]) -> str | None:
+    """Open quotes in dollars, and how much of it is slipping."""
+    at_risk, count = summary.get("at_risk_yearly") or 0, summary.get("at_risk_count") or 0
+    total = summary.get("open_yearly") or 0
+    if at_risk >= 1:
+        return (f"{money(at_risk)} a year in quotes is slipping: "
+                f"{_plural(count, 'customer')} waiting too long for a call back.")
+    if total >= 1:
+        return f"{money(total)} a year in quotes is waiting on an answer."
+    return None
+
+
 def headline(
-    cards: list[dict[str, Any]], coach: dict[str, Any] | None, todo: list[dict[str, Any]]
-) -> dict[str, str]:
+    cards: list[dict[str, Any]], coach: dict[str, Any] | None, todo: list[dict[str, Any]],
+    money_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """The verdict and the next step, without repeating the numbers on the cards.
 
     The title says what matters most in words; the detail says where to start
@@ -838,7 +964,8 @@ def headline(
         status = "good"
     else:
         status = "none"
-    return {"status": status, "title": title, "detail": " ".join(detail)}
+    return {"status": status, "title": title, "detail": " ".join(detail),
+            "money": money_line(money_summary or {})}
 
 
 def accuracy(rows: list[Row]) -> dict[str, Any] | None:
@@ -895,6 +1022,9 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
         )
     ).all()
     todo = _todo(rows, board["open"], [tuple(f) for f in follow_ups])
+    await attach_actions(session, business_id, todo)
+    summary = without_handled(board["summary"], board["open"],
+                              await recently_handled_leads(session, business_id))
 
     status_counts = dict(
         (
@@ -911,12 +1041,15 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
     return {
         "as_of": now.isoformat(),
         "days": days,
-        "headline": headline(cards, coach, todo),
+        "headline": headline(cards, coach, [t for t in todo if not t.get("handled")], summary),
+        "money": {k: summary[k] for k in
+                  ("open_yearly", "at_risk_yearly", "at_risk_count", "won_value")},
         "cards": cards,
         # The page shows the top five and can expand to the rest.
         "todo": todo[:15],
         "todo_total": len(todo),
-        "coaching": coach,
+        "coaching": ({**coach, "delivery": await coaching_delivery(session, business_id)}
+                     if coach else None),
         "review": {"disputed_calls": disputed, "type_checks": review},
         "accuracy": accuracy(rows),
         "calls": {
@@ -925,6 +1058,71 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
                               if k not in (ProcessingStatus.DONE, ProcessingStatus.FAILED)),
             "failed": status_counts.get(ProcessingStatus.FAILED, 0),
         },
+    }
+
+
+HANDLED_DAYS = 3
+
+
+def action_out(a: OwnerAction) -> dict[str, Any]:
+    return {
+        "id": str(a.id), "kind": a.kind, "status": a.status, "label": a.label,
+        "to_name": a.to_name, "to_phone": a.to_phone, "to_phone_pretty": phones.pretty(a.to_phone),
+        "body": a.body, "done_at": a.done_at.isoformat() if a.done_at else None,
+        "done_by": a.done_by, "auto": a.auto, "error": a.error,
+        "reply_text": a.reply_text,
+        "replied_at": a.replied_at.isoformat() if a.replied_at else None,
+    }
+
+
+async def attach_actions(
+    session: AsyncSession, business_id: uuid.UUID, todo: list[dict[str, Any]]
+) -> None:
+    """Give each to-do its prepared actions, and mark the ones already handled.
+
+    A handled item sinks to the bottom with what was done, so the owner sees
+    the work happen instead of the item vanishing.
+    """
+    keys = [t["key"] for t in todo if t.get("key")]
+    rows = list(await session.scalars(
+        select(OwnerAction).where(OwnerAction.business_id == business_id,
+                                  OwnerAction.item_key.in_(keys))
+    )) if keys else []
+    by_key: dict[str, list[OwnerAction]] = defaultdict(list)
+    for a in rows:
+        by_key[a.item_key].append(a)
+    recent = datetime.now(UTC) - timedelta(days=HANDLED_DAYS)
+    for t in todo:
+        t.pop("context", None)
+        options = by_key.get(t.get("key") or "", [])
+        done = [a for a in options if a.status == "done" and a.done_at and a.done_at >= recent]
+        t["actions"] = [action_out(a) for a in sorted(options, key=lambda a: a.priority,
+                                                      reverse=True)
+                        if a.status in ("proposed", "failed")]
+        t["handled"] = action_out(max(done, key=lambda a: a.done_at or recent)) if done else None
+    todo.sort(key=lambda t: (t["handled"] is not None, -t["priority"], t["when"] or ""))
+
+
+def iso_week(now: datetime) -> str:
+    year, week, _ = now.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+async def coaching_delivery(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any]:
+    """This week's coaching texts: how many went out, were opened, were played."""
+    week = iso_week(datetime.now(UTC))
+    rows = list(await session.scalars(
+        select(OwnerAction).where(OwnerAction.business_id == business_id,
+                                  OwnerAction.kind == "coach_rep",
+                                  OwnerAction.item_key.like(f"coach:%:{week}"))
+    ))
+    sent = [a for a in rows if a.status == "done"]
+    return {
+        "week": week,
+        "sent": len(sent),
+        "opened": sum(1 for a in sent if a.opened_at),
+        "listened": sum(1 for a in sent if a.listened_at),
+        "waiting": sum(1 for a in rows if a.status in ("proposed", "failed")),
     }
 
 
@@ -1030,6 +1228,8 @@ async def rep_brief(
     return {
         **card,
         "verdict": _verdict(card),
+        "phone": rep.phone,
+        "phone_pretty": phones.pretty(rep.phone),
         "team_score": team_avg,
         "coach": _tip_for(scored, focus) if focus else None,
         "strength_example": _strength_example(scored),

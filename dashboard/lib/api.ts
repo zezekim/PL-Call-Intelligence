@@ -196,6 +196,8 @@ export interface ScoreItem {
   model_status?: string;
   override?: { status: string; note: string; by: string; at: string } | null;
   deliberation?: { model: string; first: string; final: string; reason: string }[] | null;
+  /** This business's own rules that applied to the step when it was graded. */
+  rules?: string[];
 }
 
 export interface Moment {
@@ -278,6 +280,28 @@ export interface Segment {
   text: string;
   speaker: string;
   role: "rep" | "customer" | "unknown";
+  /** A manager's fixes: who said it, the transcribed words, a line they added. */
+  manual_role?: "rep" | "customer" | null;
+  original_text?: string | null;
+  added?: boolean;
+}
+
+export interface ScoringRule {
+  id: string;
+  scorecard_key: string;
+  scorecard_name: string;
+  step_key: string;
+  step_label: string;
+  text: string;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  source_call_id: string | null;
+}
+
+export interface ScoringRules {
+  rules: ScoringRule[];
+  rescore: { scorecard_key: string; scorecard_name: string; calls: number; est_cost_usd: number }[];
 }
 
 export interface FollowUp {
@@ -304,6 +328,9 @@ export interface CallDetail extends CallRow {
   segments: Segment[];
   analysis: Analysis | null;
   cost_usd: number;
+  transcript_edited_at?: string | null;
+  /** The transcript was fixed after this grade was made. */
+  transcript_stale?: boolean;
 }
 
 export interface CallRef {

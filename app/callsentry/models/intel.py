@@ -5,7 +5,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,6 +42,8 @@ class Rep(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     # Lower-cased first name: "Michelle", "michelle" and "Michelle S." are one rep.
     name_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Mobile for their weekly coaching text and call-back requests.
+    phone: Mapped[str | None] = mapped_column(String(32))
 
     calls: Mapped[list[Call]] = relationship(back_populates="rep")
 
@@ -72,6 +84,8 @@ class Lead(Base, TimestampMixin):
     )
     service: Mapped[str | None] = mapped_column(Text)
     price_quoted: Mapped[str | None] = mapped_column(Text)
+    # The number they gave on a call, or the one they called from.
+    phone: Mapped[str | None] = mapped_column(String(32))
     next_step: Mapped[str | None] = mapped_column(Text)
     rep_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("reps.id", ondelete="SET NULL")
@@ -144,6 +158,35 @@ class CallAnalysis(Base, TimestampMixin):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0, nullable=False)
 
     call: Mapped[Call] = relationship(back_populates="analysis")
+
+
+class ScoringRule(Base, TimestampMixin):
+    """How this business grades one scorecard step, in the manager's words.
+
+    Made when a manager corrects a step and ticks "use this on future calls".
+    Every later grading of that scorecard is told the rule, so the AI learns
+    the owner's standard instead of repeating the same disagreement.
+    """
+
+    __tablename__ = "scoring_rules"
+    __table_args__ = (Index("ix_scoring_rules_business_scorecard", "business_id", "scorecard_key"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    business_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
+    )
+    # Step keys repeat across scorecards with different criteria, so a rule
+    # belongs to one scorecard.
+    scorecard_key: Mapped[str] = mapped_column(String(24), nullable=False)
+    step_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true",
+                                         nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(320))
+    # The call the correction was made on.
+    source_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("calls.id", ondelete="SET NULL")
+    )
 
 
 class ReceptionistPlaybook(Base, TimestampMixin):

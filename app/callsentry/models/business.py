@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import String, Text
+from sqlalchemy import Boolean, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -50,6 +50,15 @@ class Business(Base, TimestampMixin):
 
     twilio_number: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     voice_id: Mapped[str] = mapped_column(String(64), default="af_heart", nullable=False)
+
+    # The owner's mobile, for the morning text and replies to it.
+    owner_phone: Mapped[str | None] = mapped_column(String(32))
+    morning_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false",
+                                               nullable=False)
+    # Kinds of prepared action done without asking: {"text_customer": true, ...}.
+    autopilot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
 
     calls: Mapped[list[Call]] = relationship(
         back_populates="business", cascade="all, delete-orphan"

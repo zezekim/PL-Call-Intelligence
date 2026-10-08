@@ -296,6 +296,35 @@ async def _caller_history(
     return name, note
 
 
+async def _business_for_number(session: SessionDep, to_number: str) -> Business | None:
+    business = await session.scalar(select(Business).where(Business.twilio_number == to_number))
+    if business is None:
+        # Single-business deployment: the only tenant, as for inbound calls.
+        businesses = (await session.scalars(select(Business).limit(2))).all()
+        business = businesses[0] if len(businesses) == 1 else None
+    return business
+
+
+@router.post("/twilio/sms")
+async def twilio_sms(request: Request, session: SessionDep, settings: SettingsDep) -> Response:
+    """A text to the business number: the owner answering the morning text, or
+    a customer replying to one of ours (or opting out)."""
+    from callsentry.intel import morning, phones
+
+    form = dict(await request.form())
+    await _validate_twilio(request, form, settings)
+    sender = phones.normalize(str(form.get("From", "")))
+    text = str(form.get("Body", ""))[:1600]
+    business = await _business_for_number(session, str(form.get("To", "")))
+    if business is None or sender is None:
+        return _twiml("")
+    if sender == business.owner_phone:
+        answer = await morning.handle_owner(session, business, text)
+        return _twiml(f"<Message>{escape(answer)}</Message>")
+    await morning.handle_customer(session, business, sender, text)
+    return _twiml("")
+
+
 @router.post("/twilio/status")
 async def twilio_status(
     request: Request, session: SessionDep, settings: SettingsDep

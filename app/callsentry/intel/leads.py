@@ -11,6 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from callsentry.intel import phones
 from callsentry.intel.rubrics import CallType
 from callsentry.models import Call, CallAnalysis, CallSource, Lead, LeadStage, ProcessingStatus
 
@@ -98,6 +99,7 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
         lead.rep_id = call.rep_id
         lead.service = request or lead.service
         lead.next_step = f"Visit booked for {when}" if when else "Visit booked"
+    lead.phone = phones.for_call(call, analysis) or lead.phone
     lead.pests = sorted({*(lead.pests or []), *(triage.get("pests") or [])})
     lead.updated_at = datetime.now(UTC)
     call.lead_id = lead.id

@@ -17,6 +17,7 @@ import { FollowUpList } from "@/components/follow-up-list";
 import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
 import { Avatar, Card, ErrorNote, Modal, Spinner } from "@/components/ui";
 import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/components/v2/listen";
+import { TranscriptEditor } from "@/components/v2/transcript-editor";
 import { CallSkeleton, MoreMenu, MoreToggle, PageError, StatusPill } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 import type { Status } from "@/lib/v2";
@@ -36,9 +37,10 @@ const OUTCOME_STATUS: Record<string, Status> = { good: "good", warn: "watch", ba
 function CallPage() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  const { data: call, error, status, loading, reload } = useApi<CallDetail>(`/intel/calls/${id}`, {
+  const { data: call, error, status, loading, reload, setData } = useApi<CallDetail>(`/intel/calls/${id}`, {
     poll: (c) => IN_PROGRESS.has(c.processing_status),
   });
+  const [fixing, setFixing] = useState(false);
   useTitle(call ? `Call with ${personName(call.analysis?.customer_name) ?? "a customer"}` : "Call");
   const audio = useAudio();
 
@@ -96,6 +98,12 @@ function CallPage() {
           <Rerun callId={call.id} transcript={call.segments.length ? "keep" : "redo"} onDone={reload} />
         </Card>
       )}
+      {call.transcript_stale && !processing && (
+        <StaleGrade callId={call.id} onDone={async () => {
+          setFixing(false);
+          await reload();
+        }} />
+      )}
       {a && a.call_type_confidence < 0.7 && !call.call_type_overridden && (
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
@@ -111,6 +119,18 @@ function CallPage() {
             audio={audio}
             markers={markers}
             expired={expired}
+            fixing={fixing}
+            onFix={processing ? undefined : setFixing}
+            fixer={
+              <TranscriptEditor
+                callId={call.id}
+                segments={call.segments}
+                repName={call.rep_name}
+                customerName={personName(call.analysis?.customer_name)}
+                audio={audio}
+                onSaved={setData}
+              />
+            }
           />
         </div>
         <div className="min-w-0 space-y-5 print:mt-5">
@@ -468,6 +488,14 @@ function Step({
       {open && (
         <div className="space-y-2.5 px-3 pb-3.5 pl-[38px] text-[14px]">
           <p className="leading-relaxed text-ink/80">{item.reason}</p>
+          {(item.rules ?? []).map((r) => (
+            <p key={r} className="rounded-xl bg-accent-soft/60 px-3 py-2 text-[13px] leading-snug">
+              <span className="font-medium">Your rule:</span> {r}{" "}
+              <Link href="/settings#scoring-rules" className="whitespace-nowrap text-link hover:underline">
+                Change
+              </Link>
+            </p>
+          ))}
           {evidence && (
             <button
               onClick={() => audio.seek(evidence.start as number, evidence.segment_id)}
@@ -491,14 +519,26 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
+  const [keep, setKeep] = useState(false);
+  const [rule, setRule] = useState("");
   async function save(status: "met" | "missed" | null) {
     setBusy(true);
     try {
-      await api.put(`/intel/calls/${callId}/items/${item.key}/override`, { status, note });
+      const asRule = status !== null && keep && rule.trim() ? rule.trim() : null;
+      await api.put(`/intel/calls/${callId}/items/${item.key}/override`, { status, note, rule: asRule });
       setEditing(false);
       setNote("");
+      setKeep(false);
+      setRule("");
       await onChange();
-      toast({ message: status === null ? "Change undone" : `Marked as ${status === "met" ? "done" : "skipped"}` });
+      toast({
+        message:
+          status === null
+            ? "Change undone"
+            : asRule
+              ? "Saved. Future calls will be checked your way."
+              : `Marked as ${status === "met" ? "done" : "skipped"}`,
+      });
     } catch {
       toast({ message: failMessage(), tone: "error" });
     } finally {
@@ -524,23 +564,53 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
       </button>
     );
   }
+  const needsRule = keep && !rule.trim();
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="space-y-2.5">
       <input
-        className="input min-w-[180px] flex-1 py-1.5 text-[13px]"
+        className="input w-full py-1.5 text-[13px]"
         placeholder="Why? (optional)"
         aria-label="Reason for the change"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         maxLength={500}
       />
-      <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy} onClick={() => save(target)}>
-        {busy && <Spinner className="h-3 w-3" />}
-        Mark it as {target === "met" ? "done" : "skipped"}
-      </button>
-      <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(false)}>
-        Cancel
-      </button>
+      <label className="flex cursor-pointer items-start gap-2 text-[13px]">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-accent"
+          checked={keep}
+          onChange={(e) => setKeep(e.target.checked)}
+        />
+        <span>
+          Check future calls this way too
+          <span className="block text-[12px] text-muted">So the same thing isn&apos;t marked wrong again.</span>
+        </span>
+      </label>
+      {keep && (
+        <textarea
+          className="input w-full py-1.5 text-[13px]"
+          rows={2}
+          placeholder={
+            target === "met"
+              ? "When does this count as done? e.g. “Thanks for calling” counts as thanking the customer."
+              : "When should this not count? e.g. Reading the price off the screen isn't explaining the plan."
+          }
+          aria-label="Rule for future calls"
+          value={rule}
+          onChange={(e) => setRule(e.target.value)}
+          maxLength={300}
+        />
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy || needsRule} onClick={() => save(target)}>
+          {busy && <Spinner className="h-3 w-3" />}
+          Mark it as {target === "met" ? "done" : "skipped"}
+        </button>
+        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -581,6 +651,39 @@ function Details({ analysis: a }: { analysis: Analysis }) {
 }
 
 // --- Actions ----------------------------------------------------------------------------
+
+/** The transcript was fixed after the grade was made: offer to grade it again. */
+function StaleGrade({ callId, onDone }: { callId: string; onDone: () => Promise<void> }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-accent-soft px-5 py-4 print:hidden">
+      <p className="text-[14px]">
+        <span className="font-semibold">You fixed the transcript.</span>{" "}
+        <span className="text-ink/80">Check the call again so the steps and coaching use your fixes. Your step changes are kept.</span>
+      </p>
+      <button
+        className="btn-primary"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await api.post(`/intel/calls/${callId}/reprocess`, { transcript: "keep" });
+            toast({ message: "Checking this call again. It takes about a minute." });
+            await onDone();
+          } catch {
+            toast({ message: failMessage(), tone: "error" });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy && <Spinner className="h-3.5 w-3.5" />}
+        Check again
+      </button>
+    </div>
+  );
+}
 
 function Rerun({
   callId,
