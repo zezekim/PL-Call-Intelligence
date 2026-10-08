@@ -218,6 +218,15 @@ export const actionsSummary = {
   daytime: true,
 };
 
+export const outbox = {
+  practice: true,
+  messages: [
+    { id: "m2", direction: "in", purpose: "reply", body: "1", phone: "owner", phone_pretty: "", name: "You", to_owner: true, created_at: ago(0) },
+    { id: "m1", direction: "out", purpose: "morning", body: "Good morning!\n$588 a year in quotes is slipping.\n\n1) Text Jordan: Call Jordan Lee back\n\nReply 1 and I'll do it.", phone: "owner", phone_pretty: "", name: "You", to_owner: true, created_at: ago(0) },
+    { id: "m0", direction: "out", purpose: "customer", body: "Hi Jordan, it's Dana from ABC Pest Control. Reply STOP to opt out.", phone: "+15551234567", phone_pretty: "(555) 123-4567", name: "Jordan Lee", to_owner: false, created_at: ago(0) },
+  ],
+};
+
 export async function mockApi(page: Page, overrides: Record<string, (route: Route) => unknown> = {}) {
   await page.addInitScript(() => {
     window.localStorage.setItem("pestlaunch.token", "e2e");
@@ -245,6 +254,7 @@ export async function mockApi(page: Page, overrides: Record<string, (route: Rout
     if (method === "PATCH" && path.startsWith("/intel/leads/")) return json({ id: LEAD_ID, stage: "won" });
     if (path === "/intel/team") return json([]);
     if (path === "/intel/actions/summary") return json(actionsSummary);
+    if (path === "/intel/outbox") return json(outbox);
     if (path === "/intel/actions/refresh") return json({ prepared: 1 });
     return json({});
   });

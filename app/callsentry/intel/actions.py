@@ -38,7 +38,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
-from callsentry.intel import brief, insights, phones
+from callsentry.intel import brief, insights, outbox, phones
 from callsentry.models import (
     Business,
     Call,
@@ -51,7 +51,6 @@ from callsentry.models import (
     SmsOptOut,
 )
 from callsentry.services import costs, spend
-from callsentry.services.sms import get_sms
 
 log = structlog.get_logger(__name__)
 
@@ -69,6 +68,9 @@ MAX_BODY = 600
 SEND_FROM_HOUR, SEND_UNTIL_HOUR = 9, 19
 COACH_LINK_DAYS = 21
 OPT_OUT_LINE = " Reply STOP to opt out."
+
+
+_PURPOSE = {TEXT_CUSTOMER: "customer", REMIND_REP: "rep", COACH_REP: "coach"}
 
 
 class ActionError(ValueError):
@@ -420,7 +422,13 @@ async def perform(
     if spend.exceeded():
         raise ActionError("Today's spending cap has been reached.")
 
-    result = await get_sms().send(to=action.to_phone, body=action.body)
+    business = await session.get(Business, action.business_id)
+    if business is None:
+        raise ActionError("This business no longer exists.")
+    result = await outbox.send(
+        session, business, to=action.to_phone, body=action.body, name=action.to_name,
+        purpose=_PURPOSE.get(action.kind, "customer"), action_id=action.id,
+    )
     now = datetime.now(UTC)
     action.updated_at = now
     if not result.sent:
@@ -432,11 +440,12 @@ async def perform(
         await session.flush()
         return action
 
-    await costs.record(
-        session, business_id=action.business_id, call_id=action.call_id,
-        category=CostCategory.TELEPHONY, provider=result.provider, tier="cloud",
-        units=result.segments, unit_name="sms_segment", cost_usd=result.cost_usd,
-    )
+    if result.provider != outbox.PRACTICE:
+        await costs.record(
+            session, business_id=action.business_id, call_id=action.call_id,
+            category=CostCategory.TELEPHONY, provider=result.provider, tier="cloud",
+            units=result.segments, unit_name="sms_segment", cost_usd=result.cost_usd,
+        )
     action.status, action.error = DONE, None
     action.done_at, action.done_by, action.auto = now, by, auto
     action.message_sid = result.message_sid

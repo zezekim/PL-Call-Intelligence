@@ -17,14 +17,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from callsentry.intel import actions, brief, phones
+from callsentry.intel import actions, brief, outbox, phones
 from callsentry.models import Business, OwnerAction, SmsOptOut
 from callsentry.services.callstate import _redis
-from callsentry.services.sms import get_sms
 
 log = structlog.get_logger(__name__)
 
@@ -79,11 +78,19 @@ async def build_menu(
     return body, items
 
 
+def owner_number(business: Business) -> str | None:
+    """Where the owner's texts go: their mobile, or the Outbox in practice."""
+    if business.owner_phone:
+        return business.owner_phone
+    return outbox.OWNER_PLACEHOLDER if business.practice_mode else None
+
+
 async def send_now(session: AsyncSession, business: Business, *, greeting: bool = True) -> bool:
-    if not business.owner_phone:
+    to = owner_number(business)
+    if to is None:
         return False
     body, _items = await build_menu(session, business, greeting=greeting)
-    result = await get_sms().send(to=business.owner_phone, body=body)
+    result = await outbox.send(session, business, to=to, body=body, purpose="morning", name="You")
     await session.commit()
     return result.sent
 
@@ -92,7 +99,9 @@ async def maybe_send(session: AsyncSession) -> int:
     """Called by the background loop: each business's text, once a day."""
     sent = 0
     for business in (await session.scalars(
-        select(Business).where(Business.morning_text.is_(True), Business.owner_phone.isnot(None))
+        select(Business).where(Business.morning_text.is_(True),
+                               or_(Business.owner_phone.isnot(None),
+                                   Business.practice_mode.is_(True)))
     )).all():
         local = actions.local_now(business)
         if local.hour < SEND_HOUR:
@@ -194,10 +203,12 @@ async def handle_customer(
     sent.reply_text = text.strip()[:1000]
     sent.replied_at = datetime.now(UTC)
     await session.commit()
-    if business.owner_phone:
+    to = owner_number(business)
+    if to:
         who = sent.to_name or phones.pretty(phone)
-        await get_sms().send(
-            to=business.owner_phone,
+        await outbox.send(
+            session, business, to=to, purpose="forward", name="You",
             body=f"{who} replied: “{_short(text.strip(), 300)}”\n"
                  f"Text them back at {phones.pretty(phone)}.",
         )
+        await session.commit()

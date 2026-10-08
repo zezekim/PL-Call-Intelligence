@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api, type ScoringRules } from "@/lib/api";
 import type { ActionsSummary, PreparedAction } from "@/lib/v2";
@@ -522,6 +523,7 @@ interface Playbook {
 interface BusinessSettings {
   owner_phone: string | null;
   morning_text: boolean;
+  practice_mode: boolean;
 }
 
 /** The morning text to the owner, and what the app may do without asking. */
@@ -559,6 +561,29 @@ function DoneForYouPanel() {
       </p>
       <div className="card divide-y divide-line">
         <div className="p-5">
+          <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[#0071e3]"
+              checked={!!biz.data?.practice_mode}
+              disabled={!biz.data || !!busy}
+              onChange={(e) => run("practice", () => api.patch("/settings", { practice_mode: e.target.checked }))}
+            />
+            <span className="text-[14px]">
+              <span className="text-[15px] font-semibold">Practice mode</span>
+              <span className="block text-ink/80">
+                Texts are shown in the Outbox instead of being sent. Everything else works the same, and you can answer
+                them there to see what happens. Use it while your texting number waits for carrier approval.
+              </span>
+              {biz.data?.practice_mode && (
+                <Link href="/v2/outbox" className="mt-1 inline-block text-link underline underline-offset-2">
+                  Open the Outbox
+                </Link>
+              )}
+            </span>
+          </label>
+        </div>
+        <div className="p-5">
           <p className="text-[15px] font-semibold">Morning text</p>
           <p className="mt-0.5 max-w-2xl text-[14px] text-ink/80">
             At 8am you get a text with what&apos;s at stake and the top three things to do. Reply 1, 2 or 3 and it&apos;s
@@ -595,18 +620,24 @@ function DoneForYouPanel() {
               type="checkbox"
               className="h-5 w-5 accent-[#0071e3]"
               checked={!!biz.data?.morning_text}
-              disabled={!current || !!busy}
+              disabled={(!current && !biz.data?.practice_mode) || !!busy}
               onChange={(e) => run("morning", () => api.patch("/settings", { morning_text: e.target.checked }))}
             />
             Send me the morning text
-            {!current && <span className="text-muted">(add your mobile first)</span>}
+            {!current && !biz.data?.practice_mode && <span className="text-muted">(add your mobile first)</span>}
           </label>
-          {current && (
+          {(current || biz.data?.practice_mode) && (
             <div>
               <button
                 className="btn-secondary mt-1 min-h-[44px]"
                 disabled={!!busy}
-                onClick={() => run("test", () => api.post("/intel/morning/test"), `Sent to ${pretty(current)}.`)}
+                onClick={() =>
+                  run(
+                    "test",
+                    () => api.post("/intel/morning/test"),
+                    biz.data?.practice_mode ? "It's in the Outbox." : `Sent to ${pretty(current)}.`,
+                  )
+                }
               >
                 {busy === "test" && <Spinner className="h-4 w-4" />}
                 Text me today&apos;s list now

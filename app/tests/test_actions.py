@@ -200,3 +200,59 @@ def test_a_lead_just_followed_up_is_not_counted_as_slipping():
     ]
     out = brief.without_handled({"open_yearly": 988}, open_leads, {"a"})
     assert (out["at_risk_yearly"], out["at_risk_count"], out["open_yearly"]) == (300, 1, 988)
+
+
+# --- Practice mode ---------------------------------------------------------------------
+
+
+class _Session:
+    def __init__(self):
+        self.added = []
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        pass
+
+
+async def test_practice_mode_keeps_texts_in_the_outbox_and_never_calls_twilio(monkeypatch):
+    from callsentry.intel import outbox
+
+    def boom():
+        raise AssertionError("Twilio must not be called in practice mode")
+
+    monkeypatch.setattr(outbox, "get_sms", boom)
+    session = _Session()
+    business = Business(id=uuid.uuid4(), practice_mode=True)
+    result = await outbox.send(session, business, to="+15551234567", body="Hi", purpose="customer",
+                               name="Sarah")
+    assert result.sent and result.provider == outbox.PRACTICE and result.cost_usd == 0
+    (row,) = session.added
+    assert (row.direction, row.phone, row.name, row.purpose) == ("out", "+15551234567", "Sarah",
+                                                                 "customer")
+
+
+async def test_without_practice_mode_texts_go_to_twilio(monkeypatch):
+    from callsentry.intel import outbox
+    from callsentry.services.sms import SMSResult
+
+    calls = []
+
+    class Fake:
+        async def send(self, *, to, body):
+            calls.append((to, body))
+            return SMSResult(sent=True, provider="twilio")
+
+    monkeypatch.setattr(outbox, "get_sms", lambda: Fake())
+    session = _Session()
+    await outbox.send(session, Business(id=uuid.uuid4(), practice_mode=False), to="+1555",
+                      body="Hi", purpose="customer")
+    assert calls == [("+1555", "Hi")] and session.added == []
+
+
+def test_the_owner_needs_no_number_in_practice_mode():
+    assert morning.owner_number(Business(practice_mode=True)) == "owner"
+    assert morning.owner_number(Business(practice_mode=False)) is None
+    assert morning.owner_number(Business(owner_phone="+15559990000", practice_mode=True)) == (
+        "+15559990000")

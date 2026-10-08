@@ -41,6 +41,7 @@ class SettingsOut(BaseModel):
     local_only: bool
     owner_phone: str | None = None
     morning_text: bool = False
+    practice_mode: bool = False
 
 
 class SettingsPatch(BaseModel):
@@ -54,6 +55,7 @@ class SettingsPatch(BaseModel):
     voice_id: str | None = None
     owner_phone: str | None = None
     morning_text: bool | None = None
+    practice_mode: bool | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -114,6 +116,7 @@ def _out(business: Any) -> SettingsOut:
         local_only=get_settings().local_only,
         owner_phone=business.owner_phone,
         morning_text=business.morning_text,
+        practice_mode=business.practice_mode,
     )
 
 

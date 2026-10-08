@@ -48,6 +48,20 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
   expect(sent).toEqual([{ body: null, phone: null }]);
 });
 
+test("practice mode: the Outbox answers the morning text as the owner", async ({ page }) => {
+  const replies: unknown[] = [];
+  await mockApi(page, {
+    "POST /intel/outbox/reply": async (route) => {
+      replies.push(route.request().postDataJSON());
+      await route.fulfill({ json: { practice: true, messages: [] } });
+    },
+  });
+  await page.goto("/v2/outbox");
+  await expect(page.getByText("Practice mode is on.")).toBeVisible();
+  await page.getByLabel("Quick replies").getByRole("button", { name: "1", exact: true }).click();
+  await expect.poll(() => replies).toEqual([{ phone: "owner", text: "1" }]);
+});
+
 test("a lead marked yes moves at once, and Undo puts it back", async ({ page }) => {
   const sent: string[] = [];
   await mockApi(page, {
@@ -180,7 +194,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.addInitScript((t) => window.localStorage.setItem("theme", t), scheme);
     await mockApi(page);
-    for (const path of ["/v2", "/v2/pipeline", "/v2/reps", "/v2/calls", `/v2/calls/${CALL_ID}`, `/v2/reps/${REP_ID}`]) {
+    for (const path of ["/v2", "/v2/pipeline", "/v2/reps", "/v2/calls", `/v2/calls/${CALL_ID}`, `/v2/reps/${REP_ID}`, "/v2/outbox"]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
       const { violations } = await new AxeBuilder({ page })

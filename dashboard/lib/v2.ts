@@ -66,6 +66,8 @@ export interface ActionsSummary {
   done_today: PreparedAction[];
   replies: (PreparedAction & { title: string; href: string | null })[];
   daytime: boolean;
+  /** Texts go to the in-app Outbox instead of phones. */
+  practice?: boolean;
 }
 
 export interface StepStat {

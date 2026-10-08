@@ -55,6 +55,10 @@ class Business(Base, TimestampMixin):
     owner_phone: Mapped[str | None] = mapped_column(String(32))
     morning_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false",
                                                nullable=False)
+    # Texts go to the in-app Outbox instead of Twilio (while a number waits
+    # for carrier approval, or for a demo).
+    practice_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false",
+                                                nullable=False)
     # Kinds of prepared action done without asking: {"text_customer": true, ...}.
     autopilot: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default="{}", nullable=False

@@ -55,6 +55,16 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-8">
+      {actions?.practice && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-3 text-[14px]">
+          <p>
+            <span className="font-semibold">Practice mode is on.</span> Texts go to the Outbox instead of people&apos;s phones.
+          </p>
+          <Link href="/v2/outbox" className="btn-secondary min-h-[44px]">
+            Open the Outbox
+          </Link>
+        </div>
+      )}
       <Headline brief={data} />
 
       <div className="grid gap-4 min-[1180px]:grid-cols-3 min-[1180px]:gap-y-0">

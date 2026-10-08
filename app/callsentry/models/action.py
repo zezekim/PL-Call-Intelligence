@@ -86,3 +86,30 @@ class SmsOptOut(Base, TimestampMixin):
         PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
     )
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class OutboxMessage(Base, TimestampMixin):
+    """A text in practice mode: shown in the app instead of sent.
+
+    Replies typed in the Outbox are kept here too, so the conversation reads
+    the way it would on a phone.
+    """
+
+    __tablename__ = "outbox_messages"
+    __table_args__ = (Index("ix_outbox_messages_business_created", "business_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    business_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False
+    )
+    # out: the app texting someone; in: a reply typed in the Outbox.
+    direction: Mapped[str] = mapped_column(String(4), nullable=False)
+    # The other side of the conversation (who it went to, or who replied).
+    phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # morning | customer | rep | coach | forward | answer | reply
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)
+    action_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("owner_actions.id", ondelete="SET NULL")
+    )

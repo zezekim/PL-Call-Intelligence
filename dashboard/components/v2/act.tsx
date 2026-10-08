@@ -89,7 +89,11 @@ export function ActionSheet({
         // Counted now: the summary reloads below with this send included.
         setSent({ action: done, count: sentBefore + 1 });
       } else {
-        toast({ message: `Sent to ${done.to_name ?? done.to_phone_pretty}` });
+        toast({
+          message: summary?.practice
+            ? `In the Outbox for ${done.to_name ?? done.to_phone_pretty} (practice)`
+            : `Sent to ${done.to_name ?? done.to_phone_pretty}`,
+        });
         onClose();
       }
       await onDone();
@@ -118,7 +122,8 @@ export function ActionSheet({
     return (
       <Modal open={open} onClose={onClose} title="Sent">
         <p className="flex items-center gap-2 text-[15px]">
-          <CheckIcon className="h-5 w-5 text-good" /> Sent to {sent.action.to_name ?? sent.action.to_phone_pretty}.
+          <CheckIcon className="h-5 w-5 text-good" /> {summary?.practice ? "In the Outbox for" : "Sent to"}{" "}
+          {sent.action.to_name ?? sent.action.to_phone_pretty}.
         </p>
         <AutopilotOffer
           kind={sent.action.kind}
@@ -209,6 +214,11 @@ export function ActionSheet({
             </button>
           </div>
         </div>
+        {summary?.practice && (
+          <p className="rounded-xl bg-warn-soft px-3 py-2 text-[13px]">
+            Practice mode: this goes to the Outbox, not to their phone.
+          </p>
+        )}
         {other && index === 0 && (
           <p className="text-[12px] text-muted">Prefer the other way? Pick “{other.label}” above.</p>
         )}

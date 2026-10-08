@@ -150,6 +150,13 @@ says yes:
   a no-login card with the moment from their own call. The owner sees "sent
   to 4, opened by 3, 2 listened to their call."
 
+- **Practice mode.** While a texting number waits for carrier approval (or
+  for a demo), Settings → **Done for you** → **Practice mode** puts every text
+  in an in-app **Outbox** instead of sending it. Everything else behaves the
+  same: actions are marked done, the morning text arrives there with 1 / 2 / 3
+  buttons, and a reply typed as a customer is passed on to the owner. The
+  replies run the same code a real text back would. Nothing is billed.
+
 Texts are templates over the analysis, not model output: free, predictable,
 and always shown before sending. They go through Twilio, count toward the
 spending cap, and the first text to a customer says how to opt out.
@@ -644,12 +651,13 @@ A live phone agent on the Twilio number, built on the CallSentry voice stack.
 | `receptionist_playbooks` | Draft and published playbook per business |
 | `owner_actions` | A prepared text for one open situation (lead, cancel, problem, promise, weekly coaching): kind, recipient, message, value, status, who sent it and when, autopilot or not, the customer's reply, and for coaching when the card was opened and played |
 | `sms_opt_outs` | Numbers that texted STOP |
+| `outbox_messages` | Practice mode: texts kept in the app instead of sent, and replies typed there |
 | `scoring_rules` | A business's own rule for one scorecard step, in the manager's words: scorecard, step, text, on/off, who made it and from which call |
 | `appointments`, `kb_documents`, `kb_chunks` | Receptionist bookings and knowledge base (pgvector) |
 | `cost_entries` | Every paid interaction: provider, units, cost. Backs the spending cap and per-call cost |
 | `platform_settings` | Dashboard-set configuration. Secrets as AES-GCM envelopes |
 
-Migrations: `app/alembic/versions/0001` → `0011`.
+Migrations: `app/alembic/versions/0001` → `0012`.
 
 ---
 
@@ -661,7 +669,7 @@ Served under `/api`, JSON with bearer tokens.
 |---|---|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
 | Calls | `POST /intel/uploads`, `GET /intel/calls` (filters: type, lens, rep, grade, status, review, disputed, source, q; sort and order; paging), `GET/PATCH/DELETE /intel/calls/{id}`, `POST /intel/calls/{id}/reprocess`, `GET /intel/calls/{id}/audio` (signed URL), `PUT /intel/calls/{id}/items/{key}/override` (optional `rule` for future calls), `POST /intel/calls/{id}/transcript` (fix a line: text, role, split, insert, delete) |
-| Done for you | `POST /intel/actions/refresh`, `GET /intel/actions/summary`, `POST /intel/actions/{id}/perform` (optional edited text and number), `POST /intel/actions/{id}/dismiss`, `PUT /intel/actions/autopilot`, `POST /intel/morning/test`, `PUT /intel/reps/{id}/phone`; public: `GET /public/coach/{token}`, `POST /public/coach/{token}/listened` (signed, expiring link) |
+| Done for you | `POST /intel/actions/refresh`, `GET /intel/actions/summary`, `POST /intel/actions/{id}/perform` (optional edited text and number), `POST /intel/actions/{id}/dismiss`, `PUT /intel/actions/autopilot`, `POST /intel/morning/test`, `PUT /intel/reps/{id}/phone`, `GET/DELETE /intel/outbox`, `POST /intel/outbox/reply` (practice mode); public: `GET /public/coach/{token}`, `POST /public/coach/{token}/listened` (signed, expiring link) |
 | Scoring rules | `GET /intel/rules` (with how many calls a re-grade covers and its cost), `PATCH/DELETE /intel/rules/{id}`, `POST /intel/rules/rescore` |
 | Insights | `GET /intel/overview`, `GET /intel/reps`, `GET /intel/reps/{id}`, `GET /intel/pipeline`, `PATCH /intel/leads/{id}` |
 | Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus, AI agreement score; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
@@ -833,7 +841,7 @@ a newer build is live.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Backend (`app/tests`) | 363 | See below |
+| Backend (`app/tests`) | 366 | See below |
 | Voice pipeline (`pipecat/tests`) | 25 | μ-law codec against a reference, endpointing, turn serialisation |
 | Browser (`dashboard/e2e`) | 24 | v2 owner views, v1→v2 links, v1 review flow, sign-in |
 
@@ -1004,6 +1012,7 @@ app/                         FastAPI service
       actions.py             done for you: drafts, sending, autopilot
       morning.py             the morning text and SMS replies
       phones.py              phone numbers
+      outbox.py              every text goes through here; practice mode keeps it in the app
       pipeline.py            one call end to end
       insights.py            overview, reps, training aggregates
       brief.py               v2 owner views: verdicts, actions, coaching, plain names

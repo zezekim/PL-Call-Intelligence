@@ -1,6 +1,6 @@
 """SQLAlchemy models. Import order matters for relationship resolution."""
 
-from callsentry.models.action import OwnerAction, SmsOptOut
+from callsentry.models.action import OutboxMessage, OwnerAction, SmsOptOut
 from callsentry.models.appointment import Appointment, AppointmentStatus
 from callsentry.models.business import Business
 from callsentry.models.call import Call, CallOutcome, CallSource, ProcessingStatus, Sentiment
@@ -19,6 +19,7 @@ from callsentry.models.platform_setting import PlatformSetting
 from callsentry.models.user import User, UserRole
 
 __all__ = [
+    "OutboxMessage",
     "OwnerAction",
     "SmsOptOut",
     "Appointment",
