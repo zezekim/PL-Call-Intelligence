@@ -43,6 +43,12 @@ def test_number_said_on_the_call_wins_over_caller_id():
 @pytest.mark.parametrize(("price", "yearly"), [
     ("$49 a month", 588), ("$49/mo", 588), ("$120 per quarter", 480),
     ("$540 a year", 540), ("$350 one-time", 350), ("about two hundred", None), (None, None),
+    ("$99 initial, then $45/month", 639),
+    # A real quote from the sample calls: $649 once, then $59 a month.
+    ("$649 initial service; $59 per month for the ongoing plan, or approximately $638 for a "
+     "year of the plan when paid upfront at the quoted discount. The rep quoted about $1,280 "
+     "total for the annual plan plus the initial service.", 1357),
+    ("$649 for the mice treatment, and the plan is monthly", 649),
 ])
 def test_quotes_are_valued_over_a_year(price, yearly):
     assert brief.yearly_value(price) == yearly

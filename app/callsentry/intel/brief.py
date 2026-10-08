@@ -608,23 +608,38 @@ def quoted_value(price: str | None) -> float | None:
     return float(match.group(1).replace(",", "")) if match else None
 
 
-_MONTHLY = re.compile(r"(/\s*mo\b|\bmonth|\bmonthly|\bper mo\b)", re.I)
-_QUARTERLY = re.compile(r"\bquarter", re.I)
-_YEARLY = re.compile(r"(/\s*yr\b|\byear|\bannual)", re.I)
+_MONTHLY = re.compile(r"^\s*(/\s*mo\b|a month|per month|monthly|each month|every month|/month|"
+                      r"per mo\b|a mo\b)", re.I)
+_QUARTERLY = re.compile(r"^\s*(/\s*q(tr)?\b|a quarter|per quarter|quarterly|each quarter|"
+                        r"every quarter|per visit quarterly)", re.I)
+_YEARLY = re.compile(r"^\s*(/\s*yr\b|a year|per year|yearly|annually|for a year|for the year|"
+                     r"each year|every year)", re.I)
+_PER_YEAR = ((_MONTHLY, 12), (_QUARTERLY, 4), (_YEARLY, 1))
 
 
 def yearly_value(price: str | None) -> float | None:
-    """What a quote is worth over a year, so "$49 a month" and "$540 a year"
-    can be added up. A price with no period counts once."""
-    value = quoted_value(price)
-    if value is None:
+    """What a quote is worth over its first year, so quotes can be added up.
+
+    A quote is often two prices: "$649 initial service; $59 per month for the
+    plan". Each amount is read with the words right after it, so that one is
+    $649 once plus $59 x 12 = $1,357, not $649 a month. The first one-off
+    price and the first recurring price count; later amounts are usually the
+    same plan said another way (a yearly total, a discount).
+    """
+    one_off: float | None = None
+    recurring: float | None = None
+    for match in _MONEY.finditer(price or ""):
+        amount = float(match.group(1).replace(",", ""))
+        after = (price or "")[match.end():match.end() + 24]
+        per_year = next((n for pattern, n in _PER_YEAR if pattern.search(after)), None)
+        if per_year is None:
+            if one_off is None:
+                one_off = amount
+        elif recurring is None:
+            recurring = amount * per_year
+    if one_off is None and recurring is None:
         return None
-    text = price or ""
-    if _MONTHLY.search(text):
-        return value * 12
-    if _QUARTERLY.search(text) and not _YEARLY.search(text):
-        return value * 4
-    return value
+    return (one_off or 0) + (recurring or 0)
 
 
 def money(amount: float) -> str:
