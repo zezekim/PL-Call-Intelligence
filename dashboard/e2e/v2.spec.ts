@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { cleanPests } from "../lib/v2";
-import { CALL_ID, LEAD_ID, REP_ID, mockApi } from "./v2-fixtures";
+import { CALL_ID, LEAD_ID, REP_ID, callsPage, mockApi } from "./v2-fixtures";
 
 /*
  * The v2 owner screens against made-up data: no server and no real calls.
@@ -198,7 +198,7 @@ test("All calls follows the period picker and the filters linked from other page
   await mockApi(page, {
     "GET /intel/calls$": async (route) => {
       asked.push(new URL(route.request().url()).searchParams);
-      await route.fallback();
+      await route.fulfill({ json: callsPage });
     },
   });
   await page.goto(`/v2/calls?status=failed&rep=${REP_ID}&who=Dana%20Ruiz`);
