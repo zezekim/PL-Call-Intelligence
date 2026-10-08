@@ -706,7 +706,7 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
     now = datetime.now(UTC)
     rows = (
         await session.execute(
-            select(Lead, Rep.name, CallAnalysis.triage, Call.source)
+            select(Lead, Rep.name, CallAnalysis.triage, Call.source, Call.caller_number)
             .outerjoin(Rep, Rep.id == Lead.rep_id)
             .outerjoin(Call, Call.id == Lead.last_call_id)
             .outerjoin(CallAnalysis, CallAnalysis.call_id == Lead.last_call_id)
@@ -715,7 +715,7 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
     ).all()
     open_: list[dict[str, Any]] = []
     closed: list[dict[str, Any]] = []
-    for lead, rep_name, triage, source in rows:
+    for lead, rep_name, triage, source, caller_number in rows:
         triage = triage or {}
         booked = (
             source == "twilio"
@@ -735,7 +735,9 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
             "pests": list(lead.pests or []),
             "rep": rep_name,
             "rep_id": str(lead.rep_id) if lead.rep_id else None,
-            "phone": lead.phone,
+            # Leads made before numbers were kept fall back to their latest call.
+            "phone": lead.phone or phones.normalize(triage.get("customer_phone")) or (
+                phones.normalize(caller_number) if source == "twilio" else None),
             "appointment": (triage.get("appointment") or {}).get("when") or None,
             "last_call_id": str(lead.last_call_id) if lead.last_call_id else None,
             "last_contact_at": lead.last_contact_at.isoformat() if lead.last_contact_at else None,

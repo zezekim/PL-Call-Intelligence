@@ -153,7 +153,8 @@ def opening_line(ctx: dict[str, Any], business: str) -> str:
 def rep_text(ctx: dict[str, Any], business: str, title: str, why: str) -> str:
     customer = ctx.get("customer") or "the customer"
     number = phones.pretty(ctx.get("phone"))
-    reach = f" at {number}" if number else ""
+    # Without a number, the rep still has the call (and the account) to go on.
+    reach = f" at {number}" if number else " (their details are on the call in the app)"
     task = ctx.get("promise") or f"call {customer} back today"
     task = task[:1].lower() + task[1:]
     return (f"Hi {_first(ctx.get('rep')) or 'there'}, please {task}{reach}. {why} "

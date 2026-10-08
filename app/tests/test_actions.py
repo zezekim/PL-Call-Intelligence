@@ -262,3 +262,9 @@ def test_the_owner_needs_no_number_in_practice_mode():
     assert morning.owner_number(Business(practice_mode=False)) is None
     assert morning.owner_number(Business(owner_phone="+15559990000", practice_mode=True)) == (
         "+15559990000")
+
+
+def test_rep_text_without_a_customer_number_points_to_the_call():
+    ctx = {**_item()["context"], "phone": None}
+    body = actions.rep_text(ctx, "ABC Pest", "Call Sarah back", "")
+    assert "please call Sarah Jones back today (their details are on the call in the app)." in body
