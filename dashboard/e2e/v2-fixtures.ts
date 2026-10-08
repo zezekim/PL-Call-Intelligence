@@ -29,7 +29,7 @@ export const brief = {
   headline: {
     status: "bad",
     title: "Customer problems are often not fixed on the call.",
-    detail: "Start with: try to win back a customer who cancelled.",
+    detail: "Most urgent today: try to win back a customer who cancelled.",
   },
   cards: [
     { key: "sales", label: "New customers", question: "Are new customers saying yes?", metric_label: "Said yes", value: 54, count: 7, of: 13, goal: "Goal: at least 5 out of 10 say yes", status: "good", target: 50, change: null, detail: "7 said yes · 5 still deciding · 1 said no", why: "5 people are still deciding. Call them back.", action: { label: "See who to call back", href: "/v2/pipeline" } },
@@ -167,6 +167,7 @@ export const callDetail = {
     scorecard_name: "Sales",
     score: 6,
     score_max: 17,
+    green_at: 14,
     grade: "below",
     evidence_verified_pct: 100,
     triage: {

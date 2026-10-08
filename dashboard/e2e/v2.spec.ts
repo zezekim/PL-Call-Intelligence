@@ -104,13 +104,15 @@ test("a broken call link explains itself and offers a way back", async ({ page }
   await expect(page).toHaveURL(/\/v2\/calls$/);
 });
 
-test("a team member's page shows the three answers", async ({ page }) => {
+test("a team member's page says what to teach and what they do well", async ({ page }) => {
   await mockApi(page);
   await page.goto(`/v2/reps/${REP_ID}`);
   await expect(page.getByRole("heading", { name: "Dana", level: 1 })).toBeVisible();
-  for (const heading of ["Good at", "Needs work on", "What to teach"]) {
+  for (const heading of ["Teach next", "Good at"]) {
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
+  await expect(page.getByText("Next time, say")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Listen together/ })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/\bunknown\b/i);
 });
 
@@ -189,4 +191,27 @@ test("light by default, even on a device set to dark; Dark and Automatic on requ
   await page.emulateMedia({ colorScheme: "light" });
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+
+test("All calls follows the period picker and the filters linked from other pages", async ({ page }) => {
+  const asked: URLSearchParams[] = [];
+  await mockApi(page, {
+    "GET /intel/calls$": async (route) => {
+      asked.push(new URL(route.request().url()).searchParams);
+      await route.fallback();
+    },
+  });
+  await page.goto(`/v2/calls?status=failed&rep=${REP_ID}&who=Dana%20Ruiz`);
+  await expect(page.getByRole("tab", { name: "Could not read" })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => asked.at(-1)?.get("rep_id")).toBe(REP_ID);
+  expect(asked.at(-1)?.get("status")).toBe("failed");
+
+  await page.getByRole("tab", { name: "7D" }).click();
+  await expect.poll(() => asked.at(-1)?.get("days")).toBe("7");
+
+  await page.getByRole("button", { name: "Show everyone's calls" }).click();
+  await expect.poll(() => asked.at(-1)?.get("rep_id") ?? null).toBe(null);
+  await page.getByRole("tab", { name: "All calls" }).last().click();
+  await expect.poll(() => asked.at(-1)?.get("status") ?? null).toBe(null);
+  await expect(page.getByRole("tab", { name: "Could not read" })).toHaveCount(0);
 });

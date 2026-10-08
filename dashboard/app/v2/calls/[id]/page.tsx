@@ -271,11 +271,10 @@ function CallActions({ call, onChanged }: { call: CallDetail; onChanged: () => P
   );
 }
 
-/** Steps short of Green on this call's scorecard (Green is 11 of 12, or 14 of 17). */
+/** Steps short of Green on this call's scorecard, from its own cut-off. */
 function greenAt(a: Analysis): number | null {
-  if (!a.score_max || a.score === null) return null;
-  const green = a.score_max === 17 ? 14 : a.score_max - 1;
-  return Math.max(0, green - a.score);
+  if (!a.green_at || a.score === null) return null;
+  return Math.max(0, a.green_at - a.score);
 }
 
 function Moment({
@@ -402,6 +401,7 @@ function Scorecard({
         </>
       )}
 
+      {done.length > 0 && (
       <button
         className="mt-4 flex w-full items-center justify-between text-left text-[13px] font-semibold text-good"
         onClick={() => setShowDone((s) => !s)}
@@ -410,6 +410,7 @@ function Scorecard({
         {showDone ? `Done (${done.length})` : `Show the ${done.length} step${done.length === 1 ? "" : "s"} done`}
         <ChevronIcon className={`h-4 w-4 text-faint transition-transform ${showDone ? "rotate-90" : ""}`} />
       </button>
+      )}
       {showDone && (
         <ul className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl bg-panel">
           {done.map((item) => (

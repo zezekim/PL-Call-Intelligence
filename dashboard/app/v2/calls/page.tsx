@@ -10,7 +10,7 @@ import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import type { Status } from "@/lib/v2";
 import { personName } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { ChevronIcon, SearchIcon } from "@/components/icons";
+import { ChevronIcon, CrossIcon, SearchIcon } from "@/components/icons";
 import { Card, Empty, Spinner } from "@/components/ui";
 import { ListSkeleton, PageError, StatusPill } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
@@ -22,6 +22,8 @@ const FILTERS = [
   { key: "disputed", label: "Need your decision" },
   { key: "review", label: "May be the wrong type" },
 ];
+// Linked from Today's footer; only offered while it is the one being shown.
+const FAILED = { key: "failed", label: "Could not read" };
 const OUTCOME_STATUS: Record<string, Status> = { good: "good", warn: "watch", bad: "bad", none: "none" };
 // Pages loaded with "Show more", kept per search so Back returns to the same list.
 const extraPages = new Map<string, CallRow[]>();
@@ -40,7 +42,7 @@ function Calls() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const { refreshKey } = useCalls();
+  const { refreshKey, query } = useCalls();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const typed = useRef(false);
   useEffect(() => {
@@ -53,10 +55,20 @@ function Calls() {
     else next.delete(key);
     router.replace(`${pathname}${next.toString() ? `?${next}` : ""}`);
   };
-  const filter = params.get("grade") === "below" ? "below" : params.get("disputed") ? "disputed" : params.get("review") ? "review" : "";
+  const filter =
+    params.get("grade") === "below"
+      ? "below"
+      : params.get("disputed")
+        ? "disputed"
+        : params.get("review")
+          ? "review"
+          : params.get("status") === "failed"
+            ? "failed"
+            : "";
+  const filters = filter === "failed" ? [...FILTERS, FAILED] : FILTERS;
   const setFilter = (key: string) => {
     const next = new URLSearchParams(params.toString());
-    ["grade", "disputed", "review"].forEach((k) => next.delete(k));
+    ["grade", "disputed", "review", "status"].forEach((k) => next.delete(k));
     if (key === "below") next.set("grade", "below");
     if (key === "disputed") next.set("disputed", "1");
     if (key === "review") next.set("review", "1");
@@ -66,12 +78,14 @@ function Calls() {
   const q = new URLSearchParams();
   if (params.get("q")) q.set("q", params.get("q")!);
   if (params.get("type")) q.set("call_type", params.get("type")!);
+  if (params.get("rep")) q.set("rep_id", params.get("rep")!);
   if (params.get("grade")) q.set("grade", params.get("grade")!);
   if (params.get("status")) q.set("status", params.get("status")!);
   if (params.get("disputed")) q.set("disputed", "true");
   if (params.get("review")) q.set("review", "true");
   q.set("limit", String(PAGE));
-  const qs = q.toString();
+  // The period picker above applies here as on every other tab.
+  const qs = query(`/intel/calls?${q}`).split("?")[1];
 
   // Results follow the typing, a moment after it pauses.
   useEffect(() => {
@@ -160,7 +174,22 @@ function Calls() {
         </select>
       </div>
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Show">
-        {FILTERS.map((f) => (
+        {params.get("rep") && (
+          <button
+            onClick={() => {
+              const next = new URLSearchParams(params.toString());
+              next.delete("rep");
+              next.delete("who");
+              router.replace(`${pathname}${next.toString() ? `?${next}` : ""}`);
+            }}
+            aria-label="Show everyone's calls"
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 text-[13px] font-medium text-canvas"
+          >
+            Only {params.get("who") || "one person"}
+            <CrossIcon className="h-2.5 w-2.5" />
+          </button>
+        )}
+        {filters.map((f) => (
           <button
             key={f.key}
             role="tab"

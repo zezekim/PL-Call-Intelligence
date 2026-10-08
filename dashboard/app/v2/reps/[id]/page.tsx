@@ -70,7 +70,44 @@ export default function RepPage() {
         </div>
       </Card>
 
-      <div className="grid gap-4 min-[1180px]:grid-cols-3">
+      {/* One step to teach, why, and the words to use: the same shape as Today. */}
+      <div className="grid items-start gap-4 min-[1180px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <Card className="p-5">
+          <Heading tone="bad" title="Teach next" />
+          {rep.focus ? (
+            <div className="mt-3">
+              <p className="text-[20px] font-semibold leading-tight tracking-title">{rep.focus.plain}</p>
+              <p className="mt-0.5 text-[14px] text-ink/80">{rep.focus.meaning}</p>
+              <p className="mt-1 text-[14px] font-semibold text-bad">
+                Skipped on {rep.focus.missed} of {rep.focus.of} calls
+              </p>
+              <div className="mt-3 max-w-sm">
+                <Meter value={rep.focus.hit_rate} target={80} status={rateStatus(rep.focus.hit_rate)} label="Done rate" />
+              </div>
+              <p className="mt-1.5 text-[12px] text-muted">Goal: do it on 8 out of 10 calls.</p>
+              {rep.coach && (
+                <div className="mt-4 rounded-2xl bg-panel p-4">
+                  {rep.coach.what_happened && (
+                    <p className="text-[14px] leading-relaxed text-ink/80">{rep.coach.what_happened}</p>
+                  )}
+                  <p className="mt-2 text-[12px] font-medium text-muted">Next time, say</p>
+                  <p className="mt-1 text-[15px] leading-relaxed">“{rep.coach.try_saying}”</p>
+                  <Link
+                    href={`/v2/calls/${rep.coach.call_id}${rep.coach.start !== null ? `?t=${Math.floor(rep.coach.start)}` : ""}`}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
+                  >
+                    <PlayIcon className="h-3 w-3" />
+                    Listen together: call with {personName(rep.coach.customer) ?? "a customer"}
+                    {rep.coach.start !== null && ` at ${clock(rep.coach.start)}`}
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-[14px] text-muted">Nothing stands out to teach right now.</p>
+          )}
+        </Card>
+
         <Card className="p-5">
           <Heading tone="good" title="Good at" />
           {rep.strengths.length ? (
@@ -99,47 +136,6 @@ export default function RepPage() {
           )}
         </Card>
 
-        <Card className="p-5">
-          <Heading tone="bad" title="Needs work on" />
-          {rep.focus ? (
-            <div className="mt-3">
-              <p className="text-[20px] font-semibold leading-tight tracking-title">{rep.focus.plain}</p>
-              <p className="mt-0.5 text-[14px] text-ink/80">{rep.focus.meaning}</p>
-              <p className="mt-1 text-[14px] font-semibold text-bad">
-                Skipped on {rep.focus.missed} of {rep.focus.of} calls
-              </p>
-              <div className="mt-3">
-                <Meter value={rep.focus.hit_rate} target={80} status={rateStatus(rep.focus.hit_rate)} label="Done rate" />
-              </div>
-              <p className="mt-2 text-[12px] text-muted">Goal: do it on 8 out of 10 calls.</p>
-            </div>
-          ) : (
-            <p className="mt-3 text-[14px] text-muted">Nothing stands out to teach right now.</p>
-          )}
-        </Card>
-
-        <Card className="p-5">
-          <Heading tone="accent" title="What to teach" />
-          {rep.coach ? (
-            <>
-              <p className="mt-3 text-[14px] leading-relaxed text-ink/80">{rep.coach.what_happened}</p>
-              <div className="mt-3 rounded-2xl bg-accent-soft p-4">
-                <p className="text-[12px] font-medium text-subtle">Next time, say</p>
-                <p className="mt-1 text-[15px] leading-relaxed">“{rep.coach.try_saying}”</p>
-              </div>
-              <Link
-                href={`/v2/calls/${rep.coach.call_id}${rep.coach.start !== null ? `?t=${Math.floor(rep.coach.start)}` : ""}`}
-                className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
-              >
-                <PlayIcon className="h-3 w-3" />
-                Listen together: call with {personName(rep.coach.customer) ?? "a customer"}
-                {rep.coach.start !== null && ` at ${clock(rep.coach.start)}`}
-              </Link>
-            </>
-          ) : (
-            <p className="mt-3 text-[14px] text-muted">Nothing recorded for this step yet.</p>
-          )}
-        </Card>
       </div>
 
       <RecentCalls rep={rep} />
@@ -158,9 +154,9 @@ function Fact({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-function Heading({ tone, title }: { tone: "good" | "bad" | "accent"; title: string }) {
-  const cls = { good: "bg-good", bad: "bg-bad", accent: "bg-accent" }[tone];
-  const Icon = tone === "good" ? CheckIcon : tone === "bad" ? CrossIcon : PlayIcon;
+function Heading({ tone, title }: { tone: "good" | "bad"; title: string }) {
+  const cls = { good: "bg-good", bad: "bg-bad" }[tone];
+  const Icon = tone === "good" ? CheckIcon : CrossIcon;
   return (
     <h2 className="flex items-center gap-2 text-[17px] font-semibold tracking-title">
       <span className={`flex h-5 w-5 items-center justify-center rounded-full text-white ${cls}`}>
@@ -195,7 +191,7 @@ function RecentCalls({ rep }: { rep: RepBrief }) {
       <div className="mb-3 flex items-baseline justify-between px-1">
         <h2 className="text-[19px] font-semibold tracking-title">Recent calls</h2>
         {rep.calls_list.length > calls.length && (
-          <Link href={`/v2/calls?q=${encodeURIComponent(rep.name)}`} className="text-[13px] font-medium text-link hover:underline">
+          <Link href={`/v2/calls?rep=${rep.id}&who=${encodeURIComponent(rep.name)}`} className="text-[13px] font-medium text-link hover:underline">
             See all {rep.calls_list.length}
           </Link>
         )}

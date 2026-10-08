@@ -261,6 +261,8 @@ export interface Analysis {
   scorecard_name: string | null;
   score: number | null;
   score_max: number | null;
+  // Score that counts as Green on this call's scorecard.
+  green_at?: number | null;
   grade: Grade | null;
   evidence_verified_pct: number | null;
   triage: Triage;

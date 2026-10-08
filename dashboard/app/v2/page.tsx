@@ -230,12 +230,12 @@ function CoachingFocus({ brief, quality }: { brief: Brief; quality: PerformanceC
           <p className="text-[14px] text-muted">We need a few more calls before we can say.</p>
         )}
 
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-[13px] text-muted">
-          <span>
-            Overall, calls follow about {Math.round((quality.value ?? 0) / 10)} of 10 steps
-          </span>
-          <StatusPill status={quality.status} />
-        </div>
+        {quality.value !== null && (
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-[13px] text-muted">
+            <span>Overall, calls follow about {Math.round(quality.value / 10)} of 10 steps</span>
+            <StatusPill status={quality.status} />
+          </div>
+        )}
         {c?.strength && (
           <p className="mt-2 flex items-start gap-2 text-[13px] text-muted">
             <CheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-good" />
