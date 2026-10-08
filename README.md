@@ -79,7 +79,7 @@ happening, whether it's good or bad, what matters most, and what to do next.
 | Say what to do next | "Do these first" ranks open work across the business: cancellations nobody tried to save, overdue call-backs, unfixed problems, promises made. Each links to where it gets done | `brief._todo` |
 | Call page: recording and transcript together | One panel: the player is pinned above the transcript. The line being spoken is highlighted and kept in view, and any line, marker or quote plays from that moment. Keyboard: space, ← / → | `components/v2/listen.tsx` |
 | Pipeline "next step" must be an owner action, none for Won | Call back lists people, not stages: "Call Jordan back", with urgency (*Late by 2 days*, *Call today*, *Waiting a long time*) and what was promised. Decided leads have no next step and fold away | `brief.lead_action`, `app/v2/pipeline/page.tsx` |
-| Rep pages: doing well / improve / coach on | Each person's page answers three questions in three cards: **Good at**, **Needs work on** (how often it's skipped), and **What to teach**, with the exact words and a real moment from their own calls to listen to together | `brief.rep_brief`, `app/v2/reps/[id]/page.tsx` |
+| Rep pages: doing well / improve / coach on | Each person's page answers it in two cards: **Teach next** (the step, how often it's skipped, the exact words, and a real moment from their own calls to listen to together) and **Good at** | `brief.rep_brief`, `app/v2/reps/[id]/page.tsx` |
 | Free to diverge from the existing UI | v2 is a new set of routes under `/v2`; v1 stays intact for comparison, one click away | `app/v2/`, `app/calls/layout.tsx` |
 
 Beyond the feedback:
@@ -100,7 +100,28 @@ Beyond the feedback:
 - **v2 is the default.** Sign-in, the bare address and the sidebar's Calls link
   all open v2.
 
-#### A.2 Build phases
+#### A.2 After the v2 review
+
+The v2 review asked for three more things: every button doing exactly what it
+says, scoring and coaching that hold up on every kind of call, and less to
+interpret. An audit of each v2 action and the scoring pipeline per call type
+found and fixed:
+
+| Found | Fixed |
+|---|---|
+| The 7D / 30D picker on **All calls** didn't filter the list, so Today's counts and the lists they link to could disagree | `/intel/calls` takes `days`; every v2 tab follows the picker |
+| "Could not read" on Today opened a filtered list with no filter shown, and *All calls* didn't clear it | It has its own chip, and clears like the others |
+| A person's "See all" searched their name as text: it picked up calls that mentioned them and missed calls assigned by hand | It filters by that person, with a chip to clear |
+| "N more steps to be good" was worked out from the scorecard's size | The API returns each scorecard's Green cut-off |
+| A call retyped by a manager was graded on details triage never filled in for that type (a call retyped to sales got all four objection points free) | The manager's type goes to triage up front |
+| A voicemail could be graded if it leaned to a call type | Anything triage says can't be scored (voicemail, wrong number) is never graded |
+| A manager's ruling followed a call to another scorecard, where the same step name means something else | Each ruling records its scorecard and only applies there |
+| Coaching pooled same-named steps across scorecards: on a cancellation, *Present Solution* is a save offer | Those steps are counted and coached apart (*Make a save offer*) |
+| A coaching tip could come from a call where the step was done; undecided AI disagreements counted as misses | Tips come only from calls where the step was missed; disputed steps count once a manager decides them |
+| *Following the call steps* was judged on a single call, and counted the AI receptionist in the team's numbers | Same 3-call guard as the other areas; the receptionist is kept apart, as it already was in coaching |
+| A person's page had two cards about one step | One **Teach next** card, the same shape as Today's coaching |
+
+#### A.3 Build phases
 
 | Phase | Delivered |
 |---|---|
@@ -114,7 +135,7 @@ Beyond the feedback:
 | 8. AI assistance | Suggested opening lines; placeholder names and pest phrases cleaned |
 | 9. Tests and release | Browser tests for every v2 page on made-up data, with axe accessibility checks in light and dark; v1 banner; v2 as the default |
 
-#### A.3 Key decisions
+#### A.4 Key decisions
 
 | Decision | Why |
 |---|---|
@@ -260,7 +281,7 @@ good or bad, what matters most, what to do next* within a few seconds.
 | **Today** (`/v2`) | A one-sentence **verdict**: what matters most, where to start, what to teach. Three **area cards**: New customers, Customers who want to cancel, Customers with a problem. Each shows a status, the number against the goal, the change since the previous period, why, and one link to act. **Do these first**: the top three actions, the rest folded. **What to teach this week**: the step that would help the most calls, the words to teach, a link to hear it on a real call, and who to start with. A footer gives calls checked, calls still processing or unreadable, calls needing a decision, and the **AI agreement score** (see below) |
 | **Call back** (`/v2/pipeline`) | How many need a call now, how many are still deciding (and their value), how many said yes. Then each person to call, most urgent first. Each row shows urgency, what we promised, who they spoke to, the pests and the price. A **suggested opening line** has a Copy button. **Listen**, **Said no** and **Said yes** buttons update at once, with Undo. Decided leads fold under *Already decided*, with *Not decided after all* to reopen one. The list fills itself from sales calls and receptionist bookings |
 | **Team** (`/v2/reps`) | Everyone, whoever needs help most first, with their share of call steps, trend, the one thing to teach and one strength. People with fewer than 3 calls are listed last and marked *Too few calls to be sure* |
-| **Person** (`/v2/reps/{id}`) | A sentence verdict, then **Good at** (with an example to hear), **Needs work on** (how often it's skipped against an 8-in-10 goal) and **What to teach** (what happened, what to say next time, a link to listen together). Below: recent calls, and every step folded |
+| **Person** (`/v2/reps/{id}`) | A sentence verdict, then **Teach next**: the step, how often it's skipped against an 8-in-10 goal, what happened, what to say next time, and a link to listen together. Beside it, **Good at** with an example to hear. Below: recent calls (with a link to all of that person's calls), and every step folded |
 | **All calls** (`/v2/calls`) | Search that follows typing (customer, team member, or words said), filter by kind of call, quick filters (*Need work*, *Need your decision*, *May be the wrong type*), paging that survives going back |
 | **Call** (`/v2/calls/{id}`) | The verdict: kind of call and outcome, a one-sentence summary (*More* for the rest), score and grade, one thing done well and one to do better, each playable. The **recording and transcript** sit in one panel. **Coaching**: the first tip with "try saying", the rest folded. **The call steps**: skipped first, one line each, with the reason, the quote and *Not right? Mark it as done* on tap; done steps folded. Promises made, details, and a ••• menu: check again, change the kind of call, print, open in v1, delete |
 
@@ -752,7 +773,7 @@ a newer build is live.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Backend (`app/tests`) | 295 | See below |
+| Backend (`app/tests`) | 302 | See below |
 | Voice pipeline (`pipecat/tests`) | 25 | μ-law codec against a reference, endpointing, turn serialisation |
 | Browser (`dashboard/e2e`) | 24 | v2 owner views, v1→v2 links, v1 review flow, sign-in |
 
@@ -772,6 +793,9 @@ a newer build is live.
   - lead actions and urgency, with no action once decided
   - placeholder names treated as no name
   - the AI agreement score counts only the AI's own verdicts on corrected calls
+- scoring across call types: voicemails never graded, a manager's call type
+  reaches triage, rulings stay on their own scorecard, cancellation steps
+  coached apart, tips only from calls where the step was missed
 
 **Browser tests (v2)** run on made-up data, never real calls:
 - Today shows the verdict, three areas and the top three actions
@@ -781,7 +805,9 @@ a newer build is live.
 - the call page folds detail behind one tap, and its ••• menu works by
   keyboard
 - a failed delete reports itself; a broken link explains itself
-- a person's page answers the three questions
+- a person's page says what to teach, with the words and a moment to hear
+- All calls follows the period picker and the filters linked from Today and
+  Team, and each one clears
 - search follows typing and can be cleared
 - nothing spills sideways at phone width
 - pest names are cleaned; the opening line is built correctly
@@ -849,6 +875,10 @@ These are the coaching priorities Today (v2) and the Overview (v1) surface.
   before calling is worthwhile.
 - **v2's goals are starting points** for a typical pest control office, not
   this company's own targets, until someone changes them in Settings.
+- **Average scores depend a little on call mix.** Steps the manual awards
+  automatically (no objections on a sales call) count toward a person's
+  percentage, so someone taking more sales calls starts slightly higher.
+  Coaching and focus steps leave those points out.
 - **Single-tenant deployment.** The data model is multi-business, but
   onboarding a second business is done from the command line.
 
