@@ -19,6 +19,8 @@ export default function OverviewPage() {
   const { query, refreshKey } = useCalls();
   const { data, error, status, loading, reload } = useApi<Brief>(query("/intel/v2/brief"));
   const summary = useApi<ActionsSummary>("/intel/actions/summary");
+  // Done-for-you extras are optional: an older or partial answer leaves them out.
+  const actions = summary.data?.autopilot ? summary.data : null;
 
   useEffect(() => {
     if (refreshKey) void reload();
@@ -63,10 +65,10 @@ export default function OverviewPage() {
 
       <div className="grid items-start gap-8 min-[1180px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="space-y-4">
-          <DoToday items={data.todo} summary={summary.data} onChanged={refreshAll} />
-          <Autopilot summary={summary.data} />
+          <DoToday items={data.todo} summary={actions} onChanged={refreshAll} />
+          <Autopilot summary={actions} />
         </div>
-        <CoachingFocus brief={data} quality={quality} summary={summary.data} onChanged={refreshAll} />
+        <CoachingFocus brief={data} quality={quality} summary={actions} onChanged={refreshAll} />
       </div>
 
       <Footer brief={data} />
@@ -87,7 +89,7 @@ function Headline({ brief }: { brief: Brief }) {
         {money && (
           <p className="mt-1.5 max-w-3xl text-[16px] font-semibold leading-snug">
             {money}{" "}
-            <Link href="/v2/pipeline" className="whitespace-nowrap text-[14px] font-medium text-link hover:underline">
+            <Link href="/v2/pipeline" className="whitespace-nowrap text-[14px] font-medium text-link underline underline-offset-2">
               See who
             </Link>
           </p>
@@ -314,7 +316,7 @@ function Autopilot({ summary }: { summary: ActionsSummary | null }) {
       ) : (
         <>Want these done without asking? </>
       )}
-      <Link href="/settings#autopilot" className="text-link hover:underline">
+      <Link href="/settings#autopilot" className="text-link underline underline-offset-2">
         {on.length ? "Change" : "Turn on autopilot"}
       </Link>
     </p>
@@ -451,7 +453,7 @@ function CoachingTexts({
         !d?.sent && (
           <p className="mt-2 text-[13px] text-muted">
             Add a mobile number on each person&apos;s page on{" "}
-            <Link href="/v2/reps" className="text-link hover:underline">
+            <Link href="/v2/reps" className="text-link underline underline-offset-2">
               Team
             </Link>{" "}
             to turn this on.

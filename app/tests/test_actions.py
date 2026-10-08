@@ -15,7 +15,6 @@ import pytest
 from callsentry.intel import actions, brief, morning, phones
 from callsentry.models import Business, Call, CallAnalysis, CallSource, OwnerAction
 
-
 # --- Phones and money --------------------------------------------------------------
 
 
@@ -51,8 +50,10 @@ def test_quotes_are_valued_over_a_year(price, yearly):
 
 def test_money_line_leads_with_what_is_slipping():
     line = brief.money_line({"open_yearly": 3000, "at_risk_yearly": 2100, "at_risk_count": 3})
-    assert line == "$2,100 a year in quotes is slipping: 3 customers waiting too long for a call back."
-    assert brief.money_line({"open_yearly": 540}) == "$540 a year in quotes is waiting on an answer."
+    assert line == ("$2,100 a year in quotes is slipping: "
+                    "3 customers waiting too long for a call back.")
+    assert brief.money_line({"open_yearly": 540}) == (
+        "$540 a year in quotes is waiting on an answer.")
     assert brief.money_line({}) is None
 
 

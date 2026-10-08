@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { cleanPests } from "../lib/v2";
-import { CALL_ID, LEAD_ID, REP_ID, callsPage, mockApi } from "./v2-fixtures";
+import { ACTION_ID, CALL_ID, LEAD_ID, REP_ID, callsPage, mockApi } from "./v2-fixtures";
 
 /*
  * The v2 owner screens against made-up data: no server and no real calls.
@@ -26,6 +26,26 @@ test("Today shows the verdict, three areas and the top three things to do", asyn
   await expect(page.getByText("Explain the plan").first()).toBeVisible();
   await expect(page.getByText(/Start with Dana/)).toBeVisible();
   await expect(page.getByText("Managers kept 95% of the AI's step marks (3 calls corrected)")).toBeVisible();
+});
+
+test("a to-do is ready to send, and the third send offers autopilot", async ({ page }) => {
+  const sent: unknown[] = [];
+  await mockApi(page, {
+    [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { id: ACTION_ID, kind: "text_customer", status: "done", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "", done_at: new Date().toISOString(), done_by: "owner", auto: false, error: null, reply_text: null, replied_at: null } });
+    },
+  });
+  await page.goto("/v2");
+  await expect(page.getByText("$588 a year")).toBeVisible();
+  await page.getByRole("button", { name: "Text Jordan" }).click();
+  const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
+  await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
+  await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);
+  await sheet.getByRole("button", { name: "Send text" }).click();
+  await expect(page.getByText(/sent 3 follow-up texts to customers yourself/)).toBeVisible();
+  // The text goes as written: no edited body, no typed number.
+  expect(sent).toEqual([{ body: null, phone: null }]);
 });
 
 test("a lead marked yes moves at once, and Undo puts it back", async ({ page }) => {

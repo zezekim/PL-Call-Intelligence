@@ -7,6 +7,8 @@ import type { Page, Route } from "@playwright/test";
 const now = Date.now();
 const ago = (days: number) => new Date(now - days * 864e5).toISOString();
 
+export const ACTION_ID = "a0000000-0000-4000-8000-000000000001";
+
 export const CALL_ID = "11111111-1111-4111-8111-111111111111";
 export const LEAD_ID = "22222222-2222-4222-8222-222222222222";
 export const REP_ID = "33333333-3333-4333-8333-333333333333";
@@ -39,7 +41,11 @@ export const brief = {
   ],
   todo: [
     { kind: "retention", priority: 100, title: "Try to win back a customer who cancelled", why: "They cancelled because they no longer need it.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(2) },
-    { kind: "sales", priority: 90, title: "Call Jordan Lee back", why: "Jordan Lee was given a price and hasn't decided yet.", cta: "", href: "/v2/pipeline", when: ago(3) },
+    {
+      key: "lead:l1:c1", kind: "sales", priority: 90, title: "Call Jordan Lee back", why: "Jordan Lee was given a price and hasn't decided yet.", cta: "", href: "/v2/pipeline", when: ago(3), value: 588,
+      actions: [{ id: ACTION_ID, kind: "text_customer", status: "proposed", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "Hi Jordan, it's Dana from ABC Pest Control. Following up on the $49 quote for the ants. Reply STOP to opt out.", done_at: null, done_by: null, auto: false, error: null, reply_text: null, replied_at: null }],
+      handled: null,
+    },
     { kind: "sales", priority: 89, title: "Call Sam Rivera back", why: "Sam Rivera was given a price.", cta: "", href: "/v2/pipeline", when: ago(6) },
     { kind: "service", priority: 70, title: "Check on Chris", why: "Their problem was not fixed on the call.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(4) },
     { kind: "follow_up", priority: 50, title: "Send the quote by email", why: "Promised to Robin Park.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(5) },
@@ -203,6 +209,15 @@ export const repBrief = {
 };
 
 /** Signs in with a made-up token and answers every API call from the data above. */
+export const actionsSummary = {
+  autopilot: { text_customer: false, remind_rep: false, coach_rep: false },
+  approvals: { text_customer: 2 },
+  coaching_waiting: [],
+  done_today: [],
+  replies: [],
+  daytime: true,
+};
+
 export async function mockApi(page: Page, overrides: Record<string, (route: Route) => unknown> = {}) {
   await page.addInitScript(() => {
     window.localStorage.setItem("pestlaunch.token", "e2e");
@@ -229,6 +244,8 @@ export async function mockApi(page: Page, overrides: Record<string, (route: Rout
     if (path.startsWith("/intel/calls/")) return json({ detail: "Input should be a valid UUID" }, path.includes("not-a-call") ? 422 : 404);
     if (method === "PATCH" && path.startsWith("/intel/leads/")) return json({ id: LEAD_ID, stage: "won" });
     if (path === "/intel/team") return json([]);
+    if (path === "/intel/actions/summary") return json(actionsSummary);
+    if (path === "/intel/actions/refresh") return json({ prepared: 1 });
     return json({});
   });
 }

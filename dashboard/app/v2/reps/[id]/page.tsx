@@ -196,7 +196,7 @@ function TextMe({ rep, onSaved }: { rep: RepBrief; onSaved: () => Promise<void> 
       ) : (
         <p className="mt-2">
           Texts go to <span className="font-medium">{rep.phone_pretty}</span>.{" "}
-          <button className="text-link hover:underline" onClick={() => setEditing(true)}>
+          <button className="text-link underline underline-offset-2" onClick={() => setEditing(true)}>
             Change
           </button>
         </p>
