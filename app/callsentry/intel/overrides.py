@@ -24,6 +24,10 @@ def apply(
         item["awarded"] = item["model_awarded"]
         item.pop("override", None)
         override = overrides.get(item.get("key", ""))
+        # A ruling made on another scorecard (the call was retyped since)
+        # judged different criteria under the same key.
+        if override and override.get("scorecard", scorecard_key) != scorecard_key:
+            override = None
         if override:
             item["status"] = override["status"]
             item["awarded"] = override["status"] == "met"

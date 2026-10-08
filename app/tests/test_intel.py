@@ -574,3 +574,59 @@ def test_upload_dates_reject_bad_clocks():
     assert _parse_when((now + timedelta(days=30)).isoformat()) is None
     assert _parse_when("1980-01-01T00:00:00+00:00") is None
     assert _parse_when("") is None
+
+
+def test_a_ruling_does_not_follow_the_call_to_another_scorecard():
+    from callsentry.intel import overrides
+
+    # Retention's "present_solution" is a save offer, not the sales pitch ruled on.
+    fresh = _items([(i.key, "missed") for i in RETENTION.items])
+    ruling = {"present_solution": {"status": "met", "scorecard": "sales"}}
+    out, score, _ = overrides.apply(fresh, ruling, "retention")
+    assert score == 0 and all("override" not in i for i in out)
+    out, score, _ = overrides.apply(fresh, ruling | {"present_solution": {
+        "status": "met", "scorecard": "retention"}}, "retention")
+    assert score == 1
+
+
+class _TriageLLM:
+    """Triage returns a fixed answer; scoring meets every step."""
+
+    def __init__(self, triage):
+        self.triage = triage
+        self.prompts: list[str] = []
+
+    async def analyse_json(self, system, user, schema, *, effort, model=None, **_):
+        from callsentry.services.llm import LLMResult
+
+        self.prompts.append(user)
+        if "call_type" in schema["properties"]:
+            out = dict(self.triage)
+        else:
+            keys = schema["properties"]["items"]["items"]["properties"]["key"]["enum"]
+            out = {"items": [{"key": k, "status": "met", "reason": "", "evidence": []}
+                             for k in keys],
+                   "coaching": [], "strengths": [], "overall_feedback": ""}
+        return out, LLMResult(text="", provider="x", tier="cloud", model="m")
+
+
+ROLES = {"0": REP, "1": CUSTOMER}
+
+
+async def test_a_voicemail_is_never_graded_whatever_type_it_leans_to(monkeypatch):
+    fake = _TriageLLM({"call_type": "sales", "call_type_confidence": 0.6,
+                       "not_scorable_reason": "voicemail", "sales": {"objections": []}})
+    monkeypatch.setattr(analyze, "get_llm", lambda: fake)
+    result = await analyze.analyse(_segments(), diarized=True, fixed_roles=ROLES)
+    assert result.call_type == "not_scorable"
+    assert result.score is None and result.scorecard_key is None
+
+
+async def test_a_managers_call_type_is_given_to_triage_up_front(monkeypatch):
+    fake = _TriageLLM({"call_type": "sales", "call_type_confidence": 1,
+                       "not_scorable_reason": "none", "sales": {"objections": []}})
+    monkeypatch.setattr(analyze, "get_llm", lambda: fake)
+    result = await analyze.analyse(_segments(), diarized=True, fixed_roles=ROLES,
+                                   forced_type="sales")
+    assert 'confirmed this is a sales call' in fake.prompts[0]
+    assert result.call_type == "sales" and result.scorecard_key == "sales"

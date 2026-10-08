@@ -89,10 +89,11 @@ PLAIN_STEPS: dict[str, tuple[str, str]] = {
     "investigate": ("Ask questions", "Ask what, where and when to understand the problem."),
     "summary_statement": ("Repeat it back", "Say their problem back in your own words."),
     "expectation_statement_2": ("Explain the plan",
-                                "Say you'll go over the service first, then the price."),
+                                "Before offering the fix, say what comes next."),
     "present_solution": ("Offer the fix", "Explain what you'll do and why it helps them."),
     "consensus": ("Check they agree", "Ask if it makes sense or if they have questions."),
-    "close": ("Ask to book", "Ask them to set a time, like morning or afternoon."),
+    "close": ("Ask for a yes",
+              "Ask them to book or agree the next step, like morning or afternoon."),
     "provide_conclusion": ("Confirm the details", "Repeat the date, time and address."),
     "thank_customer": ("Say thank you", "Thank them for calling."),
     "final_information": ("Leave the door open",
@@ -115,8 +116,35 @@ PLAIN_STEPS: dict[str, tuple[str, str]] = {
 }
 
 
-def plain_step(key: str, fallback: str = "") -> tuple[str, str]:
+# Steps the cancellation scorecard shares by name but judges differently: there
+# the "solution" is a save offer. They are counted and coached apart.
+RETENTION_PLAIN: dict[str, tuple[str, str]] = {
+    "investigate": ("Ask why they're leaving", "Ask open questions to find the real reason."),
+    "present_solution": ("Make a save offer",
+                         "Offer something that fixes their reason for leaving."),
+    "consensus": ("Check the offer works", "Ask if the offer works for them."),
+    "provide_conclusion": ("Say what happens next", "Confirm what was done and the next step."),
+}
+
+
+def plain_step(key: str, fallback: str = "", scorecard: str | None = None) -> tuple[str, str]:
+    if scorecard == "retention" and key in RETENTION_PLAIN:
+        return RETENTION_PLAIN[key]
     return PLAIN_STEPS.get(key, (fallback or key, ""))
+
+
+def _step_scope(row: Row, key: str) -> str | None:
+    """"retention" when this step means something else on this call's scorecard."""
+    retention = row.analysis.scorecard_key == "retention"
+    return "retention" if retention and key in RETENTION_PLAIN else None
+
+
+def _counts(item: dict[str, Any]) -> bool:
+    """A step that says something about the rep: not awarded by rule, and not one
+    the two models still disagree on with nobody having decided it."""
+    if item.get("override"):
+        return True
+    return not item.get("auto_awarded") and item.get("agreement") != "disputed"
 
 
 
@@ -347,7 +375,8 @@ def _service(rows: list[Row]) -> dict[str, Any]:
 
 
 def _quality(rows: list[Row]) -> dict[str, Any]:
-    scored = [r for r in rows if r.pct is not None]
+    # The team's call steps, as in its coaching: the AI receptionist is apart.
+    scored = [r for r in rows if r.pct is not None and r.call.source != "twilio"]
     avg = insights._avg([p for r in scored if (p := r.pct) is not None])
     meeting = sum(1 for r in scored if r.analysis.grade in ("gold", "green"))
     return {
@@ -358,7 +387,7 @@ def _quality(rows: list[Row]) -> dict[str, Any]:
         "value": avg,
         "count": meeting,
         "of": len(scored),
-        "status": TARGETS["call_quality"].status(avg),
+        "status": _judge("call_quality", avg, len(scored)),
         "target": TARGETS["call_quality"].good,
         "goal": goal_text("call_quality", "steps done"),
         "detail": (
@@ -389,6 +418,7 @@ class StepStat:
     key: str
     label: str
     quadrant: str
+    scope: str | None = None
     met: int = 0
     seen: int = 0
 
@@ -401,19 +431,34 @@ class StepStat:
         return self.seen - self.met
 
 
+def _step_id(row: Row, item: dict[str, Any]) -> str:
+    label = insights.step_label(item)
+    return f"{label} (cancellations)" if _step_scope(row, str(item.get("key") or "")) else label
+
+
 def step_stats(rows: list[Row]) -> dict[str, StepStat]:
-    """Hit rate per step, ignoring steps the manual awards automatically."""
+    """Hit rate per step, over the steps that say something about the rep."""
     stats: dict[str, StepStat] = {}
     for row in rows:
         for item in row.analysis.items or []:
-            if item.get("auto_awarded") and not item.get("override"):
+            if not _counts(item):
                 continue
             key = str(item.get("key") or "")
-            label = insights.step_label(item)
-            stat = stats.setdefault(label, StepStat(key, label, str(item.get("quadrant") or "")))
+            label = _step_id(row, item)
+            stat = stats.setdefault(
+                label, StepStat(key, label, str(item.get("quadrant") or ""), _step_scope(row, key))
+            )
             stat.seen += 1
             stat.met += 1 if item.get("awarded") else 0
     return stats
+
+
+def _missed_on(row: Row, step: StepStat) -> bool:
+    """This call is one where the step, as `step` means it, was missed."""
+    return any(
+        i.get("key") == step.key and not i.get("awarded") and _step_id(row, i) == step.label
+        for i in row.analysis.items or []
+    )
 
 
 def focus_step(stats: dict[str, StepStat]) -> StepStat | None:
@@ -424,11 +469,12 @@ def focus_step(stats: dict[str, StepStat]) -> StepStat | None:
 
 def coached_step(rows: list[Row], stats: dict[str, StepStat]) -> StepStat | None:
     """With too few calls to see a pattern, the step the latest call's coaching targets."""
-    by_key = {s.key: s for s in stats.values()}
     for row in sorted(rows, key=lambda r: r.when, reverse=True):
         for tip in (row.analysis.coaching or {}).get("coaching") or []:
             for key in tip.get("item_keys") or []:
-                stat = by_key.get(key)
+                stat = next(
+                    (s for s in stats.values() if s.key == key and _missed_on(row, s)), None
+                )
                 if stat and stat.missed:
                     return stat
     return None
@@ -453,7 +499,9 @@ def _tip_for(rows: list[Row], step: StepStat) -> dict[str, Any] | None:
     for row in rows:
         for tip in (row.analysis.coaching or {}).get("coaching") or []:
             keys = tip.get("item_keys") or []
-            if step.key in keys and tip.get("try_saying"):
+            # Only from a call where this step was really missed, on a
+            # scorecard where it means the same thing.
+            if step.key in keys and tip.get("try_saying") and _missed_on(row, step):
                 rank = (keys.index(step.key), len(keys), -row.when.timestamp())
                 candidates.append((*rank, row, tip))
     for _, _, _, row, tip in sorted(candidates, key=lambda c: c[:3]):
@@ -486,7 +534,7 @@ def _strength_example(rows: list[Row]) -> dict[str, Any] | None:
 
 
 def _stat_out(s: StepStat) -> dict[str, Any]:
-    plain, meaning = plain_step(s.key, s.label)
+    plain, meaning = plain_step(s.key, s.label, s.scope)
     return {"step": s.label, "plain": plain, "meaning": meaning, "key": s.key,
             "quadrant": s.quadrant, "met": s.met, "of": s.seen,
             "hit_rate": round(s.hit_rate, 1), "missed": s.missed}
@@ -504,7 +552,7 @@ def coaching(rows: list[Row]) -> dict[str, Any] | None:
     for row in scored:
         name = row.call.rep.name if row.call.rep else (row.analysis.rep_name or "")
         for item in row.analysis.items or []:
-            if insights.step_label(item) == focus.label and name:
+            if _step_id(row, item) == focus.label and _counts(item) and name:
                 by_rep[name].append(bool(item.get("awarded")))
     reps = sorted(
         ({"rep": k, "missed": v.count(False), "of": len(v)} for k, v in by_rep.items()),
@@ -778,7 +826,7 @@ def headline(
 
     detail: list[str] = []
     if todo:
-        detail.append(f"Start with: {todo[0]['title']}.")
+        detail.append(f"Most urgent today: {todo[0]['title']}.")
     if skipping:
         detail.append(f"This week, teach the team to “{coach['focus']['plain'].lower()}”.")
 
@@ -971,7 +1019,7 @@ async def rep_brief(
     stats = step_stats(scored)
     focus = focus_step(stats) or coached_step(scored, stats)
     team = await insights.load(session, business_id, days=days)
-    team_scored = [r for r in team if r.pct is not None]
+    team_scored = [r for r in team if r.pct is not None and r.call.source != "twilio"]
     team_avg = insights._avg([p for r in team_scored if (p := r.pct) is not None])
 
     # Steps by quadrant, for the detail view.

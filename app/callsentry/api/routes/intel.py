@@ -93,6 +93,7 @@ class AnalysisOut(BaseModel):
     scorecard_name: str | None
     score: int | None
     score_max: int | None
+    green_at: int | None = None
     grade: str | None
     evidence_verified_pct: float | None
     triage: dict[str, Any]
@@ -233,6 +234,7 @@ def _analysis_out(a: CallAnalysis) -> AnalysisOut:
         scorecard_name=scorecard.name if scorecard else None,
         score=a.score,
         score_max=a.score_max,
+        green_at=scorecard.green_at if scorecard else None,
         grade=a.grade,
         evidence_verified_pct=(
             float(a.evidence_verified_pct) if a.evidence_verified_pct is not None else None
@@ -362,6 +364,7 @@ async def list_calls(
     source: str | None = None,
     review: bool = False,
     disputed: bool = False,
+    days: Annotated[int | None, Query(ge=1)] = None,
     sort: str = "date",
     order: str = "desc",
     limit: Annotated[int, Query(le=200)] = 50,
@@ -398,6 +401,8 @@ async def list_calls(
         stmt = stmt.where(Call.grade == grade)
     if status_:
         stmt = stmt.where(Call.processing_status == status_)
+    if days:
+        stmt = stmt.where(_when() >= datetime.now(UTC) - timedelta(days=days))
     if q:
         pattern = f"%{q}%"
         if not review:
@@ -787,6 +792,9 @@ async def override_item(
             "note": payload.note.strip(),
             "by": user.email,
             "at": datetime.now(UTC).isoformat(),
+            # Step keys repeat across scorecards with different criteria, so a
+            # ruling only holds on the scorecard it was made against.
+            "scorecard": analysis.scorecard_key,
         }
     items, score, grade = overrides.apply(analysis.items or [], current, analysis.scorecard_key)
     analysis.overrides = current

@@ -108,7 +108,7 @@ def test_headline_gives_the_verdict_and_next_step_without_numbers():
         "are not fixed on the call."
     )
     assert result["detail"] == (
-        "Start with: Try to win back Dana. This week, teach the team to “say thank you”."
+        "Most urgent today: Try to win back Dana. This week, teach the team to “say thank you”."
     )
     assert not any(ch.isdigit() for ch in result["title"])
 
@@ -207,3 +207,38 @@ def test_agreement_counts_only_the_ais_own_verdicts_on_corrected_calls():
 
 def test_no_agreement_score_until_a_manager_corrects_something():
     assert brief.accuracy([_row([_item("validate", True, status="met")])]) is None
+
+
+def test_steps_that_mean_something_else_on_cancellations_are_counted_apart():
+    sales = _row([_item("present_solution", True), _item("present_solution", True)])
+    sales.analysis.scorecard_key = "sales"
+    saves = _row([_item("present_solution", False)])
+    saves.analysis.scorecard_key = "retention"
+    stats = brief.step_stats([sales, saves])
+    assert stats["Present_Solution"].met == 2
+    cancel = stats["Present_Solution (cancellations)"]
+    assert (cancel.met, cancel.seen) == (0, 1)
+    assert brief._stat_out(cancel)["plain"] == "Make a save offer"
+
+
+def test_undecided_disagreements_are_not_counted_as_misses():
+    disputed = _item("thank", False, agreement="disputed")
+    ruled = _item("close", False, agreement="disputed", override={"status": "missed"})
+    stats = brief.step_stats([_row([disputed, ruled])])
+    assert "Thank" not in stats
+    assert stats["Close"].missed == 1
+
+
+def test_coaching_tip_only_comes_from_a_call_where_the_step_was_missed():
+    met = _row([_item("thank", True)])
+    met.analysis.coaching = {"coaching": [{"item_keys": ["thank"], "try_saying": "Wrong."}]}
+    missed = _row([_item("thank", False)])
+    missed.analysis.coaching = {"coaching": [{"item_keys": ["thank"], "try_saying": "Right."}]}
+    stat = brief.step_stats([met, missed])["Thank"]
+    assert brief._tip_for([met, missed], stat)["try_saying"] == "Right."
+
+
+def test_one_checked_call_does_not_judge_the_steps():
+    row = _row([_item("thank", False)])
+    row.call.source = "upload"
+    assert brief._quality([row])["status"] == "none"

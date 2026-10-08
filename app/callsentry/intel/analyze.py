@@ -498,9 +498,18 @@ async def analyse(
         for s in segments:
             s.role = fixed_roles.get(s.speaker, UNKNOWN)
 
+    # A manager's type goes in up front, so triage fills the details block for
+    # that type: the scoring rules (objections, save offers) read from it.
+    forced = forced_type if forced_type in {t.value for t in CallType} else None
+    preface = (
+        f"A manager has confirmed this is a {forced} call. Use call_type \"{forced}\" and "
+        "fill the details block for that type.\n\n"
+        if forced
+        else ""
+    )
     triage, triage_llm = await llm.analyse_json(
         TRIAGE_SYSTEM,
-        "Transcript:\n\n" + render(segments, by_role=bool(fixed_roles)),
+        preface + "Transcript:\n\n" + render(segments, by_role=bool(fixed_roles)),
         TRIAGE_SCHEMA,
         effort="high",
     )
@@ -512,7 +521,11 @@ async def analyse(
     if not any(s.role == REP for s in segments):
         raise AnalysisFailed("could not tell which speaker is the rep")
 
-    if forced_type and forced_type in {t.value for t in CallType}:
+    reason = triage.get("not_scorable_reason") or "none"
+    if not forced and reason != "none":
+        # A voicemail or wrong number is never graded, whatever type it leans to.
+        triage["call_type"] = CallType.NOT_SCORABLE.value
+    if forced:
         triage["classified_as"] = triage["call_type"]
         triage["call_type"] = forced_type
         triage["call_type_confidence"] = 1.0
