@@ -145,7 +145,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[16px] ${
-                    active ? "bg-accent text-white font-semibold" : "font-medium text-ink hover:bg-ink/[0.05]"
+                    active ? "bg-accent-soft text-link font-semibold" : "font-medium text-ink hover:bg-ink/[0.05]"
                   }`}
                 >
                   <Icon className="h-[22px] w-[22px]" />

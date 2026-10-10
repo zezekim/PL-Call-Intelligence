@@ -2,54 +2,64 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, type Me } from "@/lib/api";
+import { api, type Me } from "@/lib/api";
 import { useApi, useTitle } from "@/lib/hooks";
-import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PipelineLead, PreparedAction, RepCard, Todo } from "@/lib/v2";
-import { STATUS_BG, STATUS_TEXT } from "@/lib/v2";
-import {
-  AlertIcon,
-  CheckIcon,
-  ChevronIcon,
-  MessageIcon,
-  PhoneIcon,
-  PlayIcon,
-  SparkIcon,
-  UploadIcon,
-} from "@/components/icons";
-import { Avatar, Loading, Modal, Spinner } from "@/components/ui";
+import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PipelineLead, PreparedAction, RepCard, Status, Todo } from "@/lib/v2";
+import { money } from "@/lib/v2";
+import { UploadIcon } from "@/components/icons";
+import { Loading, Modal, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
-import { CallButton, HowDidItGo, LeadCard, useSaveLead, type LeadChange } from "@/components/v2/customer";
-import { Meter, PageError } from "@/components/v2/kit";
+import { LeadCard, URGENCY, useSaveLead } from "@/components/v2/customer";
+import { PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
 /**
- * The whole business on one screen, and every part of it a button: how it's
- * going in one sentence, one big button that sends every text already
- * written, four numbers that open what's behind them, the jobs (one tap
- * each) and the team, weakest first.
+ * The answer first, then the work, one action per line. A coloured sentence
+ * says how things are and what to do first; four numbers say how each part of
+ * the business is going; the list below has every job, most urgent first,
+ * each with one button. Then the team and the customers still deciding.
  */
+
+type Tone = "good" | "ok" | "bad" | "none";
+const TONE: Record<Status, Tone> = { good: "good", watch: "ok", bad: "bad", none: "none" };
+const ICON: Record<Tone, string> = { good: "✓", ok: "!", bad: "✕", none: "–" };
+const ICON_CLS: Record<Tone, string> = {
+  good: "bg-good-soft text-good",
+  ok: "bg-warn-soft text-warn",
+  bad: "bg-bad-soft text-bad",
+  none: "bg-fill text-muted",
+};
+const TEXT_CLS: Record<Tone, string> = { good: "text-good", ok: "text-warn", bad: "text-bad", none: "text-muted" };
+const TOP_CLS: Record<Tone, string> = { good: "border-t-good", ok: "border-t-warn", bad: "border-t-bad", none: "border-t-line" };
+
+const JOBS_SHOWN = 6;
+const LIST_SHOWN = 5;
+
+/** Most urgent jobs are red, the rest amber. */
+const severity = (t: Todo): Tone => (t.handled ? "good" : t.priority >= 70 ? "bad" : "ok");
+/** "Goal: at least 5 out of 10 say yes" as "goal 5 in 10". */
+const shortGoal = (goal: string) => goal.replace(/^Goal: at least (\d+) out of (\d+).*$/, "goal $1 in $2").replace(/^Goal: /, "goal ");
+const firstName = (name: string | null | undefined) => (name && name !== "Name not given" ? name.split(/\s+/)[0] : null);
+
 export default function TodayPage() {
   useTitle("Today");
-  // Today is about what to do now, whatever period the other pages show.
   const { data, error, status, loading, reload } = useApi<Brief>("/intel/v2/brief");
   const summary = useApi<ActionsSummary>("/intel/actions/summary");
+  const boardApi = useApi<PipelineBoard>("/intel/v2/pipeline");
   const reps = useApi<RepCard[]>("/intel/v2/reps").data;
   const business = useApi<Me>("/auth/me").data?.business_name ?? null;
-  const boardApi = useApi<PipelineBoard>("/intel/v2/pipeline");
+  const actions = summary.data?.autopilot ? summary.data : null;
   const board = boardApi.data;
   const leadById = new Map((board ? [...board.open, ...board.closed] : []).map((l) => [l.id, l]));
-  const [card, setCard] = useState<string | null>(null);
-  // Done-for-you extras are optional: an older or partial answer leaves them out.
-  const actions = summary.data?.autopilot ? summary.data : null;
+
   const [acting, setActing] = useState<Todo | null>(null);
+  const [card, setCard] = useState<string | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  // Sent from this page: shown as done at once, before the list reloads.
-  const [sentKeys, setSentKeys] = useState<string[]>([]);
-  const [allJobs, setAllJobs] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
-  // Draft the actions for anything new since the last visit, then show them.
+  // Draft the texts for anything new since the last visit, then show them.
   const drafted = useRef(false);
   useEffect(() => {
     if (drafted.current) return;
@@ -68,105 +78,136 @@ export default function TodayPage() {
   if (error && !data) return <PageError status={status} onRetry={() => void reload()} />;
   if (!data) return null;
 
-  const keyOf = (t: Todo, i: number) => t.key ?? `${t.title}-${i}`;
-  const open = data.todo.map((t, i) => ({ t, k: keyOf(t, i) })).filter(({ t }) => !t.handled);
-  // Ready to go with one tap: written and with a number to send to.
-  const ready = open.filter(({ t, k }) => t.actions?.[0]?.to_phone && !sentKeys.includes(k));
-  const readyValue = ready.reduce((sum, { t }) => sum + (t.value ?? 0), 0);
+  const open = data.todo.filter((t) => !t.handled);
   const handled = data.todo.filter((t) => t.handled);
+  const ready = open.filter((t) => t.actions?.[0]?.to_phone);
+  const shown = showAll ? open : open.slice(0, JOBS_SHOWN);
 
-  const waiting = open.filter(({ k }) => !sentKeys.includes(k)).length;
-  const shownJobs = allJobs ? open : open.slice(0, JOBS_SHOWN);
+  // What a job's one button does: the text that's already written, else the
+  // customer's card (to call them), else the call itself.
+  const doJob = (t: Todo) => {
+    const lead = t.lead_id ? leadById.get(t.lead_id) : undefined;
+    if (t.actions?.length) setActing(t);
+    else if (lead) setCard(lead.id);
+  };
+  const jobButton = (t: Todo): string | null => {
+    const a = t.actions?.[0];
+    if (a) return a.label;
+    const lead = t.lead_id ? leadById.get(t.lead_id) : undefined;
+    if (lead) return `Call ${firstName(lead.name) ?? "them"}`;
+    return null;
+  };
+
+  const top = open[0];
+  const verdictTone: Tone = !data.calls.analyzed ? "none" : top ? severity(top) : "good";
+  const verdict = !data.calls.analyzed
+    ? "No calls yet. Add a call recording and this page fills in by itself."
+    : top
+      ? `${top.title}. ${top.why}${open.length > 1 ? ` ${open.length - 1} more thing${open.length > 2 ? "s" : ""} need${open.length > 2 ? "" : "s"} you.` : ""}`
+      : "Nothing needs you right now. Every call is handled.";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <Hello verdict={data.calls.analyzed ? data.headline.title : null} />
-        <button className="btn-secondary min-h-[48px] text-[16px]" onClick={() => setUploadOpen(true)}>
-          <UploadIcon className="h-5 w-5" />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-[30px] font-bold leading-tight tracking-title">Today</h1>
+          <p className="mt-1 text-[15px] text-muted">{data.headline.title}</p>
+        </div>
+        <button className="btn-secondary" onClick={() => setUploadOpen(true)}>
+          <UploadIcon className="h-4 w-4" />
           Add a call recording
         </button>
       </div>
 
       {actions?.practice && (
-        <p className="rounded-2xl bg-warn-soft px-5 py-3 text-[16px]">
-          <span className="font-semibold">Practice mode:</span> nothing goes to real phones. You can see every text on
-          the Texts page.
+        <p className="rounded-xl bg-warn-soft px-4 py-2.5 text-[14px]">
+          <span className="font-semibold">Practice mode:</span> texts go to the{" "}
+          <Link href="/v2/outbox" className="font-medium underline underline-offset-2">
+            Texts page
+          </Link>
+          , not to real phones.
         </p>
       )}
 
-      {ready.length > 0 && (
-        <section
-          aria-label="Do it all for me"
-          className="flex flex-col gap-4 rounded-[24px] bg-accent-soft/70 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
-        >
-          <p className="text-[19px] leading-snug">
-            <span className="font-semibold">I wrote {ready.length === 1 ? "1 text" : `${ready.length} texts`}</span> for the
-            customers who need you
-            {readyValue ? <> · worth <span className="font-semibold">${Math.round(readyValue).toLocaleString()} a year</span></> : ""}.
-          </p>
-          <button
-            className="magic-button group min-h-[68px] shrink-0 rounded-[22px] px-8 text-[21px] font-semibold text-white"
-            onClick={() => setAllOpen(true)}
-          >
-            <SparkIcon className="h-7 w-7 shrink-0 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
-            Do it all for me
-          </button>
-        </section>
-      )}
+      {/* The answer first: one sentence, one button. */}
+      <section
+        aria-label="What to do first"
+        className={`flex flex-col gap-3 rounded-2xl border px-5 py-4 sm:flex-row sm:items-center sm:gap-4 ${
+          verdictTone === "bad"
+            ? "border-bad/25 bg-bad-soft"
+            : verdictTone === "ok"
+              ? "border-warn/25 bg-warn-soft"
+              : verdictTone === "good"
+                ? "border-good/25 bg-good-soft"
+                : "border-line bg-surface"
+        }`}
+      >
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-[17px] font-extrabold ${TEXT_CLS[verdictTone]}`} aria-hidden>
+          {ICON[verdictTone]}
+        </span>
+        <p className="min-w-0 flex-1 text-[16px] font-semibold leading-snug">{verdict}</p>
+        {top &&
+          (jobButton(top) ? (
+            <button className="btn-primary shrink-0" onClick={() => doJob(top)}>
+              {jobButton(top)} →
+            </button>
+          ) : (
+            <Link href={top.href} className="btn-primary shrink-0 hover:no-underline">
+              Listen →
+            </Link>
+          ))}
+      </section>
 
       {data.calls.analyzed > 0 && <Numbers cards={data.cards} board={board} />}
 
-      <div className="grid gap-6 min-[1180px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] min-[1180px]:items-start">
-        <section aria-label="Needs you" className="card p-4 sm:p-5">
-          <PanelHead title="Needs you" count={waiting} />
-          {open.length > 0 ? (
-            <ul className="space-y-2.5">
-              {shownJobs.map(({ t, k }) => {
-                const lead = t.lead_id ? leadById.get(t.lead_id) ?? null : null;
-                return (
-                  <JobRow
-                    key={k}
-                    todo={t}
-                    lead={lead}
-                    sent={sentKeys.includes(k)}
-                    practice={!!actions?.practice}
-                    onOpen={lead ? () => setCard(lead.id) : t.actions?.length ? () => setActing(t) : null}
-                    onSent={() => {
-                      setSentKeys((s) => [...s, k]);
-                      // Let the green tick show before the row moves to Done.
-                      window.setTimeout(() => void refreshAll(), 1600);
-                    }}
-                    onLeadChange={(c) => lead && void saveLead(lead, c)}
-                  />
-                );
-              })}
+      <div className="grid gap-4 min-[1180px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] min-[1180px]:items-start">
+        <section aria-label="Needs attention" className="card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-[17px] font-semibold">
+              Needs attention
+              {open.length > 0 && <span className="rounded-full bg-bad px-2 py-px text-[12px] font-bold text-white">{open.length}</span>}
+            </h2>
+            {ready.length > 1 && (
+              <button className="btn-secondary px-3 py-1.5 text-[14px]" onClick={() => setAllOpen(true)}>
+                Send all {ready.length} texts
+              </button>
+            )}
+          </div>
+          <p className="mt-0.5 text-[13px] text-muted">Most urgent first. Each one has a text already written or a number to call.</p>
+          {open.length ? (
+            <ul className="mt-2 space-y-2">
+              {shown.map((t, i) => (
+                <JobRow key={t.key ?? `${t.title}-${i}`} todo={t} button={jobButton(t)} onDo={() => doJob(t)} />
+              ))}
             </ul>
           ) : (
-            <div className="flex items-center gap-3 rounded-2xl bg-good-soft px-4 py-4">
-              <span className="pop-in flex h-10 w-10 items-center justify-center rounded-full bg-good text-white">
-                <CheckIcon className="h-6 w-6" />
-              </span>
-              <span className="text-[18px] font-semibold">All done! New jobs show up here by themselves.</span>
-            </div>
+            <p className="py-3 font-semibold text-good">✓ All clear. Every call was handled.</p>
           )}
           {open.length > JOBS_SHOWN && (
-            <button className="btn-secondary mt-3 min-h-[48px] w-full text-[16px]" onClick={() => setAllJobs((x) => !x)}>
-              {allJobs ? "Show less" : `Show ${open.length - JOBS_SHOWN} more`}
+            <button className="mt-3 w-full rounded-xl border border-line py-2 text-[14px] font-medium text-link hover:bg-surface-hover" onClick={() => setShowAll((x) => !x)}>
+              {showAll ? "Show less" : `Show ${open.length - JOBS_SHOWN} more`}
             </button>
           )}
         </section>
 
-        <div className="space-y-6">
-          {reps && reps.length > 0 && <Team reps={reps} />}
-          {handled.length > 0 && <Handled items={handled} />}
-          <Autopilot summary={actions} />
-        </div>
+        <Done items={handled} summary={actions} />
       </div>
+
+      <div className="grid gap-4 min-[1180px]:grid-cols-2 min-[1180px]:items-start">
+        {reps && reps.length > 0 && <Team reps={reps} />}
+        {board && board.open.length > 0 && <Deciding leads={board.open} onOpen={(l) => setCard(l.id)} />}
+      </div>
+
+      {data.accuracy && data.accuracy.calls > 0 && (
+        <p className="px-1 text-[13px] text-muted">
+          Managers kept <span className="font-semibold text-good">{Math.round(data.accuracy.pct)}%</span> of the AI&apos;s step marks · {data.accuracy.calls} call
+          {data.accuracy.calls === 1 ? "" : "s"} corrected
+        </p>
+      )}
 
       {acting && (
         <ActionSheet
-          open={!!acting}
+          open
           title={acting.title}
           options={acting.actions ?? []}
           summary={actions}
@@ -188,519 +229,302 @@ export default function TodayPage() {
           />
         </Modal>
       )}
-      <DoItAll
-        open={allOpen}
-        jobs={ready.map(({ t, k }) => ({ todo: t, key: k }))}
-        summary={actions}
-        onClose={() => setAllOpen(false)}
-        onSent={(keys) => setSentKeys((s) => [...s, ...keys])}
-        onDone={refreshAll}
-      />
+      <SendAll open={allOpen} jobs={ready} summary={actions} onClose={() => setAllOpen(false)} onDone={refreshAll} />
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={() => void refreshAll()} logHref="/v2/calls" />
     </div>
   );
 }
 
-// The panels stay short; the rest is one tap away.
-const JOBS_SHOWN = 6;
-const TEAM_SHOWN = 5;
-
-function PanelHead({ title, count, href, more }: { title: string; count?: number; href?: string; more?: string }) {
-  return (
-    <div className="mb-3 flex items-center justify-between gap-3 px-1">
-      <h2 className="flex items-center gap-2 text-[20px] font-semibold">
-        {title}
-        {count ? (
-          <span className="rounded-full bg-accent px-2.5 py-0.5 text-[14px] font-semibold text-white">{count}</span>
-        ) : null}
-      </h2>
-      {href && more && (
-        <Link href={href} className="btn-secondary min-h-[40px] px-4 text-[15px] hover:no-underline">
-          {more}
-          <ChevronIcon className="h-4 w-4" />
-        </Link>
-      )}
-    </div>
-  );
-}
-
-/** Four numbers, coloured against their goals. Each one opens what's behind it. */
+/** Four numbers, each coloured against its goal, each opening what's behind it. */
 function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBoard | null }) {
-  const tile =
-    "flex flex-col rounded-[22px] border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:no-underline sm:p-5";
-  const shown = cards.filter((c) => c.key !== "quality");
   const due = board?.summary.needs_action ?? null;
+  const tiles = [
+    ...cards
+      .filter((c) => c.key !== "quality")
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        value: c.of ? `${c.count} of ${c.of}` : "–",
+        sub: c.of ? `${c.metric_label.toLowerCase()} · ${shortGoal(c.goal)}` : "Not enough calls yet",
+        tone: TONE[c.status],
+        href: c.action?.href ?? "/v2/calls",
+      })),
+    {
+      key: "callbacks",
+      label: "Call backs due",
+      value: due === null ? "–" : String(due),
+      sub: due === null ? "" : due ? `${money(board!.summary.open_value)} still deciding` : "All caught up",
+      tone: (due === null ? "none" : due ? "bad" : "good") as Tone,
+      href: "/v2/pipeline",
+    },
+  ];
   return (
     <section aria-label="How it's going" className="grid grid-cols-2 gap-3 min-[1180px]:grid-cols-4">
-      {shown.map((c) => (
-        <Link key={c.key} href={c.action?.href ?? "/v2/reps"} className={tile}>
-          <span className="text-[15px] font-semibold leading-snug text-ink/85">{c.label}</span>
-          <span className={`tnum mt-2 text-[30px] font-semibold leading-none tracking-title ${STATUS_TEXT[c.status]}`}>
-            {c.of ? `${c.count} of ${c.of}` : "–"}
+      {tiles.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          className={`block rounded-xl border border-line border-t-[3px] bg-surface px-4 py-3.5 transition-colors hover:bg-surface-hover hover:no-underline ${TOP_CLS[t.tone]}`}
+        >
+          <span className="block text-[13px] font-medium text-ink/80">{t.label}</span>
+          <span className="mt-1 flex items-center gap-2">
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[t.tone]}`} aria-hidden>
+              {ICON[t.tone]}
+            </span>
+            <span className={`tnum text-[26px] font-bold leading-tight tracking-title ${TEXT_CLS[t.tone]}`}>{t.value}</span>
           </span>
-          <span className="mt-1 text-[14px] text-ink/75">{c.metric_label.toLowerCase()}</span>
-          <span className="mt-3 block">
-            <Meter value={c.value} target={c.target} status={c.status} label={`${c.label}, ${c.metric_label}`} />
-          </span>
+          <span className="mt-0.5 block text-[12.5px] text-muted">{t.sub}</span>
         </Link>
       ))}
-      <Link href="/v2/pipeline" className={tile}>
-        <span className="text-[15px] font-semibold leading-snug text-ink/85">Call backs waiting</span>
-        <span className={`tnum mt-2 text-[30px] font-semibold leading-none tracking-title ${due ? "text-warn" : "text-good"}`}>
-          {due ?? "–"}
-        </span>
-        <span className="mt-1 text-[14px] text-ink/75">
-          {due === null ? "" : due ? `$${Math.round(board!.summary.open_value).toLocaleString()} still deciding` : "all caught up"}
+    </section>
+  );
+}
+
+/** One job: icon, what and why, one button. */
+function JobRow({ todo, button, onDo }: { todo: Todo; button: string | null; onDo: () => void }) {
+  const tone = severity(todo);
+  const worth = todo.value ? ` · ${money(todo.value)} a year` : "";
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-panel px-3 py-2.5">
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[tone]}`} aria-hidden>
+        {ICON[tone]}
+      </span>
+      <Link href={todo.href} className="min-w-[180px] flex-1 hover:no-underline">
+        <span className="block text-[15px] font-semibold text-ink">{todo.title}</span>
+        <span className="block text-[13px] text-muted">
+          {todo.why}
+          {worth}
         </span>
       </Link>
-    </section>
-  );
-}
-
-/** The team, weakest first, with the one thing each should work on. */
-function Team({ reps }: { reps: RepCard[] }) {
-  const sorted = [...reps].sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
-  return (
-    <section aria-label="Your team" className="card p-4 sm:p-5">
-      <PanelHead title="Your team" href="/v2/reps" more={reps.length > TEAM_SHOWN ? `All ${reps.length}` : "Open"} />
-      <ul className="space-y-1">
-        {sorted.slice(0, TEAM_SHOWN).map((r) => (
-          <li key={r.id}>
-            <Link
-              href={`/v2/reps/${r.id}`}
-              className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors hover:bg-surface-hover hover:no-underline"
-            >
-              <Avatar name={r.name} size={38} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[17px] font-semibold text-ink">{r.name}</span>
-                  <span className={`tnum text-[17px] font-semibold ${STATUS_TEXT[r.status]}`}>
-                    {r.score === null ? "–" : `${Math.round(r.score)}%`}
-                  </span>
-                </span>
-                <span className="mt-1.5 block h-2 rounded-full bg-fill">
-                  <span
-                    className={`block h-full rounded-full ${STATUS_BG[r.status]}`}
-                    style={{ width: `${Math.max(0, Math.min(100, r.score ?? 0))}%` }}
-                  />
-                </span>
-                <span className="mt-1 block truncate text-[14px] text-ink/75">
-                  {r.focus ? `Work on: ${r.focus.plain}` : "On track"}
-                </span>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** "Good morning." and how the business is doing, in one sentence. */
-function Hello({ verdict }: { verdict: string | null }) {
-  const hour = new Date().getHours();
-  const hello = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  return (
-    <div className="min-w-0">
-      <h1 className="large-title">{hello}</h1>
-      <p className="mt-2 text-[20px] leading-snug text-ink/85">
-        {verdict ?? "Add a call recording and I'll tell you what to do."}
-      </p>
-    </div>
-  );
-}
-
-/** "$588 a year", for the value of a job. */
-function perYear(value: number | null | undefined): string | null {
-  return value ? `$${Math.round(value).toLocaleString()} a year` : null;
-}
-
-/**
- * One job as one row: what it is on top, then its buttons. Call rings the
- * customer and then asks how it went; Text sends the text already written;
- * tapping the job itself opens the customer's card (or the text, to read
- * first).
- */
-function JobRow({
-  todo,
-  lead,
-  sent,
-  practice,
-  onOpen,
-  onSent,
-  onLeadChange,
-}: {
-  todo: Todo;
-  lead: PipelineLead | null;
-  sent: boolean;
-  practice: boolean;
-  onOpen: (() => void) | null;
-  onSent: () => void;
-  onLeadChange: (change: LeadChange) => void;
-}) {
-  const toast = useToast();
-  const action = todo.actions?.[0];
-  const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const worth = perYear(todo.value);
-  const phone = lead?.phone ?? todo.phone ?? null;
-  const pretty = lead?.phone_pretty || todo.phone_pretty;
-  const sub = [action && !phone ? `I wrote: “${action.label}”` : null, worth].filter(Boolean).join(" · ");
-
-  async function sendNow() {
-    if (!action) return;
-    setBusy(true);
-    try {
-      const done = await api.post<PreparedAction>(`/intel/actions/${action.id}/perform`, { body: null, phone: null });
-      if (done.status !== "done") {
-        toast({ message: done.error ?? failMessage(), tone: "error" });
-        return;
-      }
-      const who = done.to_name ?? done.to_phone_pretty;
-      toast({ message: practice ? `Done: ${who} (practice, on the Texts page)` : `Done: sent to ${who}` });
-      onSent();
-    } catch (err) {
-      toast({ message: err instanceof ApiError && err.status === 400 ? err.message : failMessage(), tone: "error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const body = (
-    <>
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sent ? "bg-good text-white" : "bg-accent-soft text-accent"}`}
-        aria-hidden
-      >
-        {sent ? (
-          <CheckIcon className="pop-in h-6 w-6" />
-        ) : phone ? (
-          <PhoneIcon className="h-5 w-5" />
-        ) : action ? (
-          <MessageIcon className="h-6 w-6" />
-        ) : (
-          <PlayIcon className="h-6 w-6" />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[18px] font-semibold leading-snug">{todo.title}</span>
-        <span className="mt-0.5 block text-[15px] text-ink/75">{sent ? "Done!" : sub || todo.why}</span>
-      </span>
-      {onOpen && !sent && <ChevronIcon className="h-4 w-4 shrink-0 text-muted" />}
-    </>
-  );
-
-  const textButton = action?.to_phone ? (
-    <button
-      className={`${phone ? "btn-secondary" : "btn-primary"} min-h-[52px] flex-1 rounded-2xl px-5 text-[17px] sm:flex-none`}
-      disabled={busy}
-      onClick={() => void sendNow()}
-      aria-label={`Do it: ${action.label}`}
-    >
-      {busy ? <Spinner className="h-5 w-5" /> : <MessageIcon className="h-5 w-5" />}
-      {phone ? "Send the text" : "Do it"}
-    </button>
-  ) : null;
-
-  return (
-    <li
-      className={`rounded-[22px] border p-3 transition-all duration-300 ${
-        sent ? "border-good/40 bg-good-soft" : "border-line bg-surface"
-      }`}
-    >
-      {onOpen ? (
-        <button
-          className="flex w-full min-w-0 items-center gap-3 rounded-2xl p-1 text-left hover:bg-surface-hover"
-          onClick={onOpen}
-          disabled={sent}
-          aria-label={lead ? `${todo.title}: open their card` : `${todo.title}: read the text first`}
-        >
-          {body}
+      {button ? (
+        <button className="btn-primary w-full shrink-0 px-3.5 py-1.5 text-[14px] sm:w-auto" onClick={onDo}>
+          {button} →
         </button>
       ) : (
-        <Link href={todo.href} className="flex w-full min-w-0 items-center gap-3 rounded-2xl p-1 hover:bg-surface-hover hover:no-underline">
-          {body}
+        <Link href={todo.href} className="btn-secondary w-full shrink-0 px-3.5 py-1.5 text-[14px] hover:no-underline sm:w-auto">
+          Listen →
         </Link>
-      )}
-      {!sent && (
-        <div className="mt-2.5">
-          {asking && lead ? (
-            <HowDidItGo
-              name={lead.name}
-              onCancel={() => setAsking(false)}
-              onAnswer={(c) => {
-                setAsking(false);
-                onLeadChange(c);
-              }}
-            />
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {phone && (
-                <CallButton
-                  phone={phone}
-                  pretty={pretty}
-                  name={lead?.name ?? null}
-                  className="flex-1 sm:flex-none"
-                  onCalled={lead ? () => window.setTimeout(() => setAsking(true), 600) : undefined}
-                />
-              )}
-              {textButton}
-              {!phone && !action?.to_phone && (
-                <Link
-                  href={todo.href}
-                  className="btn-secondary min-h-[52px] flex-1 rounded-2xl px-5 text-[17px] hover:no-underline sm:flex-none"
-                >
-                  <PlayIcon className="h-4 w-4" />
-                  Listen
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
       )}
     </li>
   );
 }
 
-/**
- * The magic button: a look at every text, then one tap sends them all, each
- * ticking off as it goes, and ends on what that was worth.
- */
-function DoItAll({
-  open,
-  jobs,
-  summary,
-  onClose,
-  onSent,
-  onDone,
-}: {
-  open: boolean;
-  jobs: { todo: Todo; key: string }[];
-  summary: ActionsSummary | null;
-  onClose: () => void;
-  onSent: (keys: string[]) => void;
-  onDone: () => void | Promise<void>;
-}) {
-  const toast = useToast();
-  // Frozen when sending starts, so the list doesn't shift as rows finish.
-  const [batch, setBatch] = useState<{ todo: Todo; key: string }[]>([]);
-  const [state, setState] = useState<Record<string, "waiting" | "sending" | "done" | "failed">>({});
-  const [phase, setPhase] = useState<"look" | "sending" | "finished">("look");
-  const [autoBusy, setAutoBusy] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setPhase("look");
-    setState({});
-    setBatch(jobs);
-    // Only when it opens: later reloads must not reset a send in progress.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const list = phase === "look" ? jobs : batch;
-  const done = list.filter((j) => state[j.key] === "done");
-  const failed = list.filter((j) => state[j.key] === "failed");
-  const worth = done.reduce((sum, j) => sum + (j.todo.value ?? 0), 0);
-  const kinds = [...new Set(done.map((j) => j.todo.actions![0].kind))].filter((k) => summary && !summary.autopilot[k]);
-
-  async function sendAll() {
-    const frozen = jobs;
-    setBatch(frozen);
-    setPhase("sending");
-    const sent: string[] = [];
-    for (const job of frozen) {
-      setState((s) => ({ ...s, [job.key]: "sending" }));
-      try {
-        const res = await api.post<PreparedAction>(`/intel/actions/${job.todo.actions![0].id}/perform`, { body: null, phone: null });
-        const ok = res.status === "done";
-        if (ok) sent.push(job.key);
-        setState((s) => ({ ...s, [job.key]: ok ? "done" : "failed" }));
-      } catch {
-        setState((s) => ({ ...s, [job.key]: "failed" }));
-      }
-    }
-    onSent(sent);
-    setPhase("finished");
-    void onDone();
-  }
-
-  async function autopilotOn() {
-    setAutoBusy(true);
-    try {
-      await Promise.all(kinds.map((kind) => api.put("/intel/actions/autopilot", { kind, on: true })));
-      toast({ message: "Done. I'll do these for you from now on." });
-      onClose();
-      void onDone();
-    } catch {
-      toast({ message: failMessage(), tone: "error" });
-    } finally {
-      setAutoBusy(false);
-    }
-  }
-
-  const title = phase === "finished" ? (done.length ? "All done!" : "That didn't go through") : phase === "sending" ? "Working on it…" : "Here's what I'll send";
-
+/** What was done lately, and what customers said back. */
+function Done({ items, summary }: { items: Todo[]; summary: ActionsSummary | null }) {
+  const on = summary ? (Object.keys(summary.autopilot) as PreparedAction["kind"][]).filter((k) => summary.autopilot[k]) : [];
   return (
-    <Modal open={open} onClose={() => phase !== "sending" && onClose()} title={title}>
-      {phase === "finished" && done.length === 0 && (
-        <div className="mb-5 flex flex-col items-center text-center">
-          <span className="flex h-20 w-20 items-center justify-center rounded-full bg-bad-soft text-bad">
-            <AlertIcon className="h-10 w-10" />
-          </span>
-          <p className="mt-4 text-[19px]">Nothing was sent. Everything is still on your list, so you can try again in a minute.</p>
-        </div>
-      )}
-
-      {phase === "finished" && done.length > 0 && (
-        <div className="mb-5 flex flex-col items-center text-center">
-          <span className="pop-in flex h-20 w-20 items-center justify-center rounded-full bg-good text-white">
-            <CheckIcon className="h-11 w-11" />
-          </span>
-          <p className="mt-4 text-[22px] font-semibold">
-            {done.length} {done.length === 1 ? "customer" : "customers"} taken care of
-          </p>
-          {worth > 0 && (
-            <p className="mt-1 text-[18px] font-semibold text-good">${Math.round(worth).toLocaleString()} a year you&apos;re going after</p>
-          )}
-          {failed.length > 0 && (
-            <p className="mt-2 text-[16px] text-bad">
-              {failed.length} didn&apos;t go. They&apos;re still on your list to try again.
-            </p>
-          )}
-          {summary?.practice && <p className="mt-2 text-[15px] text-muted">Practice mode: they&apos;re on the Texts page.</p>}
-        </div>
-      )}
-
-      {phase !== "finished" && (
-        <ul className="max-h-[50vh] space-y-2 overflow-y-auto" aria-label="The texts">
-          {list.map((j) => {
-            const a = j.todo.actions![0];
-            const s = state[j.key];
+    <section aria-label="Done" className="card p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[17px] font-semibold">Done</h2>
+        <Link href="/v2/outbox" className="text-[14px] font-medium text-link">
+          All texts →
+        </Link>
+      </div>
+      {items.length ? (
+        <ul className="mt-1">
+          {items.slice(0, LIST_SHOWN).map((t) => {
+            const a = t.handled as PreparedAction;
             return (
-              <li
-                key={j.key}
-                className={`flex items-start gap-3 rounded-2xl px-4 py-3 transition-colors duration-300 ${s === "done" ? "bg-good-soft" : s === "failed" ? "bg-bad-soft" : "bg-panel"}`}
-              >
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center" aria-hidden>
-                  {s === "sending" ? (
-                    <Spinner className="h-5 w-5" />
-                  ) : s === "done" ? (
-                    <span className="pop-in flex h-7 w-7 items-center justify-center rounded-full bg-good text-white">
-                      <CheckIcon className="h-4 w-4" />
-                    </span>
-                  ) : (
-                    <MessageIcon className="h-5 w-5 text-accent" />
-                  )}
+              <li key={t.key ?? t.title} className="flex items-start gap-2.5 border-t border-line py-2.5 first:border-t-0">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-good bg-good-soft text-[11px] font-extrabold text-good" aria-hidden>
+                  ✓
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[16px] font-semibold">
-                    {a.label}
-                    <span className="font-normal text-muted"> · {a.to_name ?? a.to_phone_pretty}</span>
-                  </span>
-                  <span className="mt-0.5 line-clamp-2 block text-[14px] text-ink/75">{a.body}</span>
+                  <span className="block text-[14px] font-semibold text-muted line-through decoration-ink/20">{t.title}</span>
+                  <span className="block text-[12.5px] text-muted">{handledText(a)}</span>
+                  {a.reply_text && (
+                    <span className="mt-1 block rounded-lg bg-accent-soft/70 px-2.5 py-1.5 text-[13px]">
+                      <span className="font-semibold">{a.to_name ?? "They"} replied:</span> “{a.reply_text}”
+                    </span>
+                  )}
                 </span>
               </li>
             );
           })}
         </ul>
+      ) : (
+        <p className="mt-1 text-[13px] text-muted">Nothing yet today. Texts you send show up here, with any replies.</p>
       )}
-
-      <div className="mt-5 flex flex-col gap-2">
-        {phase === "look" && (
-          <>
-            <button className="magic-button min-h-[64px] rounded-2xl text-[20px] font-semibold text-white" onClick={() => void sendAll()}>
-              Send {jobs.length === 1 ? "it" : `all ${jobs.length}`}
-            </button>
-            <button className="btn-secondary min-h-[52px] text-[17px]" onClick={onClose}>
-              Not now
-            </button>
-          </>
-        )}
-        {phase === "sending" && (
-          <p className="text-center text-[17px] text-ink/80" aria-live="polite">
-            {done.length + failed.length} of {list.length} done
-          </p>
-        )}
-        {phase === "finished" && kinds.length > 0 && done.length > 0 && (
-          <>
-            <button className="magic-button min-h-[64px] rounded-2xl text-[19px] font-semibold text-white" disabled={autoBusy} onClick={() => void autopilotOn()}>
-              {autoBusy && <Spinner className="h-5 w-5" />}
-              Do this for me every day
-            </button>
-            <p className="text-center text-[14px] text-muted">
-              I&apos;ll send {kinds.map((k) => KIND_WORDS[k].many).join(" and ")} by myself, 9am to 7pm. Turn it off any time.
-            </p>
-          </>
-        )}
-        {phase === "finished" && (
-          <button className="btn-secondary min-h-[52px] text-[17px]" onClick={onClose}>
-            {done.length ? "Great, thanks" : "OK"}
-          </button>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-/** What was done in the last few days, and what customers said back. */
-function Handled({ items }: { items: Todo[] }) {
-  const [all, setAll] = useState(false);
-  const shown = all ? items : items.slice(0, 3);
-  return (
-    <section aria-label="Done">
-      <h2 className="mb-3 px-1 text-[20px] font-semibold text-good">Done</h2>
-      <ul className="group-list">
-        {shown.map((t) => {
-          const a = t.handled as PreparedAction;
-          return (
-            <li key={t.key ?? t.title} className="flex items-start gap-3 px-5 py-3">
-              <CheckIcon className="mt-1 h-5 w-5 shrink-0 text-good" />
-              <div className="min-w-0 flex-1 text-[16px]">
-                <p className="font-medium">{t.title}</p>
-                <p className="text-[15px] text-ink/75">{handledText(a)}</p>
-                {a.reply_text && (
-                  <p className="mt-1.5 rounded-xl bg-accent-soft/60 px-3 py-2 text-[16px]">
-                    <span className="font-medium">{a.to_name ?? "They"} replied:</span> “{a.reply_text}”
-                  </p>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {items.length > 3 && (
-        <button className="btn-secondary mt-3 min-h-[48px] w-full text-[16px]" onClick={() => setAll((x) => !x)}>
-          {all ? "Show less" : `Show ${items.length - 3} more`}
-        </button>
+      {summary && (
+        <p className="mt-3 border-t border-line pt-3 text-[13px] text-muted">
+          {on.length ? (
+            <>
+              <span className="font-semibold text-good">Autopilot on</span> for {on.map((k) => KIND_WORDS[k].many).join(" and ")}.{" "}
+            </>
+          ) : (
+            <>Want these sent without asking? </>
+          )}
+          <Link href="/settings#autopilot" className="font-medium text-link">
+            {on.length ? "Change" : "Turn on autopilot"}
+          </Link>
+        </p>
       )}
     </section>
   );
 }
 
-/** What runs by itself, as one button. */
-function Autopilot({ summary }: { summary: ActionsSummary | null }) {
-  if (!summary) return null;
-  const on = (Object.keys(summary.autopilot) as PreparedAction["kind"][]).filter((k) => summary.autopilot[k]);
-  const auto = summary.done_today.filter((a) => a.auto).length;
+/** The team, lowest score first, with the one thing each should work on. */
+function Team({ reps }: { reps: RepCard[] }) {
+  const sorted = [...reps].sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
   return (
-    <Link
-      href="/settings#autopilot"
-      className="flex min-h-[64px] items-center gap-4 rounded-[22px] border border-line bg-surface px-5 py-3 shadow-sm hover:no-underline"
-    >
-      <SparkIcon className="h-6 w-6 shrink-0 text-accent" />
-      <span className="min-w-0 flex-1 text-[16px] text-ink">
-        {on.length ? (
-          <>
-            <span className="font-semibold">Autopilot is on</span> for {on.map((k) => KIND_WORDS[k].many).join(" and ")}
-            {auto ? `: ${auto} sent today.` : "."}
-          </>
-        ) : (
-          <>
-            <span className="font-semibold">Want this done without asking?</span> Turn on autopilot.
-          </>
-        )}
-      </span>
-      <ChevronIcon className="h-4 w-4 shrink-0 text-muted" />
-    </Link>
+    <section aria-label="Team" className="card p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[17px] font-semibold">Team</h2>
+        <span className="text-[13px] text-muted">Lowest score first</span>
+      </div>
+      <ul className="mt-1">
+        {sorted.slice(0, LIST_SHOWN).map((r) => {
+          const tone = TONE[r.status];
+          return (
+            <li key={r.id} className="border-t border-line first:border-t-0">
+              <Link href={`/v2/reps/${r.id}`} className="group flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 hover:no-underline">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[12px] font-bold text-link">
+                  {r.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </span>
+                <span className="w-28 truncate text-[14px] font-semibold text-ink group-hover:text-link">{r.name}</span>
+                <span className="h-2 min-w-[60px] flex-1 overflow-hidden rounded-full bg-fill">
+                  <span
+                    className={`block h-full rounded-full ${tone === "good" ? "bg-good" : tone === "ok" ? "bg-warn" : tone === "bad" ? "bg-bad" : "bg-ink/20"}`}
+                    style={{ width: `${Math.max(4, Math.min(100, r.score ?? 0))}%` }}
+                  />
+                </span>
+                <span className={`tnum w-11 text-right text-[14px] font-semibold ${TEXT_CLS[tone]}`}>{r.score === null ? "–" : `${Math.round(r.score)}%`}</span>
+                <span
+                  className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${
+                    r.focus ? "border-bad/25 bg-bad-soft text-bad" : "border-good/25 bg-good-soft text-good"
+                  }`}
+                >
+                  {r.focus ? `✕ ${r.focus.plain}` : "✓ On track"}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {reps.length > LIST_SHOWN && (
+        <Link href="/v2/reps" className="mt-2 block text-[14px] font-medium text-link">
+          All {reps.length} people →
+        </Link>
+      )}
+    </section>
+  );
+}
+
+/** Customers still deciding, the most valuable first. */
+function Deciding({ leads, onOpen }: { leads: PipelineLead[]; onOpen: (l: PipelineLead) => void }) {
+  const top = [...leads].sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).slice(0, LIST_SHOWN);
+  const total = leads.reduce((s, l) => s + (l.value ?? 0), 0);
+  return (
+    <section aria-label="Still deciding" className="card p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[17px] font-semibold">Still deciding</h2>
+        {total > 0 && <span className="text-[13px] font-semibold text-ink/80">{money(total)} in prices given</span>}
+      </div>
+      <ul className="mt-1">
+        {top.map((l) => {
+          const u = l.action ? URGENCY[l.action.urgency] : null;
+          return (
+            <li key={l.id} className="border-t border-line first:border-t-0">
+              <button className="group flex w-full items-center gap-3 py-2.5 text-left" onClick={() => onOpen(l)}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold group-hover:text-link">{l.name}</span>
+                  <span className="block truncate text-[12.5px] text-muted">{l.service ?? "Pest control"}</span>
+                </span>
+                {u && <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] font-semibold ${u.cls}`}>{u.label(l)}</span>}
+                <span className="tnum w-16 text-right text-[14px] font-semibold">{l.value !== null ? money(l.value) : "–"}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <Link href="/v2/pipeline" className="mt-2 block text-[14px] font-medium text-link">
+        Open the call back board →
+      </Link>
+    </section>
+  );
+}
+
+/** Every written text in one go: a look first, then one tap. */
+function SendAll({
+  open,
+  jobs,
+  summary,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  jobs: Todo[];
+  summary: ActionsSummary | null;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [batch, setBatch] = useState<Todo[]>([]);
+  const [state, setState] = useState<Record<string, "sending" | "done" | "failed">>({});
+  useEffect(() => {
+    if (!open) return;
+    setBatch(jobs);
+    setState({});
+    // Only when it opens, so a reload can't change the list mid-send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function send() {
+    setBusy(true);
+    let sent = 0;
+    for (const t of batch) {
+      const a = t.actions![0];
+      setState((s) => ({ ...s, [a.id]: "sending" }));
+      try {
+        const res = await api.post<PreparedAction>(`/intel/actions/${a.id}/perform`, { body: null, phone: null });
+        const ok = res.status === "done";
+        if (ok) sent += 1;
+        setState((s) => ({ ...s, [a.id]: ok ? "done" : "failed" }));
+      } catch {
+        setState((s) => ({ ...s, [a.id]: "failed" }));
+      }
+    }
+    setBusy(false);
+    toast(
+      sent
+        ? { message: `${sent} text${sent === 1 ? "" : "s"} ${summary?.practice ? "on the Texts page (practice)" : "sent"}` }
+        : { message: failMessage(), tone: "error" },
+    );
+    onClose();
+    await onDone();
+  }
+
+  return (
+    <Modal open={open} onClose={() => !busy && onClose()} title={`Send ${batch.length} texts`}>
+      <p className="text-[14px] text-muted">Each one is written for that customer. Read them, then send them all.</p>
+      <ul className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
+        {batch.map((t) => {
+          const a = t.actions![0];
+          const s = state[a.id];
+          return (
+            <li key={a.id} className={`rounded-xl border px-3 py-2.5 ${s === "done" ? "border-good/30 bg-good-soft" : s === "failed" ? "border-bad/30 bg-bad-soft" : "border-line bg-panel"}`}>
+              <p className="flex items-center justify-between gap-2 text-[14px] font-semibold">
+                <span>
+                  {a.label} <span className="font-normal text-muted">· {a.to_name ?? a.to_phone_pretty}</span>
+                </span>
+                {s === "sending" ? <Spinner className="h-4 w-4" /> : s === "done" ? <span className="text-good">✓</span> : s === "failed" ? <span className="text-bad">✕</span> : null}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[13px] text-ink/80">{a.body}</p>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-4 flex justify-end gap-2">
+        <button className="btn-secondary" disabled={busy} onClick={onClose}>
+          Cancel
+        </button>
+        <button className="btn-primary" disabled={busy || !batch.length} onClick={() => void send()}>
+          {busy && <Spinner className="h-4 w-4" />}
+          Send all {batch.length}
+        </button>
+      </div>
+      {summary?.practice && <p className="mt-3 text-[13px] text-muted">Practice mode: they go to the Texts page, not to phones.</p>}
+    </Modal>
   );
 }

@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Today leads with one magic button, and it sends every written text", async ({ page }) => {
+test("Today gives the answer first, then one button per job", async ({ page }) => {
   const sent: unknown[] = [];
   await mockApi(page, {
     [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
@@ -23,35 +23,22 @@ test("Today leads with one magic button, and it sends every written text", async
     },
   });
   await page.goto("/v2");
-  await expect(page.getByText("Customer problems are often not fixed on the call.")).toBeVisible();
-  // One screen: the numbers, the jobs and the team, each a button.
-  await expect(page.getByRole("region", { name: "How it's going" }).getByRole("link", { name: /New customers/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Call backs waiting/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Your team" }).getByRole("link", { name: /Dana.*Work on: Explain the plan/ })).toBeVisible();
-  await expect(page.getByText("I wrote 1 text")).toBeVisible();
-  await page.getByRole("button", { name: "Do it all for me" }).click();
-  const sheet = page.getByRole("dialog", { name: "Here's what I'll send" });
-  await expect(sheet.getByText(/\$49 quote for the ants/)).toBeVisible();
-  await sheet.getByRole("button", { name: "Send it" }).click();
-  const doneSheet = page.getByRole("dialog", { name: "All done!" });
-  await expect(doneSheet.getByText("1 customer taken care of")).toBeVisible();
-  await expect(doneSheet.getByText("$588 a year you're going after")).toBeVisible();
-  await expect(doneSheet.getByRole("button", { name: "Do this for me every day" })).toBeVisible();
-  expect(sent).toEqual([{ body: null, phone: null }]);
-});
-
-test("each job is one tap: Do it sends at once", async ({ page }) => {
-  const sent: unknown[] = [];
-  await mockApi(page, {
-    [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
-      sent.push(route.request().postDataJSON());
-      await route.fulfill({ json: { ...brief.todo[1].actions![0], status: "done", done_at: new Date().toISOString(), done_by: "owner" } });
-    },
-  });
-  await page.goto("/v2");
-  await page.getByRole("button", { name: "Do it: Text Jordan" }).click();
-  await expect(page.getByText("Done!", { exact: true })).toBeVisible();
-  expect(sent).toEqual([{ body: null, phone: null }]);
+  // The coloured sentence names the most urgent job and how many more there are.
+  const first = page.getByRole("region", { name: "What to do first" });
+  await expect(first).toContainText("Try to win back a customer who cancelled. They cancelled because they no longer need it. 4 more things need you.");
+  // Four numbers, each a link to what's behind it.
+  const numbers = page.getByRole("region", { name: "How it's going" });
+  await expect(numbers.getByRole("link", { name: /New customers.*7 of 13/ })).toBeVisible();
+  await expect(numbers.getByRole("link", { name: /Call backs due/ })).toBeVisible();
+  // Every job, one button each.
+  const jobs = page.getByRole("region", { name: "Needs attention" });
+  await expect(jobs.locator("li")).toHaveCount(5);
+  await expect(page.getByRole("region", { name: "Team" }).getByRole("link", { name: /Dana.*Explain the plan/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Still deciding" })).toContainText("Jordan Lee");
+  // Jordan's text is written: one tap opens it, one more sends it.
+  await jobs.getByRole("button", { name: "Text Jordan →" }).click();
+  await page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" }).click();
+  await expect.poll(() => sent).toEqual([{ body: null, phone: null }]);
 });
 
 test("Call rings the customer, then asks how it went and moves them", async ({ page }) => {
@@ -62,8 +49,8 @@ test("Call rings the customer, then asks how it went and moves them", async ({ p
       await route.fulfill({ json: { id: LEAD_ID } });
     },
   });
-  await page.goto("/v2");
-  const call = page.getByRole("link", { name: "Call Jordan on (555) 123-4567" }).first();
+  await page.goto("/v2/pipeline");
+  const call = page.getByRole("region", { name: "Got a price" }).getByRole("link", { name: "Call Jordan on (555) 123-4567" });
   await expect(call).toHaveAttribute("href", "tel:+15551234567");
   // The test browser has no phone app: keep it on the page.
   await call.evaluate((a) => a.addEventListener("click", (e) => e.preventDefault()));
@@ -75,9 +62,13 @@ test("Call rings the customer, then asks how it went and moves them", async ({ p
 });
 
 test("a job about a lead opens the same card as the board", async ({ page }) => {
-  await mockApi(page);
+  await mockApi(page, {
+    // No text written yet: the job's button is to call them.
+    "GET /intel/v2/brief": (route) =>
+      route.fulfill({ json: { ...brief, todo: brief.todo.map((t) => ({ ...t, actions: [] })) } }),
+  });
   await page.goto("/v2");
-  await page.getByRole("button", { name: "Call Jordan Lee back: open their card" }).click();
+  await page.getByRole("region", { name: "Needs attention" }).getByRole("button", { name: "Call Jordan →" }).click();
   const card = page.getByRole("dialog", { name: "Jordan Lee" });
   await expect(card.getByText("Late by 2 days")).toBeVisible();
   await expect(card.getByRole("link", { name: "Call Jordan on (555) 123-4567" })).toBeVisible();
@@ -102,13 +93,10 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
       sent.push(route.request().postDataJSON());
       await route.fulfill({ json: { id: ACTION_ID, kind: "text_customer", status: "done", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "", done_at: new Date().toISOString(), done_by: "owner", auto: false, error: null, reply_text: null, replied_at: null } });
     },
-    // A job that isn't a lead opens the text itself.
-    "GET /intel/v2/brief": (route) =>
-      route.fulfill({ json: { ...brief, todo: brief.todo.map((t) => ({ ...t, lead_id: null, phone: null })) } }),
   });
   await page.goto("/v2");
-  await expect(page.getByText("$588 a year").first()).toBeVisible();
-  await page.getByRole("button", { name: "Call Jordan Lee back: read the text first" }).click();
+  await expect(page.getByText(/\$588 a year/).first()).toBeVisible();
+  await page.getByRole("region", { name: "Needs attention" }).getByRole("button", { name: "Text Jordan →" }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
   await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);

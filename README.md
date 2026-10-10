@@ -104,14 +104,15 @@ Beyond the feedback:
   - The sidebar lists only pages that work: Today, Call back, My team,
     All calls, Texts. On a phone they sit in a bar along the bottom, each with
     a word under its picture.
-  - Today is **one screen, all buttons**, laid out like a dashboard: a
-    greeting and the one-sentence verdict; a bar with the big **Do it all for
-    me** button (it shows every written text, sends them all with a tick on
-    each, ends on what that was worth and offers **Do this for me every day**);
-    four number tiles (new customers, cancels kept, problems fixed, call backs
-    waiting), each opening what's behind it; then **Needs you** (each job one
-    row with **Do it**, **Listen** or **Add number**) beside **Your team**
-    (weakest first, a bar, and the one thing to work on).
+  - Today gives **the answer first**, then the work. A coloured bar (red, amber
+    or green, with ✕ ! ✓) says in one sentence what to do first and how many
+    more things need you, with one button. Four number tiles (new customers,
+    cancels kept, problems fixed, call backs due) have a coloured top edge and
+    open what's behind them. **Needs attention** lists every job most urgent
+    first, one button each (the text already written, or Call for a lead, or
+    Listen), with **Send all N texts** for the lot. Beside it is **Done** with
+    replies and the autopilot switch; below, **Team** (lowest score first, a
+    bar and the one thing to fix) and **Still deciding** (most valuable first).
   - **Call back is a board**, Trello style: Asked about a service → Got a
     price → Still deciding → Said yes / Said no. Four columns on a laptop, two
     on a tablet, one at a time sideways on a phone; a long column shows five
