@@ -379,15 +379,15 @@ function JobRow({ todo, button, onDo, onLook }: { todo: Todo; button: string | n
         )}
       </div>
       {button ? (
-        <button className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] sm:w-auto" onClick={onDo}>
+        <button className="btn-primary ml-10 min-h-[48px] w-[calc(100%-2.5rem)] shrink-0 px-4 text-[16px] sm:w-auto" onClick={onDo}>
           {button} →
         </button>
       ) : onLook ? (
-        <button className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] sm:w-auto" onClick={onLook}>
+        <button className="btn-primary ml-10 min-h-[48px] w-[calc(100%-2.5rem)] shrink-0 px-4 text-[16px] sm:w-auto" onClick={onLook}>
           Hear what happened →
         </button>
       ) : (
-        <Link href={todo.href} className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] hover:no-underline sm:w-auto">
+        <Link href={todo.href} className="btn-primary ml-10 min-h-[48px] w-[calc(100%-2.5rem)] shrink-0 px-4 text-[16px] hover:no-underline sm:w-auto">
           Open →
         </Link>
       )}
