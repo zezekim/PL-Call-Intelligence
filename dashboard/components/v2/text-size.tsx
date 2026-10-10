@@ -15,7 +15,8 @@ export const TEXT_SIZES: { value: TextSize; label: string; zoom: number; glyph: 
   { value: "large", label: "Larger text", zoom: 1.25, glyph: "text-[17px]" },
 ];
 
-const KEY = "pestlaunch.textsize";
+// Renamed when Normal became the default, so an old "small" no longer sticks.
+const KEY = "pestlaunch.textsize.2";
 const EVENT = "pestlaunch:textsize";
 
 function read(): TextSize {
