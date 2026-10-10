@@ -112,6 +112,12 @@ Beyond the feedback:
     waiting), each opening what's behind it; then **Needs you** (each job one
     row with **Do it**, **Listen** or **Add number**) beside **Your team**
     (weakest first, a bar, and the one thing to work on).
+  - **Call back is a board**, Trello style: Asked about a service → Got a
+    price → Still deciding → Said yes / Said no. Drag a card to another column,
+    or tap **Said yes** / **Said no** on it (with Undo). Each card shows how
+    late it is, the words to say (Copy) and **Listen**. Four columns on a
+    laptop, two on a tablet, one at a time sideways on a phone. **List** shows
+    the same people as a ranked list.
   - The full scores ("How it's going") and the one thing to teach this week
     are on **My team**, above the list of people.
   - Each page says in one line what it is for. Wording is plain ("Past week",

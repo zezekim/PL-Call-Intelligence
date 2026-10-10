@@ -8,8 +8,8 @@ import { useApi, useTitle } from "@/lib/hooks";
 import type { PipelineBoard, PipelineLead, Urgency } from "@/lib/v2";
 import { cleanPests, listWords, money } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
-import { Avatar, Card, Empty } from "@/components/ui";
+import { CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
+import { Avatar, Card, Empty, Segmented } from "@/components/ui";
 import { ListSkeleton, PageError, Section } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
@@ -34,7 +34,17 @@ const STAGE_LABEL: Record<string, string> = {
   lost: "Said no",
 };
 
-type Stage = "won" | "lost" | "follow_up";
+type Stage = "new" | "quoted" | "follow_up" | "won" | "lost";
+
+// The board, left to right: how far each customer has got.
+const COLUMNS: { stage: Stage; dot: string }[] = [
+  { stage: "new", dot: "bg-[#8e8e93]" },
+  { stage: "quoted", dot: "bg-accent" },
+  { stage: "follow_up", dot: "bg-warn" },
+  { stage: "won", dot: "bg-good" },
+  { stage: "lost", dot: "bg-bad" },
+];
+const VIEW_KEY = "pestlaunch.callback.view";
 
 /**
  * What to say when they pick up, from what the call already told us: their
@@ -75,8 +85,10 @@ function moveLead(board: PipelineBoard, id: string, stage: Stage): PipelineBoard
     s.won -= 1;
     s.won_value -= lead.value ?? 0;
   } else if (lead.stage === "lost") s.lost -= 1;
-  if (stage === "follow_up") {
-    // Back on the list; the server works out its next step on the reload.
+  if (stage !== "won" && stage !== "lost") {
+    // Still open: moved within the board at once. One coming back from yes or
+    // no gets its next step from the server on the reload.
+    if (lead.action) return { ...board, open: board.open.map((l) => (l.id === id ? { ...l, stage } : l)) };
     return { ...board, open, closed, summary: s };
   }
   if (stage === "won") {
@@ -93,6 +105,22 @@ export default function PipelinePage() {
   const { data, error, status, loading, reload, setData } = useApi<PipelineBoard>("/intel/v2/pipeline");
   const me = useApi<Me>("/auth/me").data;
   const business = me?.business_name ?? null;
+  const [view, setView] = useState<"board" | "list">("board");
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(VIEW_KEY) === "list") setView("list");
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  const changeView = (v: "board" | "list") => {
+    setView(v);
+    try {
+      window.localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
   useEffect(() => {
     if (refreshKey) void reload();
@@ -107,7 +135,13 @@ export default function PipelinePage() {
       try {
         await api.patch(`/intel/leads/${lead.id}`, { stage });
         const message =
-          stage === "won" ? `${lead.name} said yes` : stage === "lost" ? `${lead.name} said no` : `${lead.name} is back on the list`;
+          stage === "won"
+            ? `${lead.name} said yes`
+            : stage === "lost"
+              ? `${lead.name} said no`
+              : lead.action
+                ? `${lead.name} moved to “${STAGE_LABEL[stage]}”`
+                : `${lead.name} is back on the list`;
         toast({
           message,
           undo: undoable
@@ -143,29 +177,253 @@ export default function PipelinePage() {
 
   const s = data.summary;
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Summary board={data} />
 
-      <Section
-        title="Call these people"
-        subtitle={s.open ? "The most urgent is at the top." : "Everyone has said yes or no."}
-      >
-        {data.open.length ? (
-          <ul className="group-list">
-            {data.open.map((lead) => (
-              <OpenLead key={lead.id} lead={lead} business={business} onDecide={(stage) => change(lead, stage)} />
-            ))}
-          </ul>
-        ) : (
-          <Card className="flex items-center gap-3 px-5 py-4">
-            <CheckIcon className="h-5 w-5 text-good" />
-            <p className="text-[15px]">You're all caught up. Nobody to chase.</p>
-          </Card>
-        )}
-      </Section>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[16px] text-ink/80">
+          {view === "board"
+            ? "Drag a card to move it, or tap Said yes or Said no."
+            : s.open
+              ? "The most urgent is at the top."
+              : "Everyone has said yes or no."}
+        </p>
+        <Segmented
+          value={view}
+          onChange={changeView}
+          options={[
+            { value: "board", label: "Board" },
+            { value: "list", label: "List" },
+          ]}
+        />
+      </div>
 
-      <Closed leads={data.closed} onReopen={(lead) => change(lead, "follow_up")} />
+      {view === "board" ? (
+        <Board board={data} business={business} onMove={(lead, stage) => void change(lead, stage)} />
+      ) : (
+        <>
+          <Section title="Call these people">
+            {data.open.length ? (
+              <ul className="group-list">
+                {data.open.map((lead) => (
+                  <OpenLead key={lead.id} lead={lead} business={business} onDecide={(stage) => change(lead, stage)} />
+                ))}
+              </ul>
+            ) : (
+              <Card className="flex items-center gap-3 px-5 py-4">
+                <CheckIcon className="h-5 w-5 text-good" />
+                <p className="text-[15px]">You're all caught up. Nobody to chase.</p>
+              </Card>
+            )}
+          </Section>
+          <Closed leads={data.closed} onReopen={(lead) => change(lead, "follow_up")} />
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * The call-back board: one column per step, left to right, like a Trello
+ * board. Drag a card to another column, or use the buttons on it.
+ */
+function Board({
+  board,
+  business,
+  onMove,
+}: {
+  board: PipelineBoard;
+  business: string | null;
+  onMove: (lead: PipelineLead, stage: Stage) => void;
+}) {
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<Stage | null>(null);
+  const all = [...board.open, ...board.closed];
+
+  const column = (stage: Stage, dot: string, compact = false) => {
+    const cards = (stage === "won" || stage === "lost" ? board.closed : board.open).filter((l) => l.stage === stage);
+    const worth = cards.reduce((sum, l) => sum + (l.value ?? 0), 0);
+    return (
+      <section
+        key={stage}
+        aria-label={STAGE_LABEL[stage]}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(stage);
+        }}
+        onDragLeave={() => setOver((o) => (o === stage ? null : o))}
+        onDrop={(e) => {
+          e.preventDefault();
+          const lead = all.find((l) => l.id === dragging);
+          if (lead && lead.stage !== stage) onMove(lead, stage);
+          setDragging(null);
+          setOver(null);
+        }}
+        className={`flex flex-col rounded-[22px] p-3 transition-colors ${
+          over === stage ? "bg-accent-soft ring-2 ring-accent/50" : "bg-ink/[0.04]"
+        }`}
+      >
+        <header className="mb-3 flex items-center justify-between gap-2 px-1.5 pt-1">
+          <span className="flex items-center gap-2 text-[16px] font-semibold leading-tight">
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} aria-hidden />
+            {STAGE_LABEL[stage]}
+          </span>
+          <span className="tnum rounded-full bg-surface px-2.5 py-0.5 text-[14px] font-semibold">{cards.length}</span>
+        </header>
+        {worth > 0 && <p className="-mt-2 mb-2 px-1.5 text-[14px] text-muted">{money(worth)}</p>}
+        <ul className="flex flex-col gap-2.5">
+          {cards.map((lead) => (
+            <BoardCard
+              key={lead.id}
+              lead={lead}
+              business={business}
+              compact={compact}
+              dragging={dragging === lead.id}
+              onDragStart={() => setDragging(lead.id)}
+              onDragEnd={() => setDragging(null)}
+              onMove={(to) => onMove(lead, to)}
+            />
+          ))}
+          {!cards.length && (
+            <li className="rounded-2xl border-2 border-dashed border-line px-3 py-5 text-center text-[14px] text-muted">
+              {dragging ? "Drop here" : "Nobody here"}
+            </li>
+          )}
+        </ul>
+      </section>
+    );
+  };
+
+  // Four columns side by side on a laptop, two on a tablet; on a phone they
+  // slide sideways one at a time.
+  return (
+    <div className="-mx-4 snap-x snap-mandatory overflow-x-auto px-4 pb-4 sm:mx-0 sm:overflow-visible sm:px-0">
+      <div className="grid grid-flow-col auto-cols-[min(84vw,300px)] items-start gap-3 sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-2 min-[1100px]:grid-cols-4">
+        {COLUMNS.slice(0, 3).map(({ stage, dot }) => (
+          <div key={stage} className="snap-start">
+            {column(stage, dot)}
+          </div>
+        ))}
+        <div className="flex snap-start flex-col gap-3">
+          {column("won", "bg-good", true)}
+          {column("lost", "bg-bad", true)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BoardCard({
+  lead,
+  business,
+  compact,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  onMove,
+}: {
+  lead: PipelineLead;
+  business: string | null;
+  compact: boolean;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onMove: (stage: Stage) => void;
+}) {
+  const a = lead.action;
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const say = a ? openingLine(lead, business) : null;
+  const what = listWords(cleanPests(lead.pests).slice(0, 2)) || lead.service;
+  const meta = [what, lead.value !== null ? money(lead.value) : null].filter(Boolean).join(" · ");
+  return (
+    <li
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      className={`cursor-grab rounded-2xl border border-line bg-surface p-3.5 shadow-sm transition-all active:cursor-grabbing ${
+        dragging ? "rotate-1 opacity-60" : "hover:shadow-md"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        {a ? (
+          <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${URGENCY[a.urgency].cls}`}>
+            {URGENCY[a.urgency].label(lead)}
+          </span>
+        ) : (
+          <span className="text-[16px] font-semibold leading-snug">{lead.name}</span>
+        )}
+        {lead.last_call_id && (
+          <Link
+            href={`/v2/calls/${lead.last_call_id}`}
+            className="inline-flex min-h-[32px] shrink-0 items-center gap-1 rounded-full border border-control bg-surface px-3 text-[13px] font-semibold text-ink hover:bg-surface-hover hover:no-underline"
+            aria-label={`Listen to the call with ${lead.name}`}
+          >
+            <PlayIcon className="h-3.5 w-3.5" />
+            Listen
+          </Link>
+        )}
+      </div>
+      {a && <p className="mt-2 text-[17px] font-semibold leading-snug">{a.label}</p>}
+      {meta && <p className="mt-0.5 text-[14px] text-ink/75">{meta}</p>}
+      {lead.rep && !compact && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-muted">
+          <Avatar name={lead.rep} size={18} />
+          {lead.rep}
+          {lead.last_contact_at && <> · {date(lead.last_contact_at)}</>}
+        </p>
+      )}
+
+      {say && (
+        <div className="mt-3 rounded-xl bg-panel px-3 py-2.5">
+          <p className={`text-[14px] leading-relaxed text-ink/90 ${open ? "" : "line-clamp-2"}`}>
+            <span className="mr-1 text-[12px] font-semibold text-muted">Say</span>“{say}”
+          </p>
+          <div className="mt-1.5 flex gap-3 text-[13px] font-medium text-link">
+            <button className="min-h-[32px]" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+              {open ? "Less" : "Read all"}
+            </button>
+            <button
+              className="min-h-[32px]"
+              aria-label={`Copy what to say to ${lead.name}`}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(say);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1600);
+                } catch {
+                  /* clipboard blocked: the words are on screen anyway */
+                }
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {a ? (
+          <>
+            <button className="btn-primary min-h-[44px] flex-1 px-3 text-[15px]" onClick={() => onMove("won")}>
+              <CheckIcon className="h-4 w-4" />
+              Said yes
+            </button>
+            <button className="btn-secondary min-h-[44px] flex-1 px-3 text-[15px]" onClick={() => onMove("lost")}>
+              <CrossIcon className="h-3.5 w-3.5" />
+              Said no
+            </button>
+          </>
+        ) : (
+          <button className="btn-secondary min-h-[40px] flex-1 px-3 text-[14px]" onClick={() => onMove("follow_up")}>
+            Not decided after all
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -180,9 +438,9 @@ function Summary({ board }: { board: PipelineBoard }) {
     <Card className="grid grid-cols-3 p-5 sm:p-6">
       {stats.map((st, i) => (
         <div key={st.label} className={i ? "border-l border-line pl-4 sm:pl-6" : "pr-4"}>
-          <p className="text-[13px] text-muted">{st.label}</p>
+          <p className="text-[15px] text-ink/80">{st.label}</p>
           <p className={`tnum mt-1 text-[30px] font-semibold leading-none tracking-title ${st.tone ?? ""}`}>{st.value}</p>
-          {st.hint && <p className="mt-1 hidden text-[12px] text-muted sm:block">{st.hint}</p>}
+          {st.hint && <p className="mt-1 hidden text-[14px] text-muted sm:block">{st.hint}</p>}
         </div>
       ))}
     </Card>

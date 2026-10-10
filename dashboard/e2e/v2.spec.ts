@@ -217,6 +217,26 @@ test("pest names read as short everyday words", () => {
   expect(cleanPests(["voles"])).toEqual(["moles"]);
 });
 
+test("call back is a board, one column per step, and a card can be dragged along", async ({ page }) => {
+  const sent: string[] = [];
+  await mockApi(page, {
+    [`PATCH /intel/leads/${LEAD_ID}`]: async (route) => {
+      sent.push(route.request().postDataJSON().stage);
+      await route.fulfill({ json: { id: LEAD_ID } });
+    },
+  });
+  await page.goto("/v2/pipeline");
+  for (const column of ["Asked about a service", "Got a price", "Still deciding", "Said yes", "Said no"]) {
+    await expect(page.getByRole("region", { name: column })).toBeVisible();
+  }
+  const quoted = page.getByRole("region", { name: "Got a price" });
+  await expect(quoted.getByText("Call Jordan Lee back")).toBeVisible();
+  await quoted.locator("li", { hasText: "Call Jordan Lee back" }).dragTo(page.getByRole("region", { name: "Still deciding" }));
+  await expect.poll(() => sent).toEqual(["follow_up"]);
+  await page.getByRole("tab", { name: "List" }).click();
+  await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
+});
+
 test("the call-back list hands the owner the words to say", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2/pipeline");
