@@ -4,34 +4,36 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { useApi, useTitle } from "@/lib/hooks";
-import type { ActionsSummary, Brief, PreparedAction, Todo } from "@/lib/v2";
+import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PreparedAction, RepCard, Todo } from "@/lib/v2";
+import { STATUS_BG, STATUS_TEXT } from "@/lib/v2";
 import {
   AlertIcon,
-  CallBackIcon,
   CheckIcon,
   ChevronIcon,
   MessageIcon,
   PlayIcon,
   SparkIcon,
-  TeamIcon,
   UploadIcon,
 } from "@/components/icons";
-import { Loading, Modal, Spinner } from "@/components/ui";
+import { Avatar, Loading, Modal, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
-import { PageError } from "@/components/v2/kit";
+import { Meter, PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
 /**
- * Buttons, not reading. The texts are already written, so the page leads with
- * one big button that sends them all; every job below is one tap; and the
- * other pages are big tiles at the bottom.
+ * The whole business on one screen, and every part of it a button: how it's
+ * going in one sentence, one big button that sends every text already
+ * written, four numbers that open what's behind them, the jobs (one tap
+ * each) and the team, weakest first.
  */
 export default function TodayPage() {
   useTitle("Today");
   // Today is about what to do now, whatever period the other pages show.
   const { data, error, status, loading, reload } = useApi<Brief>("/intel/v2/brief");
   const summary = useApi<ActionsSummary>("/intel/actions/summary");
+  const reps = useApi<RepCard[]>("/intel/v2/reps").data;
+  const board = useApi<PipelineBoard>("/intel/v2/pipeline").data;
   // Done-for-you extras are optional: an older or partial answer leaves them out.
   const actions = summary.data?.autopilot ? summary.data : null;
   const [acting, setActing] = useState<Todo | null>(null);
@@ -39,6 +41,7 @@ export default function TodayPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   // Sent from this page: shown as done at once, before the list reloads.
   const [sentKeys, setSentKeys] = useState<string[]>([]);
+  const [allJobs, setAllJobs] = useState(false);
 
   // Draft the actions for anything new since the last visit, then show them.
   const drafted = useRef(false);
@@ -65,9 +68,18 @@ export default function TodayPage() {
   const readyValue = ready.reduce((sum, { t }) => sum + (t.value ?? 0), 0);
   const handled = data.todo.filter((t) => t.handled);
 
+  const waiting = open.filter(({ k }) => !sentKeys.includes(k)).length;
+  const shownJobs = allJobs ? open : open.slice(0, JOBS_SHOWN);
+
   return (
-    <div className="mx-auto max-w-[760px] space-y-8">
-      <Hello open={open.filter(({ k }) => !sentKeys.includes(k)).length} ready={ready.length} analyzed={data.calls.analyzed > 0} />
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <Hello verdict={data.calls.analyzed ? data.headline.title : null} />
+        <button className="btn-secondary min-h-[48px] text-[16px]" onClick={() => setUploadOpen(true)}>
+          <UploadIcon className="h-5 w-5" />
+          Add a call recording
+        </button>
+      </div>
 
       {actions?.practice && (
         <p className="rounded-2xl bg-warn-soft px-5 py-3 text-[16px]">
@@ -77,57 +89,68 @@ export default function TodayPage() {
       )}
 
       {ready.length > 0 && (
-        <section aria-label="Do it all for me" className="text-center">
+        <section
+          aria-label="Do it all for me"
+          className="flex flex-col gap-4 rounded-[24px] bg-accent-soft/70 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+        >
+          <p className="text-[19px] leading-snug">
+            <span className="font-semibold">I wrote {ready.length === 1 ? "1 text" : `${ready.length} texts`}</span> for the
+            customers who need you
+            {readyValue ? <> · worth <span className="font-semibold">${Math.round(readyValue).toLocaleString()} a year</span></> : ""}.
+          </p>
           <button
-            className="magic-button group relative inline-flex min-h-[88px] w-full items-center justify-center gap-3 rounded-[28px] px-8 text-[24px] font-semibold text-white sm:text-[26px]"
+            className="magic-button group min-h-[68px] shrink-0 rounded-[22px] px-8 text-[21px] font-semibold text-white"
             onClick={() => setAllOpen(true)}
           >
-            <SparkIcon className="h-8 w-8 shrink-0 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+            <SparkIcon className="h-7 w-7 shrink-0 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
             Do it all for me
           </button>
-          <p className="mt-3 text-[17px] text-ink/80">
-            Sends {ready.length === 1 ? "the text" : `all ${ready.length} texts`} I wrote
-            {readyValue ? ` · worth $${Math.round(readyValue).toLocaleString()} a year` : ""}. You see {ready.length === 1 ? "it" : "them"} first.
-          </p>
         </section>
       )}
 
-      {open.length > 0 && (
-        <section aria-label="Your jobs">
-          <h2 className="mb-3 px-1 text-[20px] font-semibold">{ready.length ? "Or tap one at a time" : "Your jobs"}</h2>
-          <ul className="space-y-3">
-            {open.map(({ t, k }) => (
-              <JobRow
-                key={k}
-                todo={t}
-                sent={sentKeys.includes(k)}
-                practice={!!actions?.practice}
-                onOpen={() => setActing(t)}
-                onSent={() => {
-                  setSentKeys((s) => [...s, k]);
-                  // Let the green tick show before the row moves to Done.
-                  window.setTimeout(() => void refreshAll(), 1600);
-                }}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
+      {data.calls.analyzed > 0 && <Numbers cards={data.cards} board={board} />}
 
-      {open.length === 0 && data.calls.analyzed > 0 && (
-        <div className="card flex flex-col items-center px-6 py-10 text-center">
-          <span className="pop-in flex h-20 w-20 items-center justify-center rounded-full bg-good-soft">
-            <CheckIcon className="h-11 w-11 text-good" />
-          </span>
-          <p className="mt-4 text-[26px] font-semibold">All done!</p>
-          <p className="mt-1 text-[18px] text-ink/80">New jobs show up here by themselves as calls come in.</p>
+      <div className="grid gap-6 min-[1180px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] min-[1180px]:items-start">
+        <section aria-label="Needs you" className="card p-4 sm:p-5">
+          <PanelHead title="Needs you" count={waiting} />
+          {open.length > 0 ? (
+            <ul className="space-y-2.5">
+              {shownJobs.map(({ t, k }) => (
+                <JobRow
+                  key={k}
+                  todo={t}
+                  sent={sentKeys.includes(k)}
+                  practice={!!actions?.practice}
+                  onOpen={() => setActing(t)}
+                  onSent={() => {
+                    setSentKeys((s) => [...s, k]);
+                    // Let the green tick show before the row moves to Done.
+                    window.setTimeout(() => void refreshAll(), 1600);
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="flex items-center gap-3 rounded-2xl bg-good-soft px-4 py-4">
+              <span className="pop-in flex h-10 w-10 items-center justify-center rounded-full bg-good text-white">
+                <CheckIcon className="h-6 w-6" />
+              </span>
+              <span className="text-[18px] font-semibold">All done! New jobs show up here by themselves.</span>
+            </div>
+          )}
+          {open.length > JOBS_SHOWN && (
+            <button className="btn-secondary mt-3 min-h-[48px] w-full text-[16px]" onClick={() => setAllJobs((x) => !x)}>
+              {allJobs ? "Show less" : `Show ${open.length - JOBS_SHOWN} more`}
+            </button>
+          )}
+        </section>
+
+        <div className="space-y-6">
+          {reps && reps.length > 0 && <Team reps={reps} />}
+          {handled.length > 0 && <Handled items={handled} />}
+          <Autopilot summary={actions} />
         </div>
-      )}
-
-      <Tiles onUpload={() => setUploadOpen(true)} />
-
-      {handled.length > 0 && <Handled items={handled} />}
-      <Autopilot summary={actions} />
+      </div>
 
       {acting && (
         <ActionSheet
@@ -152,19 +175,111 @@ export default function TodayPage() {
   );
 }
 
-/** "Good morning." and, in one line, how much there is to do. */
-function Hello({ open, ready, analyzed }: { open: number; ready: number; analyzed: boolean }) {
+// The panels stay short; the rest is one tap away.
+const JOBS_SHOWN = 6;
+const TEAM_SHOWN = 5;
+
+function PanelHead({ title, count, href, more }: { title: string; count?: number; href?: string; more?: string }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3 px-1">
+      <h2 className="flex items-center gap-2 text-[20px] font-semibold">
+        {title}
+        {count ? (
+          <span className="rounded-full bg-accent px-2.5 py-0.5 text-[14px] font-semibold text-white">{count}</span>
+        ) : null}
+      </h2>
+      {href && more && (
+        <Link href={href} className="btn-secondary min-h-[40px] px-4 text-[15px] hover:no-underline">
+          {more}
+          <ChevronIcon className="h-4 w-4" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Four numbers, coloured against their goals. Each one opens what's behind it. */
+function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBoard | null }) {
+  const tile =
+    "flex flex-col rounded-[22px] border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:no-underline sm:p-5";
+  const shown = cards.filter((c) => c.key !== "quality");
+  const due = board?.summary.needs_action ?? null;
+  return (
+    <section aria-label="How it's going" className="grid grid-cols-2 gap-3 min-[1180px]:grid-cols-4">
+      {shown.map((c) => (
+        <Link key={c.key} href={c.action?.href ?? "/v2/reps"} className={tile}>
+          <span className="text-[15px] font-semibold leading-snug text-ink/85">{c.label}</span>
+          <span className={`tnum mt-2 text-[30px] font-semibold leading-none tracking-title ${STATUS_TEXT[c.status]}`}>
+            {c.of ? `${c.count} of ${c.of}` : "–"}
+          </span>
+          <span className="mt-1 text-[14px] text-ink/75">{c.metric_label.toLowerCase()}</span>
+          <span className="mt-3 block">
+            <Meter value={c.value} target={c.target} status={c.status} label={`${c.label}, ${c.metric_label}`} />
+          </span>
+        </Link>
+      ))}
+      <Link href="/v2/pipeline" className={tile}>
+        <span className="text-[15px] font-semibold leading-snug text-ink/85">Call backs waiting</span>
+        <span className={`tnum mt-2 text-[30px] font-semibold leading-none tracking-title ${due ? "text-warn" : "text-good"}`}>
+          {due ?? "–"}
+        </span>
+        <span className="mt-1 text-[14px] text-ink/75">
+          {due === null ? "" : due ? `$${Math.round(board!.summary.open_value).toLocaleString()} still deciding` : "all caught up"}
+        </span>
+      </Link>
+    </section>
+  );
+}
+
+/** The team, weakest first, with the one thing each should work on. */
+function Team({ reps }: { reps: RepCard[] }) {
+  const sorted = [...reps].sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
+  return (
+    <section aria-label="Your team" className="card p-4 sm:p-5">
+      <PanelHead title="Your team" href="/v2/reps" more={reps.length > TEAM_SHOWN ? `All ${reps.length}` : "Open"} />
+      <ul className="space-y-1">
+        {sorted.slice(0, TEAM_SHOWN).map((r) => (
+          <li key={r.id}>
+            <Link
+              href={`/v2/reps/${r.id}`}
+              className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors hover:bg-surface-hover hover:no-underline"
+            >
+              <Avatar name={r.name} size={38} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-[17px] font-semibold text-ink">{r.name}</span>
+                  <span className={`tnum text-[17px] font-semibold ${STATUS_TEXT[r.status]}`}>
+                    {r.score === null ? "–" : `${Math.round(r.score)}%`}
+                  </span>
+                </span>
+                <span className="mt-1.5 block h-2 rounded-full bg-fill">
+                  <span
+                    className={`block h-full rounded-full ${STATUS_BG[r.status]}`}
+                    style={{ width: `${Math.max(0, Math.min(100, r.score ?? 0))}%` }}
+                  />
+                </span>
+                <span className="mt-1 block truncate text-[14px] text-ink/75">
+                  {r.focus ? `Work on: ${r.focus.plain}` : "On track"}
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** "Good morning." and how the business is doing, in one sentence. */
+function Hello({ verdict }: { verdict: string | null }) {
   const hour = new Date().getHours();
   const hello = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  let line: string;
-  if (!analyzed) line = "Add a call recording below and I'll tell you what to do.";
-  else if (open <= 0) line = "Nothing needs you right now.";
-  else if (ready > 0) line = `${open} ${open === 1 ? "thing needs" : "things need"} you. I already wrote ${ready === 1 ? "1 text" : `${ready} texts`}.`;
-  else line = `${open} ${open === 1 ? "thing needs" : "things need"} you.`;
   return (
-    <div>
+    <div className="min-w-0">
       <h1 className="large-title">{hello}</h1>
-      <p className="mt-2 text-[21px] leading-snug text-ink/85">{line}</p>
+      <p className="mt-2 text-[20px] leading-snug text-ink/85">
+        {verdict ?? "Add a call recording and I'll tell you what to do."}
+      </p>
     </div>
   );
 }
@@ -216,19 +331,19 @@ function JobRow({
     }
   }
 
-  const rowClass = `flex w-full flex-col gap-3 rounded-[22px] border px-4 py-4 text-left transition-all duration-300 sm:flex-row sm:items-center sm:gap-4 sm:px-5 ${
-    sent ? "border-good/40 bg-good-soft" : "border-line bg-surface shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+  const rowClass = `flex w-full flex-col gap-3 rounded-[22px] border px-4 py-3 text-left transition-all duration-300 sm:flex-row sm:items-center sm:gap-4 ${
+    sent ? "border-good/40 bg-good-soft" : "border-line bg-surface hover:border-accent/40 hover:bg-surface-hover"
   }`;
   const body = (
     <>
       <span
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${sent ? "bg-good text-white" : "bg-accent-soft text-accent"}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sent ? "bg-good text-white" : "bg-accent-soft text-accent"}`}
         aria-hidden
       >
         {sent ? <CheckIcon className="pop-in h-6 w-6" /> : action ? <MessageIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[19px] font-semibold leading-snug">{todo.title}</span>
+        <span className="block text-[18px] font-semibold leading-snug">{todo.title}</span>
         <span className="mt-0.5 block text-[15px] text-ink/75">{sent ? "Done!" : sub || todo.why}</span>
       </span>
     </>
@@ -247,7 +362,7 @@ function JobRow({
       )}
       {sent ? null : action?.to_phone ? (
         <button
-          className="btn-primary min-h-[56px] w-full shrink-0 rounded-2xl px-5 text-[18px] sm:w-auto"
+          className="btn-primary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[18px] sm:w-auto"
           disabled={busy}
           onClick={() => void sendNow()}
           aria-label={`Do it: ${action.label}`}
@@ -256,11 +371,11 @@ function JobRow({
           Do it
         </button>
       ) : action ? (
-        <button className="btn-secondary min-h-[56px] w-full shrink-0 rounded-2xl px-5 text-[17px] sm:w-auto" onClick={onOpen}>
+        <button className="btn-secondary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[17px] sm:w-auto" onClick={onOpen}>
           Add number
         </button>
       ) : (
-        <Link href={todo.href} className="btn-secondary min-h-[56px] w-full shrink-0 rounded-2xl px-5 text-[17px] hover:no-underline sm:w-auto">
+        <Link href={todo.href} className="btn-secondary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[17px] hover:no-underline sm:w-auto">
           Listen
         </Link>
       )}
@@ -445,42 +560,6 @@ function DoItAll({
         )}
       </div>
     </Modal>
-  );
-}
-
-/** The other pages, as big buttons. */
-function Tiles({ onUpload }: { onUpload: () => void }) {
-  const tile =
-    "flex min-h-[112px] flex-col items-start justify-between gap-3 rounded-[22px] border border-line bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:no-underline";
-  const items = [
-    { href: "/v2/pipeline", label: "Who to call back", icon: CallBackIcon },
-    { href: "/v2/reps", label: "How my team is doing", icon: TeamIcon },
-    { href: "/v2/calls", label: "Listen to calls", icon: PlayIcon },
-    { href: "/v2/outbox", label: "Texts I sent", icon: MessageIcon },
-  ];
-  return (
-    <section aria-label="Go to">
-      <h2 className="mb-3 px-1 text-[20px] font-semibold">What else?</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {items.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={tile}>
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Icon className="h-6 w-6" />
-            </span>
-            <span className="flex w-full items-center justify-between gap-2 text-[17px] font-semibold text-ink">
-              {label}
-              <ChevronIcon className="h-4 w-4 shrink-0 text-muted" />
-            </span>
-          </Link>
-        ))}
-        <button className={tile} onClick={onUpload}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <UploadIcon className="h-6 w-6" />
-          </span>
-          <span className="text-[17px] font-semibold">Add a call recording</span>
-        </button>
-      </div>
-    </section>
   );
 }
 

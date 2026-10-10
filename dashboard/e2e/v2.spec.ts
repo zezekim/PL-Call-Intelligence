@@ -23,10 +23,12 @@ test("Today leads with one magic button, and it sends every written text", async
     },
   });
   await page.goto("/v2");
-  await expect(page.getByText("5 things need you. I already wrote 1 text.")).toBeVisible();
-  // Nothing to read on this page: no scores or coaching.
-  await expect(page.getByText("New customers", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Who to call back/ })).toBeVisible();
+  await expect(page.getByText("Customer problems are often not fixed on the call.")).toBeVisible();
+  // One screen: the numbers, the jobs and the team, each a button.
+  await expect(page.getByRole("region", { name: "How it's going" }).getByRole("link", { name: /New customers/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Call backs waiting/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your team" }).getByRole("link", { name: /Dana.*Work on: Explain the plan/ })).toBeVisible();
+  await expect(page.getByText("I wrote 1 text")).toBeVisible();
   await page.getByRole("button", { name: "Do it all for me" }).click();
   const sheet = page.getByRole("dialog", { name: "Here's what I'll send" });
   await expect(sheet.getByText(/\$49 quote for the ants/)).toBeVisible();
