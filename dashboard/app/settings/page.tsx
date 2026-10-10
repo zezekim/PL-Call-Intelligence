@@ -9,6 +9,7 @@ import { setBusinessZone } from "@/lib/format";
 import { type Theme, getTheme, setTheme } from "@/lib/theme";
 import { useApi, useTitle } from "@/lib/hooks";
 import { AlertIcon, CheckIcon } from "@/components/icons";
+import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/environment";
 import { ErrorNote, Loading, Modal, Segmented, Spinner } from "@/components/ui";
 
 interface Field {
@@ -30,6 +31,9 @@ interface Spend {
   spent_today_usd: number;
   cap_usd: number;
 }
+
+// Shown up front; everything else waits under Advanced settings.
+const OWNER_SECTIONS = ["Goals"];
 
 const SECTIONS: { title: string; description: string; keys: string[] }[] = [
   {
@@ -150,14 +154,38 @@ export default function SettingsPage() {
     }
   }
 
+  const renderSection = (section: (typeof SECTIONS)[number]) => (
+    <section key={section.title} className="pt-3">
+      <h2 className="section-title px-1">{section.title}</h2>
+      <p className="footnote mb-3 mt-1 max-w-2xl px-1">{section.description}</p>
+      <div className="group-list px-5">
+        {section.keys.map((key) =>
+          byKey[key] ? (
+            <FieldRow
+              key={key}
+              field={byKey[key]}
+              edit={edits[key]}
+              onEdit={(v) => setEdit(key, v)}
+              disabled={!data.can_edit}
+              models={models.data}
+            />
+          ) : null,
+        )}
+      </div>
+      {section.title === "AI receptionist" && <ConnectNumber disabled={dirty || !data.can_edit} />}
+      {section.title === "Weekly digest" && <DigestTest disabled={dirty || !data.can_edit} />}
+      {section.title === "Spending" && spend.data && (
+        <SpendMeter spent={spend.data.spent_today_usd} cap={spend.data.cap_usd} />
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div>
           <h1 className="large-title">Settings</h1>
-          <p className="footnote mt-1.5">
-            Keys are stored encrypted and can only be replaced, never viewed.
-          </p>
+          <p className="mt-2 text-[16px] text-ink/80">Your business, your team, and what the app does for you.</p>
         </div>
         <div className="flex items-center gap-2">
           {saved && (
@@ -170,52 +198,37 @@ export default function SettingsPage() {
               Discard
             </button>
           )}
-          <button
-            className="btn-primary"
-            disabled={!dirty || !data.can_edit}
-            onClick={() => setConfirming(true)}
-          >
-            Save changes
-          </button>
+          {dirty && (
+            <button className="btn-primary" disabled={!data.can_edit} onClick={() => setConfirming(true)}>
+              Save changes
+            </button>
+          )}
         </div>
       </div>
 
       {!data.can_edit && <ErrorNote message="Only an admin can change these settings." />}
 
       <BusinessPanel canEdit={data.can_edit} />
-
-      {SECTIONS.map((section) => (
-        <section key={section.title} className="pt-3">
-          <h2 className="section-title px-1">{section.title}</h2>
-          <p className="footnote mb-3 mt-1 max-w-2xl px-1">{section.description}</p>
-          <div className="group-list px-5">
-            {section.keys.map((key) =>
-              byKey[key] ? (
-                <FieldRow
-                  key={key}
-                  field={byKey[key]}
-                  edit={edits[key]}
-                  onEdit={(v) => setEdit(key, v)}
-                  disabled={!data.can_edit}
-                  models={models.data}
-                />
-              ) : null,
-            )}
-          </div>
-          {section.title === "AI receptionist" && <ConnectNumber disabled={dirty || !data.can_edit} />}
-          {section.title === "Weekly digest" && <DigestTest disabled={dirty || !data.can_edit} />}
-          {section.title === "Spending" && spend.data && (
-            <SpendMeter spent={spend.data.spent_today_usd} cap={spend.data.cap_usd} />
-          )}
-        </section>
-      ))}
-
+      {SECTIONS.filter((x) => OWNER_SECTIONS.includes(x.title)).map(renderSection)}
       <DoneForYouPanel />
-      <ScoringRulesPanel />
-      <PlaybookPanel canEdit={data.can_edit} />
       <TeamPanel canEdit={data.can_edit} />
+      <ScoringRulesPanel />
       <AccountPanel />
       <AppearancePanel />
+
+      {/* Keys, models and limits: set up once, by whoever looks after the system. */}
+      <details className="group pt-6" id="advanced">
+        <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 rounded-2xl border border-control bg-surface px-5 text-[17px] font-semibold [&::-webkit-details-marker]:hidden">
+          <span className="transition-transform group-open:rotate-90" aria-hidden>›</span>
+          Advanced settings
+          <span className="text-[14px] font-normal text-muted">For the person who set up the system</span>
+        </summary>
+        <div className="space-y-5 pt-2">
+          {SECTIONS.filter((x) => !OWNER_SECTIONS.includes(x.title)).map(renderSection)}
+          <TranscriptionChoice />
+          <PlaybookPanel canEdit={data.can_edit} />
+        </div>
+      </details>
 
       <Modal open={confirming} onClose={() => !saving && setConfirming(false)} title="Save these changes?">
         <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[14px] leading-snug">
@@ -572,12 +585,12 @@ function DoneForYouPanel() {
             <span className="text-[14px]">
               <span className="text-[15px] font-semibold">Practice mode</span>
               <span className="block text-ink/80">
-                Texts are shown in the Outbox instead of being sent. Everything else works the same, and you can answer
-                them there to see what happens. Use it while your texting number waits for carrier approval.
+                Texts are shown on the Texts page instead of being sent. Everything else works the same, and you can answer
+                them there to see what happens. Use it until a texting service (like Twilio) is connected.
               </span>
               {biz.data?.practice_mode && (
                 <Link href="/v2/outbox" className="mt-1 inline-block text-link underline underline-offset-2">
-                  Open the Outbox
+                  Open the Texts page
                 </Link>
               )}
             </span>
@@ -635,7 +648,7 @@ function DoneForYouPanel() {
                   run(
                     "test",
                     () => api.post("/intel/morning/test"),
-                    biz.data?.practice_mode ? "It's in the Outbox." : `Sent to ${pretty(current)}.`,
+                    biz.data?.practice_mode ? "It's on the Texts page." : `Sent to ${pretty(current)}.`,
                   )
                 }
               >
@@ -1324,6 +1337,24 @@ function BusinessPanel({ canEdit }: { canEdit: boolean }) {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Where calls are turned into words: the same choice offered when signing in. */
+function TranscriptionChoice() {
+  const { env } = useEnvironment();
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="pt-3">
+      <h2 className="section-title px-1">Where calls are transcribed</h2>
+      <div className="card mt-3 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+        <span className="text-[15px]">{ENVIRONMENTS.find((e) => e.value === env)?.label ?? "Cloud"}</span>
+        <button className="btn-secondary" onClick={() => setOpen(true)}>
+          Change
+        </button>
+      </div>
+      <EnvironmentDialog open={open} onClose={() => setOpen(false)} />
     </section>
   );
 }

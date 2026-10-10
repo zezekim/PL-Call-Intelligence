@@ -181,11 +181,11 @@ export function ListenPanel({
       <div className="border-b border-line px-5 pb-4 pt-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className={`${large ? "text-[24px] font-bold" : "text-[17px] font-semibold"} tracking-title`}>
-            {large ? "Listen to the call" : "Recording & transcript"}
+            Listen to the call
           </h2>
           <div className="flex items-center gap-3">
             {markers.length > 0 && !fixing && (
-              <div className={`hidden items-center gap-3 sm:flex ${large ? "text-[16px] text-ink" : "text-[12px] text-muted"}`}>
+              <div className={`hidden items-center gap-3 whitespace-nowrap sm:flex ${large ? "text-[16px] text-ink" : "text-[14px] text-ink/80"}`}>
                 <span className="inline-flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-bad" /> To do better
                 </span>
@@ -196,7 +196,7 @@ export function ListenPanel({
             )}
             {onFix && segments.length > 0 && (
               <button
-                className={fixing ? "btn-primary px-3 py-1 text-[13px]" : "text-[13px] text-link hover:underline print:hidden"}
+                className={fixing ? "btn-primary" : "btn-secondary print:hidden"}
                 onClick={() => onFix(!fixing)}
                 aria-pressed={fixing}
               >

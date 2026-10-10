@@ -91,7 +91,7 @@ export function ActionSheet({
       } else {
         toast({
           message: summary?.practice
-            ? `In the Outbox for ${done.to_name ?? done.to_phone_pretty} (practice)`
+            ? `On the Texts page for ${done.to_name ?? done.to_phone_pretty} (practice)`
             : `Sent to ${done.to_name ?? done.to_phone_pretty}`,
         });
         onClose();
@@ -122,7 +122,7 @@ export function ActionSheet({
     return (
       <Modal open={open} onClose={onClose} title="Sent">
         <p className="flex items-center gap-2 text-[15px]">
-          <CheckIcon className="h-5 w-5 text-good" /> {summary?.practice ? "In the Outbox for" : "Sent to"}{" "}
+          <CheckIcon className="h-5 w-5 text-good" /> {summary?.practice ? "On the Texts page for" : "Sent to"}{" "}
           {sent.action.to_name ?? sent.action.to_phone_pretty}.
         </p>
         <AutopilotOffer
@@ -216,7 +216,7 @@ export function ActionSheet({
         </div>
         {summary?.practice && (
           <p className="rounded-xl bg-warn-soft px-3 py-2 text-[13px]">
-            Practice mode: this goes to the Outbox, not to their phone.
+            Practice mode: this goes to the Texts page, not to their phone.
           </p>
         )}
         {other && index === 0 && (

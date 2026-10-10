@@ -130,3 +130,13 @@ export const PrintIcon = (p: IconProps) => (
     <path d="M7 9V3h10v6M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" />
   </Svg>
 );
+export const MessageIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a8 8 0 0 1-11.8 7L4 20.5l1.5-4.6A8 8 0 1 1 21 12z" />
+  </Svg>
+);
+export const CallBackIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3v6h6M21 3l-6 6" />
+  </Svg>
+);

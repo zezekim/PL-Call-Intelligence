@@ -12,7 +12,7 @@ import { AlertIcon, CheckIcon, ChevronIcon, PhoneIcon, PlayIcon } from "@/compon
 import { Card, Empty, Loading, Spinner } from "@/components/ui";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
 import { failMessage, useToast } from "@/components/v2/toast";
-import { Change, Meter, MoreToggle, PageError, Section, StatusPill } from "@/components/v2/kit";
+import { Meter, MoreToggle, PageError, Section, StatusPill } from "@/components/v2/kit";
 
 export default function OverviewPage() {
   useTitle("Today");
@@ -39,6 +39,7 @@ export default function OverviewPage() {
   const refreshAll = async () => {
     await Promise.all([reload(), summary.reload()]);
   };
+  const [acting, setActing] = useState<Todo | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error && !data) return <PageError status={status} onRetry={() => void reload()} />;
@@ -52,60 +53,80 @@ export default function OverviewPage() {
   }
 
   const [sales, retention, service, quality] = data.cards;
+  const first = data.todo.find((t) => !t.handled && t.actions?.length);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {actions?.practice && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-3 text-[14px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-4 text-[16px]">
           <p>
-            <span className="font-semibold">Practice mode is on.</span> Texts go to the Outbox instead of people&apos;s phones.
+            <span className="font-semibold">Practice mode is on.</span> Texts go to the Texts page instead of people&apos;s phones.
           </p>
-          <Link href="/v2/outbox" className="btn-secondary min-h-[44px]">
-            Open the Outbox
+          <Link href="/v2/outbox" className="btn-secondary">
+            See the texts
           </Link>
         </div>
       )}
-      <Headline brief={data} />
+      <Headline brief={data} first={first} onStart={() => first && setActing(first)} />
 
-      <div className="grid gap-4 min-[1180px]:grid-cols-3 min-[1180px]:gap-y-0">
-        {[sales, retention, service].map((c) => (
-          <Performance key={c.key} card={c} />
-        ))}
-      </div>
+      <DoToday items={data.todo} onAct={setActing} />
+      <Autopilot summary={actions} />
 
-      <div className="grid items-start gap-8 min-[1180px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <DoToday items={data.todo} summary={actions} onChanged={refreshAll} />
-          <Autopilot summary={actions} />
+      <Section title="How it's going" subtitle="Green is good. Red needs work.">
+        <div className="grid gap-4 min-[1180px]:grid-cols-3 min-[1180px]:gap-y-0">
+          {[sales, retention, service].map((c) => (
+            <Performance key={c.key} card={c} />
+          ))}
         </div>
-        <CoachingFocus brief={data} quality={quality} summary={actions} onChanged={refreshAll} />
-      </div>
+      </Section>
+
+      <CoachingFocus brief={data} quality={quality} summary={actions} onChanged={refreshAll} />
 
       <Footer brief={data} />
+
+      {acting && (
+        <ActionSheet
+          open={!!acting}
+          title={acting.title}
+          options={acting.actions ?? []}
+          summary={actions}
+          onClose={() => setActing(null)}
+          onDone={refreshAll}
+        />
+      )}
     </div>
   );
 }
 
 // --- What's happening ------------------------------------------------------------
 
-function Headline({ brief }: { brief: Brief }) {
-  const { status, title, detail, money } = brief.headline;
+function Headline({ brief, first, onStart }: { brief: Brief; first?: Todo; onStart: () => void }) {
+  const { status, title, money } = brief.headline;
   const Icon = status === "good" ? CheckIcon : AlertIcon;
   return (
-    <div className={`flex gap-4 rounded-card px-6 py-5 ${STATUS_SOFT[status]}`}>
-      <Icon className={`mt-1 h-5 w-5 shrink-0 ${STATUS_TEXT[status]}`} />
-      <div className="min-w-0">
-        <p className="text-[20px] font-semibold leading-snug tracking-title">{title}</p>
-        {money && (
-          <p className="mt-1.5 max-w-3xl text-[16px] font-semibold leading-snug">
-            {money}{" "}
-            <Link href="/v2/pipeline" className="whitespace-nowrap text-[14px] font-medium text-link underline underline-offset-2">
-              See who
-            </Link>
-          </p>
-        )}
-        {detail && <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-ink/80">{detail}</p>}
+    <div className={`rounded-card px-6 py-6 ${STATUS_SOFT[status]}`}>
+      <div className="flex gap-4">
+        <Icon className={`mt-1 h-7 w-7 shrink-0 ${STATUS_TEXT[status]}`} />
+        <div className="min-w-0">
+          <p className="text-[24px] font-semibold leading-snug tracking-title">{title}</p>
+          {money && (
+            <p className="mt-2 max-w-3xl text-[18px] leading-snug">
+              {money}{" "}
+              <Link href="/v2/pipeline" className="whitespace-nowrap font-medium text-link underline underline-offset-2">
+                See who
+              </Link>
+            </p>
+          )}
+        </div>
       </div>
+      {first?.actions?.length ? (
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 sm:pl-11">
+          <button className="btn-primary min-h-[52px] px-7 text-[17px]" onClick={onStart}>
+            Start here: {first.actions[0].label}
+          </button>
+          <span className="text-[15px] text-ink/80">{first.title}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -118,11 +139,11 @@ function Headline({ brief }: { brief: Brief }) {
 function Performance({ card }: { card: PerformanceCard }) {
   return (
     <Card className="flex flex-col p-5 min-[1180px]:row-span-6 min-[1180px]:grid min-[1180px]:grid-rows-subgrid min-[1180px]:gap-0">
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 text-[15px] font-semibold tracking-tightish" title={card.question}>
+      <div>
+        <p className="text-[18px] font-semibold leading-snug tracking-tightish" title={card.question}>
           {card.label}
         </p>
-        <span className="shrink-0">
+        <span className="mt-2 inline-block">
           <StatusPill status={card.status} />
         </span>
       </div>
@@ -131,24 +152,23 @@ function Performance({ card }: { card: PerformanceCard }) {
         <span className={`tnum whitespace-nowrap text-[40px] font-semibold leading-none tracking-title ${STATUS_TEXT[card.status]}`}>
           {card.of ? `${card.count} of ${card.of}` : "–"}
         </span>
-        <span className="text-[15px] font-medium text-ink/80">{card.metric_label.toLowerCase()}</span>
-        <Change value={card.change} />
+        <span className="text-[17px] font-medium text-ink/80">{card.metric_label.toLowerCase()}</span>
       </div>
       <div className="mt-3 w-full self-start">
         <Meter value={card.value} target={card.target} status={card.status} label={card.metric_label} />
       </div>
-      <p className="mt-1.5 text-[12px] text-muted" title={card.detail}>
+      <p className="mt-2 text-[14px] text-muted" title={card.detail}>
         {card.goal}
       </p>
 
-      <p className="mt-4 border-t border-line pt-3 text-[14px] leading-snug">{card.why}</p>
+      <p className="mt-4 border-t border-line pt-3 text-[16px] leading-snug">{card.why}</p>
       {card.action ? (
         <Link
           href={card.action.href}
-          className="mt-3 inline-flex items-center gap-1 self-start text-[14px] font-medium text-link hover:underline"
+          className="mt-3 inline-flex min-h-[40px] items-center gap-1 self-start text-[16px] font-medium text-link underline underline-offset-2"
         >
           {card.action.label}
-          <ChevronIcon className="h-3.5 w-3.5" />
+          <ChevronIcon className="h-4 w-4" />
         </Link>
       ) : (
         <span aria-hidden />
@@ -178,52 +198,43 @@ function perYear(value: number | null | undefined): string | null {
  * one tap away, one line each. Done items sink to the bottom showing what
  * was done, so the work is seen to happen.
  */
-function DoToday({
-  items,
-  summary,
-  onChanged,
-}: {
-  items: Todo[];
-  summary: ActionsSummary | null;
-  onChanged: () => Promise<void>;
-}) {
+function DoToday({ items, onAct }: { items: Todo[]; onAct: (t: Todo) => void }) {
   const [all, setAll] = useState(false);
-  const [acting, setActing] = useState<Todo | null>(null);
   const open = items.filter((t) => !t.handled);
   const handled = items.filter((t) => t.handled);
   const shown = all ? open : open.slice(0, TOP);
   return (
-    <Section title="Do these first" subtitle="The most important one is at the top. Each one is ready to send.">
+    <Section title="Do these first" subtitle="Each one is ready to go. Press the blue button.">
       {open.length ? (
         <>
           <ol className="group-list">
             {shown.map((t, i) =>
               i < TOP ? (
-                <li key={t.key ?? `${t.title}-${i}`} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
+                <li key={t.key ?? `${t.title}-${i}`} className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center">
                   <Link href={t.href} className="group flex min-w-0 flex-1 items-start gap-4">
                     <span
-                      className={`tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
+                      className={`tnum flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] font-semibold ${
                         i === 0 ? "bg-bad text-white" : "bg-fill text-ink"
                       }`}
                     >
                       {i + 1}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-medium leading-snug group-hover:underline">
+                      <p className="text-[18px] font-semibold leading-snug group-hover:underline">
                         {t.title}
                         {perYear(t.value) && (
-                          <span className="ml-2 whitespace-nowrap rounded-full bg-good-soft px-2 py-0.5 text-[12px] font-semibold text-good">
+                          <span className="ml-2 whitespace-nowrap rounded-full bg-good-soft px-2.5 py-0.5 align-middle text-[14px] font-semibold text-good">
                             {perYear(t.value)}
                           </span>
                         )}
                       </p>
-                      <p className="mt-0.5 text-[13px] leading-snug text-muted">{t.why}</p>
+                      <p className="mt-1 text-[16px] leading-snug text-ink/80">{t.why}</p>
                     </div>
                   </Link>
                   {t.actions?.length ? (
                     <button
-                      className="btn-primary min-h-[44px] shrink-0 self-start pl-4 sm:ml-10"
-                      onClick={() => setActing(t)}
+                      className="btn-primary min-h-[48px] shrink-0 self-start px-6 text-[16px] sm:ml-0 sm:self-center"
+                      onClick={() => onAct(t)}
                     >
                       {t.actions[0].label}
                     </button>
@@ -232,46 +243,33 @@ function DoToday({
               ) : (
                 <li key={t.key ?? `${t.title}-${i}`}>
                   <button
-                    onClick={() => (t.actions?.length ? setActing(t) : undefined)}
-                    className="flex w-full items-center gap-4 px-5 py-2.5 text-left text-[14px] transition-colors hover:bg-surface-hover"
+                    onClick={() => (t.actions?.length ? onAct(t) : undefined)}
+                    className="flex min-h-[56px] w-full items-center gap-4 px-5 py-3 text-left text-[16px] transition-colors hover:bg-surface-hover"
                   >
-                    <span className="tnum w-6 shrink-0 text-center text-[12px] text-muted">{i + 1}</span>
-                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                    <span className="hidden shrink-0 text-[12px] text-muted sm:block">
+                    <span className="tnum w-9 shrink-0 text-center text-[15px] text-muted">{i + 1}</span>
+                    <span className="min-w-0 flex-1">{t.title}</span>
+                    <span className="hidden shrink-0 text-[15px] font-medium text-link sm:block">
                       {t.actions?.[0]?.label ?? KIND_LABEL[t.kind]}
                     </span>
-                    <ChevronIcon className="h-4 w-4 shrink-0 text-faint" />
+                    <ChevronIcon className="h-5 w-5 shrink-0 text-muted" />
                   </button>
                 </li>
               ),
             )}
           </ol>
           {open.length > TOP && (
-            <MoreToggle
-              className="mt-2.5 px-1"
-              open={all}
-              onToggle={() => setAll((a) => !a)}
-              count={open.length - TOP}
-            />
+            <button className="btn-secondary mt-3 w-full sm:w-auto" aria-expanded={all} onClick={() => setAll((a) => !a)}>
+              {all ? "Show less" : `Show ${open.length - TOP} more`}
+            </button>
           )}
         </>
       ) : (
-        <Card className="flex items-center gap-3 px-5 py-4">
-          <CheckIcon className="h-5 w-5 text-good" />
-          <p className="text-[15px]">You're all caught up. Nothing needs you today.</p>
+        <Card className="flex items-center gap-3 px-5 py-5">
+          <CheckIcon className="h-6 w-6 text-good" />
+          <p className="text-[17px]">You&apos;re all caught up. Nothing needs you today.</p>
         </Card>
       )}
       {handled.length > 0 && <Handled items={handled} />}
-      {acting && (
-        <ActionSheet
-          open={!!acting}
-          title={acting.title}
-          options={acting.actions ?? []}
-          summary={summary}
-          onClose={() => setActing(null)}
-          onDone={onChanged}
-        />
-      )}
     </Section>
   );
 }
@@ -282,20 +280,20 @@ function Handled({ items }: { items: Todo[] }) {
   const shown = all ? items : items.slice(0, 3);
   return (
     <div className="mt-4">
-      <p className="mb-1.5 px-1 text-[13px] font-semibold text-good">Done</p>
+      <p className="mb-1.5 px-1 text-[15px] font-semibold text-good">Done</p>
       <ul className="group-list">
         {shown.map((t) => {
           const a = t.handled as PreparedAction;
           return (
             <li key={t.key ?? t.title} className="flex items-start gap-3 px-5 py-3">
               <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-good" />
-              <div className="min-w-0 flex-1 text-[14px]">
+              <div className="min-w-0 flex-1 text-[16px]">
                 <Link href={t.href} className="text-muted line-through decoration-ink/20 hover:text-ink hover:no-underline">
                   {t.title}
                 </Link>
-                <p className="text-[13px] text-ink/80">{handledText(a)}</p>
+                <p className="text-[15px] text-ink/80">{handledText(a)}</p>
                 {a.reply_text && (
-                  <p className="mt-1.5 rounded-xl bg-accent-soft/60 px-3 py-2 text-[14px]">
+                  <p className="mt-1.5 rounded-xl bg-accent-soft/60 px-3 py-2 text-[16px]">
                     <span className="font-medium">{a.to_name ?? "They"} replied:</span> “{a.reply_text}”
                   </p>
                 )}
@@ -317,7 +315,7 @@ function Autopilot({ summary }: { summary: ActionsSummary | null }) {
   const on = (Object.keys(summary.autopilot) as PreparedAction["kind"][]).filter((k) => summary.autopilot[k]);
   const auto = summary.done_today.filter((a) => a.auto).length;
   return (
-    <p className="px-1 text-[13px] text-muted">
+    <p className="px-1 text-[15px] text-muted">
       {on.length ? (
         <>
           <span className="font-medium text-ink">Autopilot is on</span> for {on.map((k) => KIND_WORDS[k].many).join(" and ")}
@@ -349,33 +347,33 @@ function CoachingFocus({
   const c = brief.coaching;
   const first = c?.reps[0];
   return (
-    <Section title="What to teach this week" subtitle="The one step that would help the most calls.">
+    <Section title="What to teach this week" subtitle="One thing. It would help the most calls.">
       <Card className="p-5">
         {c ? (
           <>
-            <p className="text-[20px] font-semibold leading-tight tracking-title">{c.focus.plain}</p>
-            <p className="mt-0.5 text-[14px] text-ink/80">{c.focus.meaning}</p>
-            <p className="mt-2 text-[14px] font-medium text-bad">
+            <p className="text-[24px] font-semibold leading-tight tracking-title">{c.focus.plain}</p>
+            <p className="mt-0.5 text-[16px] text-ink/80">{c.focus.meaning}</p>
+            <p className="mt-2 text-[16px] font-medium text-bad">
               Skipped on {c.focus.missed} of {c.focus.of} calls
             </p>
 
             {c.tip && (
               <div className="mt-4 rounded-2xl bg-panel p-4">
-                <p className="text-[12px] font-medium text-muted">Teach them to say</p>
-                <p className="mt-1 text-[15px] leading-relaxed">“{c.tip.try_saying}”</p>
+                <p className="text-[14px] font-medium text-muted">Teach them to say</p>
+                <p className="mt-1 text-[17px] leading-relaxed">“{c.tip.try_saying}”</p>
                 <Link
                   href={`/v2/calls/${c.tip.call_id}${c.tip.start !== null ? `?t=${Math.floor(c.tip.start)}` : ""}`}
-                  className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-link hover:underline"
+                  className="mt-3 inline-flex items-center gap-1.5 text-[15px] font-medium text-link hover:underline"
                 >
                   <PlayIcon className="h-3 w-3" />
-                  Hear the real call
+                  Hear it on a real call
                   {c.tip.start !== null && ` at ${clock(c.tip.start)}`}
                 </Link>
               </div>
             )}
 
             {first && (
-              <p className="mt-4 text-[13px] text-muted">
+              <p className="mt-4 text-[15px] text-muted">
                 Start with <span className="font-medium text-ink">{first.rep}</span>, who skipped it on {first.missed}{" "}
                 of {first.of} calls.
               </p>
@@ -383,24 +381,9 @@ function CoachingFocus({
             <CoachingTexts delivery={c.delivery} waiting={summary?.coaching_waiting ?? []} onChanged={onChanged} />
           </>
         ) : (
-          <p className="text-[14px] text-muted">We need a few more calls before we can say.</p>
+          <p className="text-[16px] text-muted">We need a few more calls before we can say.</p>
         )}
 
-        {quality.value !== null && (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-[13px] text-muted">
-            <span>Overall, calls follow about {Math.round(quality.value / 10)} of 10 steps</span>
-            <StatusPill status={quality.status} />
-          </div>
-        )}
-        {c?.strength && (
-          <p className="mt-2 flex items-start gap-2 text-[13px] text-muted">
-            <CheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-good" />
-            <span>
-              Strongest step: <span className="text-ink">{c.strength.plain}</span> ({c.strength.met} of{" "}
-              {c.strength.of} calls)
-            </span>
-          </p>
-        )}
       </Card>
     </Section>
   );
@@ -443,7 +426,7 @@ function CoachingTexts({
   }
   const d = delivery;
   return (
-    <div className="mt-4 rounded-2xl border border-line p-4 text-[14px]">
+    <div className="mt-4 rounded-2xl border border-line p-4 text-[16px]">
       <p className="font-medium">Each person&apos;s own tip, by text</p>
       {d && d.sent > 0 ? (
         <p className="mt-1 text-ink/80">
@@ -461,7 +444,7 @@ function CoachingTexts({
         </button>
       ) : (
         !d?.sent && (
-          <p className="mt-2 text-[13px] text-muted">
+          <p className="mt-2 text-[15px] text-muted">
             Add a mobile number on each person&apos;s page on{" "}
             <Link href="/v2/reps" className="text-link underline underline-offset-2">
               Team
@@ -514,7 +497,7 @@ function Footer({ brief }: { brief: Brief }) {
     </Link>,
   );
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-4 text-[13px] text-muted">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-4 text-[15px] text-muted">
       <p className="flex flex-wrap gap-x-2">
         {bits.map((b, i) => (
           <span key={i}>

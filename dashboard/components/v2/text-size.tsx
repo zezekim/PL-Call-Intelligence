@@ -10,9 +10,9 @@ import { useEffect, useState } from "react";
 export type TextSize = "small" | "normal" | "large";
 
 export const TEXT_SIZES: { value: TextSize; label: string; zoom: number; glyph: string }[] = [
-  { value: "small", label: "Small text", zoom: 1, glyph: "text-[11px]" },
+  { value: "small", label: "Smaller text", zoom: 1, glyph: "text-[11px]" },
   { value: "normal", label: "Normal text", zoom: 1.1, glyph: "text-[14px]" },
-  { value: "large", label: "Larger text", zoom: 1.2, glyph: "text-[17px]" },
+  { value: "large", label: "Larger text", zoom: 1.25, glyph: "text-[17px]" },
 ];
 
 const KEY = "pestlaunch.textsize";
@@ -25,11 +25,12 @@ function read(): TextSize {
   } catch {
     /* storage unavailable */
   }
-  return "small";
+  // Easy to read out of the box; smaller is a choice, not the default.
+  return "normal";
 }
 
 export function useTextSize(): [TextSize, (s: TextSize) => void] {
-  const [size, setSize] = useState<TextSize>("small");
+  const [size, setSize] = useState<TextSize>("normal");
   useEffect(() => {
     const sync = () => setSize(read());
     sync();
@@ -65,7 +66,7 @@ export function TextSizePicker() {
   const [size, choose] = useTextSize();
   return (
     <div className="flex items-center justify-between gap-2 px-2.5 py-1" role="radiogroup" aria-label="Text size">
-      <span className="text-[13px] text-muted">Text size</span>
+      <span className="text-[14px] text-ink/80">Text size</span>
       <div className="flex rounded-[8px] bg-fill p-[2px]">
         {TEXT_SIZES.map((t) => (
           <button

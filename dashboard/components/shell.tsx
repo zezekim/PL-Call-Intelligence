@@ -12,10 +12,12 @@ import { RouteProgress, startProgress } from "./route-progress";
 import { UpdateNotice } from "./update-notice";
 import {
   AssistantIcon,
+  CallBackIcon,
   FinancialsIcon,
   HealthIcon,
   HomeIcon,
   LogoutIcon,
+  MessageIcon,
   PhoneIcon,
   SearchIcon,
   SettingsIcon,
@@ -35,6 +37,19 @@ const NAV = [
   { label: "Customer Health", icon: HealthIcon },
 ];
 
+// The owner's app: only pages that work, in plain words, biggest first.
+const SIMPLE_NAV = [
+  { label: "Today", icon: HomeIcon, href: "/v2", exact: true },
+  { label: "Call back", icon: CallBackIcon, href: "/v2/pipeline" },
+  { label: "My team", icon: TeamIcon, href: "/v2/reps" },
+  { label: "All calls", icon: PhoneIcon, href: "/v2/calls" },
+  { label: "Texts", icon: MessageIcon, href: "/v2/outbox" },
+];
+
+function isOn(pathname: string, href: string, exact?: boolean): boolean {
+  return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -50,7 +65,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const section = pathname.split("/")[1] ?? "";
   // v2 offers a text size, applied to the whole app so nothing moves but size.
   const v2 = pathname.startsWith("/v2");
-  useTextZoom(v2);
+  // Everything but v1 uses the owner's simple layout (Settings included).
+  const simple = !pathname.startsWith("/calls");
+  useTextZoom(simple);
 
   useEffect(() => {
     if (bare) {
@@ -116,8 +133,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <SearchBox />
+        <SearchBox simple={simple} />
 
+        {simple ? (
+          <nav className="mt-5 flex flex-1 flex-col gap-1" aria-label="Main">
+            {SIMPLE_NAV.map(({ label, icon: Icon, href, exact }) => {
+              const active = isOn(pathname, href, exact);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[16px] ${
+                    active ? "bg-accent text-white font-semibold" : "font-medium text-ink hover:bg-ink/[0.05]"
+                  }`}
+                >
+                  <Icon className="h-[22px] w-[22px]" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        ) : (
         <nav className="mt-5 flex flex-1 flex-col gap-px" aria-label="Main">
           {NAV.map(({ label, icon: Icon, href: base }) => {
             // Calls opens v2; only inside v1 does it stay in v1.
@@ -151,16 +188,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        )}
 
         <div className="border-t border-hairline pt-3">
-          {v2 && (
+          {simple && (
             <div className="mb-2">
               <TextSizePicker />
             </div>
           )}
           <Link
             href="/settings"
-            className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] ${
+            aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+            className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 ${simple ? "py-2 text-[15px]" : "py-[6px] text-[14px]"} ${
               pathname.startsWith("/settings") ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
             }`}
           >
@@ -173,7 +212,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {BUILD_ID !== "local" && !v2 && <span className="tnum"> ({BUILD_ID})</span>}
           </p>
           <button
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[14px] text-muted hover:bg-ink/[0.04] hover:text-ink"
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 ${simple ? "py-2 text-[15px]" : "py-[6px] text-[14px]"} text-muted hover:bg-ink/[0.04] hover:text-ink`}
             onClick={() => {
               clearToken();
               router.replace("/login");
@@ -194,16 +233,42 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
             <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
           </svg>
+          {simple && <span className="text-[15px]">Menu</span>}
         </button>
         <span className="text-[15px] font-semibold tracking-tightish">{company}</span>
       </header>
+
+      {simple && (
+        // On a phone the main pages are always one thumb away, with words under each picture.
+        <nav
+          aria-label="Pages"
+          className="print:hidden fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden"
+        >
+          {SIMPLE_NAV.map(({ label, icon: Icon, href, exact }) => {
+            const active = isOn(pathname, href, exact);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-[12px] ${
+                  active ? "font-semibold text-link" : "text-ink/80"
+                }`}
+              >
+                <Icon className="h-6 w-6" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
 
       <div className="print:hidden">
         <UpdateNotice />
       </div>
       <main
         className={`mx-auto w-full min-w-0 max-w-[1120px] px-4 pt-6 sm:px-8 lg:px-10 lg:pt-10 ${
-          wide ? "pb-4" : "pb-20"
+          wide ? "pb-4" : simple ? "pb-28 lg:pb-20" : "pb-20"
         }`}
       >
         <div key={`${section}:${zoneKey}`} className="animate-page-in">
@@ -215,7 +280,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SearchBox() {
+function SearchBox({ simple = false }: { simple?: boolean }) {
   const router = useRouter();
   const ref = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -237,7 +302,7 @@ function SearchBox() {
       onSubmit={(e) => {
         e.preventDefault();
         startProgress();
-        const log = window.location.pathname.startsWith("/v2") ? "/v2/calls" : "/calls/log";
+        const log = simple ? "/v2/calls" : "/calls/log";
         router.push(`${log}${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
       }}
     >
@@ -246,13 +311,17 @@ function SearchBox() {
         ref={ref}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search calls"
-        aria-label="Search calls"
-        className="w-full rounded-[9px] border-0 bg-ink/[0.05] py-[6px] pl-8 pr-10 text-[14px] placeholder:text-muted focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/25"
+        placeholder={simple ? "Find a customer" : "Search calls"}
+        aria-label={simple ? "Find a customer by name" : "Search calls"}
+        className={`w-full rounded-[9px] border-0 bg-ink/[0.05] pl-8 placeholder:text-muted focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/25 ${
+          simple ? "py-2 pr-3 text-[15px]" : "py-[6px] pr-10 text-[14px]"
+        }`}
       />
-      <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-subtle">
-        ⌘K
-      </kbd>
+      {!simple && (
+        <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-sans text-[11px] text-subtle">
+          ⌘K
+        </kbd>
+      )}
     </form>
   );
 }

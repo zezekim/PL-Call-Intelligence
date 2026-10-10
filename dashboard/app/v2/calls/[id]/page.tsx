@@ -108,8 +108,8 @@ function CallPage() {
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
 
-      <div className="grid items-start gap-5 min-[1180px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
-        <div className="min-w-0 min-[1180px]:sticky min-[1180px]:top-6">
+      <div className="grid items-start gap-5 min-[1360px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
+        <div className="min-w-0 min-[1360px]:sticky min-[1360px]:top-6">
           <ListenPanel
             src={call.audio_url ? api.url(call.audio_url) : null}
             duration={call.duration_seconds}

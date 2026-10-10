@@ -40,7 +40,7 @@ interface Thread {
  * a customer's reply is passed on to you.
  */
 export default function OutboxPage() {
-  useTitle("Outbox");
+  useTitle("Texts");
   const { data, error, loading, setData, reload } = useApi<Outbox>("/intel/outbox");
   const toast = useToast();
   const threads = useMemo(() => toThreads(data?.messages ?? []), [data]);
@@ -55,8 +55,8 @@ export default function OutboxPage() {
         <BackIcon className="h-4 w-4" /> Today
       </Link>
       <div>
-        <h1 className="text-[28px] font-semibold tracking-title">Outbox</h1>
-        <p className="mt-1 max-w-2xl text-[15px] leading-relaxed text-ink/80">
+        <h1 className="large-title">Texts</h1>
+        <p className="mt-2 max-w-2xl text-[16px] leading-relaxed text-ink/80">
           {data.practice
             ? "Practice mode is on. These texts are shown here instead of being sent. Answer any of them as the person it went to, and the app reacts as if they had texted back."
             : "Practice mode is off, so texts go to real phones. These are from when it was on."}{" "}
@@ -92,7 +92,7 @@ export default function OutboxPage() {
             await reload();
           }}
         >
-          Clear the Outbox
+          Clear these texts
         </button>
       )}
     </div>

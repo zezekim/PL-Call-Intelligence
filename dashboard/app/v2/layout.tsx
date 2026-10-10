@@ -1,24 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { businessZone } from "@/lib/format";
 import { CallsContext } from "@/components/calls-context";
-import { ENVIRONMENTS, EnvironmentDialog, useEnvironment } from "@/components/environment";
 import { UploadIcon } from "@/components/icons";
 import { Segmented } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
-import { MoreMenu } from "@/components/v2/kit";
 import { ToastProvider } from "@/components/v2/toast";
 
 type Range = "7" | "30" | "all";
 
+// Each page says in one sentence what it is for. The sidebar (or the bar
+// along the bottom of a phone) moves between them.
 const TABS = [
-  { href: "/v2", label: "Today", title: "Today", v1: "/calls" },
-  { href: "/v2/pipeline", label: "Call back", title: "People to call back", v1: "/calls/pipeline" },
-  { href: "/v2/reps", label: "Team", title: "Your team", v1: "/calls/reps" },
-  { href: "/v2/calls", label: "All calls", title: "All calls", v1: "/calls/log" },
+  { href: "/v2", title: "Today", about: "What needs you today. The most important thing is at the top." },
+  { href: "/v2/pipeline", title: "People to call back", about: "Customers still deciding. Call them before they go somewhere else." },
+  { href: "/v2/reps", title: "Your team", about: "How each person is doing on their calls." },
+  { href: "/v2/calls", title: "All calls", about: "Every call, newest first. Tap one to hear it." },
 ];
 
 const RANGE_KEY = "pestlaunch.range";
@@ -38,8 +37,6 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
   const [range, setRange] = useState<Range>("all");
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [envOpen, setEnvOpen] = useState(false);
-  const { env } = useEnvironment();
   const [asOf, setAsOf] = useState(() => new Date().toISOString());
   // Set in the browser, so it is today where the business is.
   const [today, setToday] = useState("");
@@ -109,73 +106,41 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
     <CallsContext.Provider value={{ days, refreshKey, query }}>
       <ToastProvider>
         {tab && (
-          <div className="mb-7">
+          <div className="mb-8">
             <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
               <div className="min-w-0">
                 <h1 className="large-title">
                   {tab.title}
                   {tab.href === "/v2" && today && <span className="font-normal text-muted">, {today}</span>}
                 </h1>
-                <p className="footnote mt-1.5">
-                  {ranged ? (range === "all" ? "All calls" : `Last ${range} days`) : "Everyone still deciding"} ·{" "}
-                  {updated(asOf, Math.max(now, Date.parse(asOf)))} ·{" "}
-                  <Link href={tab.v1} className="hover:text-link hover:underline" title="This is version 2. Open version 1.">
-                    See v1
-                  </Link>
-                </p>
+                <p className="mt-2 text-[16px] leading-snug text-ink/80">{tab.about}</p>
               </div>
-              <div className="flex items-center gap-2">
-                {ranged && (
-                  <Segmented
-                    size="sm"
-                    value={range}
-                    onChange={changeRange}
-                    options={[
-                      { value: "7", label: "7D" },
-                      { value: "30", label: "30D" },
-                      { value: "all", label: "All" },
-                    ]}
-                  />
-                )}
-                <button className="btn-primary" onClick={() => setUploadOpen(true)}>
-                  <UploadIcon className="h-4 w-4" />
-                  Upload
-                </button>
-                <MoreMenu
-                  items={[
-                    { label: "Refresh", onSelect: refresh },
-                    {
-                      label: `Transcribe with: ${ENVIRONMENTS.find((e) => e.value === env)?.label ?? "Cloud"}`,
-                      onSelect: () => setEnvOpen(true),
-                    },
+              <button className="btn-primary" onClick={() => setUploadOpen(true)}>
+                <UploadIcon className="h-4 w-4" />
+                Add a call recording
+              </button>
+            </div>
+            {ranged && (
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <span className="text-[15px] text-ink/80">Calls from</span>
+                <Segmented
+                  value={range}
+                  onChange={changeRange}
+                  options={[
+                    { value: "7", label: "Past week" },
+                    { value: "30", label: "Past month" },
+                    { value: "all", label: "All time" },
                   ]}
                 />
+                <span className="text-[13px] text-muted">{updated(asOf, Math.max(now, Date.parse(asOf)))}</span>
               </div>
-            </div>
-            <div className="mt-6">
-              <div className="flex w-full rounded-[9px] bg-fill p-[2px] sm:inline-flex sm:w-auto" role="tablist">
-                {TABS.map((t) => (
-                  <Link
-                    key={t.href}
-                    href={t.href}
-                    role="tab"
-                    aria-selected={pathname === t.href}
-                    className={`flex-1 whitespace-nowrap rounded-[7px] px-1.5 py-[5px] text-center text-[13px] font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
-                      pathname === t.href ? "bg-thumb text-ink shadow-thumb" : "text-ink/70 hover:text-ink"
-                    }`}
-                  >
-                    {t.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         )}
         <div key={pathname} className="animate-page-in">
           {children}
         </div>
         <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={refresh} logHref="/v2/calls" />
-        <EnvironmentDialog open={envOpen} onClose={() => setEnvOpen(false)} />
       </ToastProvider>
     </CallsContext.Provider>
   );

@@ -92,13 +92,29 @@ Beyond the feedback:
   become short names, and "unknown" never appears as a customer's name.
 - **Undo for decisions.** "Said yes" and "Said no" take effect at once, with a
   toast and Undo. A failed save puts things back and says so.
-- **Text size** (Small, Normal, Larger) scales the whole app evenly, like the
-  system setting on a Mac or iPhone.
+- **Text size** (Smaller, Normal, Larger) scales the whole app evenly, like the
+  system setting on a Mac or iPhone. Normal (10% larger) is the default.
 - **Friendly states.** A deleted or broken link explains itself and offers a
   way back. A page that fails offers Try again. Loading placeholders match the
   shape of the page that's coming. Numbers refresh when you return to the tab.
-- **v2 is the default.** Sign-in, the bare address and the sidebar's Calls link
-  all open v2.
+- **v2 is the default.** Sign-in and the bare address open v2.
+
+- **Simple layout, for anyone.** Built so an owner who isn't comfortable
+  with computers can use it without help:
+  - The sidebar lists only pages that work: Today, Call back, My team,
+    All calls, Texts. On a phone they sit in a bar along the bottom, each with
+    a word under its picture.
+  - Today opens with one sentence and one big **Start here** button that does
+    the most important thing. Then come the three to-dos, each with its own
+    button, then how it's going (green is good, red needs work), then the one
+    thing to teach this week.
+  - Each page says in one line what it is for. Wording is plain ("Past week",
+    "Add a call recording", "More"), with no shortcut hints, icon-only
+    buttons or links to old versions.
+  - Bigger type, 40px+ buttons, outlined secondary buttons and darker grey
+    text.
+  - Settings puts the business, goals, Done for you and the team first. API
+    keys, models and limits fold under **Advanced settings**.
 
 #### A.2 After the v2 review
 
@@ -152,7 +168,7 @@ says yes:
 
 - **Practice mode.** While a texting number waits for carrier approval (or
   for a demo), Settings → **Done for you** → **Practice mode** puts every text
-  in an in-app **Outbox** instead of sending it. Everything else behaves the
+  on an in-app **Texts** page instead of sending it. Everything else behaves the
   same: actions are marked done, the morning text arrives there with 1 / 2 / 3
   buttons, and a reply typed as a customer is passed on to the owner. The
   replies run the same code a real text back would. Nothing is billed.

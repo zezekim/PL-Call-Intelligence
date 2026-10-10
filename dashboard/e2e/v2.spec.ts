@@ -38,7 +38,7 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
   });
   await page.goto("/v2");
   await expect(page.getByText("$588 a year")).toBeVisible();
-  await page.getByRole("button", { name: "Text Jordan" }).click();
+  await page.getByRole("button", { name: "Text Jordan", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
   await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);
@@ -240,7 +240,7 @@ test("All calls follows the period picker and the filters linked from other page
   await expect.poll(() => asked.at(-1)?.get("rep_id")).toBe(REP_ID);
   expect(asked.at(-1)?.get("status")).toBe("failed");
 
-  await page.getByRole("tab", { name: "7D" }).click();
+  await page.getByRole("tab", { name: "Past week" }).click();
   await expect.poll(() => asked.at(-1)?.get("days")).toBe("7");
 
   await page.getByRole("button", { name: "Show everyone's calls" }).click();

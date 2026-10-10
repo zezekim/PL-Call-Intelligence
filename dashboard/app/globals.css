@@ -6,9 +6,9 @@
   :root {
     color-scheme: light;
     --ink: 29 29 31;
-    --muted: 110 110 115;
-    --faint: 112 112 117;
-    --subtle: 94 94 99;
+    --muted: 84 84 89;
+    --faint: 99 99 104;
+    --subtle: 84 84 89;
     --line: 229 229 234;
     --canvas: 245 245 247;
     --panel: 245 245 247;
@@ -150,18 +150,18 @@
     @apply text-[13px] font-medium text-muted;
   }
   .footnote {
-    @apply text-[13px] leading-snug text-muted;
+    @apply text-[14px] leading-snug text-muted;
   }
 
   /* Controls */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-[7px] text-[14px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 py-[9px] text-[15px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
     @apply btn bg-accent text-white hover:bg-[#0077ed] active:bg-[#006edb];
   }
   .btn-secondary {
-    @apply btn bg-fill text-ink hover:bg-fill-hover active:bg-fill-active;
+    @apply btn border border-control bg-surface text-ink hover:bg-fill active:bg-fill-active;
   }
   .btn-ghost {
     @apply btn text-link hover:bg-accent-soft/70;
@@ -170,14 +170,14 @@
     @apply btn text-bad hover:bg-bad-soft;
   }
   .input {
-    @apply w-full rounded-[10px] border border-control bg-surface px-3 py-[7px] text-[15px] placeholder:text-faint transition-shadow focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/20;
+    @apply w-full rounded-[10px] border border-control bg-surface px-3 py-[9px] text-[16px] placeholder:text-faint transition-shadow focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/20;
   }
   .select {
     @apply input appearance-none bg-[length:14px] bg-[right_10px_center] bg-no-repeat pr-8;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236e6e73' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-[2px] text-[12px] font-medium;
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[13px] font-medium;
   }
   .inset-row {
     @apply flex items-center justify-between gap-4 rounded-2xl bg-panel px-4 py-3;
