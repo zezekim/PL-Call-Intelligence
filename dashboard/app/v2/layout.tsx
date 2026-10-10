@@ -12,9 +12,9 @@ import { ToastProvider } from "@/components/v2/toast";
 type Range = "7" | "30" | "all";
 
 // Each page says in one sentence what it is for. The sidebar (or the bar
-// along the bottom of a phone) moves between them.
+// along the bottom of a phone) moves between them. Today draws its own
+// header: it is one job at a time, with nothing else on the page.
 const TABS = [
-  { href: "/v2", title: "Today", about: "What needs you today. The most important thing is at the top." },
   { href: "/v2/pipeline", title: "People to call back", about: "Customers still deciding. Call them before they go somewhere else." },
   { href: "/v2/reps", title: "Your team", about: "How each person is doing on their calls." },
   { href: "/v2/calls", title: "All calls", about: "Every call, newest first. Tap one to hear it." },
@@ -38,19 +38,6 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [asOf, setAsOf] = useState(() => new Date().toISOString());
-  // Set in the browser, so it is today where the business is.
-  const [today, setToday] = useState("");
-  useEffect(() => {
-    setToday(
-      new Date().toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        timeZone: businessZone(),
-      }),
-    );
-  }, [asOf]);
 
   useEffect(() => {
     try {
@@ -109,10 +96,7 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
           <div className="mb-8">
             <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
               <div className="min-w-0">
-                <h1 className="large-title">
-                  {tab.title}
-                  {tab.href === "/v2" && today && <span className="font-normal text-muted">, {today}</span>}
-                </h1>
+                <h1 className="large-title">{tab.title}</h1>
                 <p className="mt-2 text-[16px] leading-snug text-ink/80">{tab.about}</p>
               </div>
               <button className="btn-primary" onClick={() => setUploadOpen(true)}>

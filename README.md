@@ -104,10 +104,12 @@ Beyond the feedback:
   - The sidebar lists only pages that work: Today, Call back, My team,
     All calls, Texts. On a phone they sit in a bar along the bottom, each with
     a word under its picture.
-  - Today opens with one sentence and one big **Start here** button that does
-    the most important thing. Then come the three to-dos, each with its own
-    button, then how it's going (green is good, red needs work), then the one
-    thing to teach this week.
+  - Today is **one job at a time**: "5 things need you", then a single card
+    with what to do, why, what it's worth and one big button (the send sheet
+    with the text written). Send it, or **Skip for now**, and the next job takes
+    its place. Below the card are only the next few titles and what was done.
+  - Scores ("How it's going", green good and red needs work) and the one
+    thing to teach this week moved to **My team**, above the list of people.
   - Each page says in one line what it is for. Wording is plain ("Past week",
     "Add a call recording", "More"), with no shortcut hints, icon-only
     buttons or links to old versions.

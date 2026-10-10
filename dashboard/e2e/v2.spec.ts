@@ -14,15 +14,25 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Today shows the verdict, three areas and the top three things to do", async ({ page }) => {
+test("Today shows one job at a time, and Skip brings up the next", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2");
+  await expect(page.getByText("5 things need you. Here's the first one.")).toBeVisible();
+  const job = page.getByRole("region", { name: "Do this next" });
+  await expect(job.getByRole("heading", { name: "Try to win back a customer who cancelled" })).toBeVisible();
+  await expect(job.getByText("1 of 5")).toBeVisible();
+  // Nothing else competes for attention: no scores or coaching here.
+  await expect(page.getByText("New customers", { exact: true })).toHaveCount(0);
+  await job.getByRole("button", { name: "Skip for now" }).click();
+  await expect(job.getByRole("heading", { name: "Call Jordan Lee back" })).toBeVisible();
+  await expect(job.getByText("2 of 5")).toBeVisible();
+});
+
+test("the Team page has the scores, what to teach, and everyone", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2/reps");
   await expect(page.getByText("Customer problems are often not fixed on the call.")).toBeVisible();
   await expect(page.getByText("New customers", { exact: true })).toBeVisible();
-  const todo = page.locator("ol.group-list > li");
-  await expect(todo).toHaveCount(3);
-  await page.getByRole("button", { name: "Show 2 more" }).click();
-  await expect(todo).toHaveCount(5);
   await expect(page.getByText("Explain the plan").first()).toBeVisible();
   await expect(page.getByText(/Start with Dana/)).toBeVisible();
   await expect(page.getByText("Managers kept 95% of the AI's step marks (3 calls corrected)")).toBeVisible();
@@ -37,7 +47,8 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
     },
   });
   await page.goto("/v2");
-  await expect(page.getByText("$588 a year")).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(page.getByText("Worth $588 a year")).toBeVisible();
   await page.getByRole("button", { name: "Text Jordan", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
