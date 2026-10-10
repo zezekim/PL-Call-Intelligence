@@ -22,7 +22,7 @@ test("signs in and every page renders without errors", async ({ page }) => {
 
   // The v2 owner views render too.
   for (const [path, heading] of [
-    ["/v2", "Today"],
+    ["/v2", /^Good (morning|afternoon|evening)$/],
     ["/v2/pipeline", "People to call back"],
     ["/v2/reps", "Your team"],
     ["/v2/calls", "All calls"],

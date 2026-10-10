@@ -104,10 +104,13 @@ Beyond the feedback:
   - The sidebar lists only pages that work: Today, Call back, My team,
     All calls, Texts. On a phone they sit in a bar along the bottom, each with
     a word under its picture.
-  - Today is **one job at a time**: "5 things need you", then a single card
-    with what to do, why, what it's worth and one big button (the send sheet
-    with the text written). Send it, or **Skip for now**, and the next job takes
-    its place. Below the card are only the next few titles and what was done.
+  - Today is **buttons, not reading**. "5 things need you. I already wrote 1
+    text." sits above one big **Do it all for me** button. It shows every text
+    first, then one tap sends them all, ticking each off, and ends on what that
+    was worth plus **Do this for me every day** (autopilot). Each job is one row
+    with a **Do it** button that sends straight away; tapping the row opens the
+    text to read or change. Jobs with nothing to send have **Listen**. Big tiles
+    go to the other pages and to **Add a call recording**.
   - Scores ("How it's going", green good and red needs work) and the one
     thing to teach this week moved to **My team**, above the list of people.
   - Each page says in one line what it is for. Wording is plain ("Past week",

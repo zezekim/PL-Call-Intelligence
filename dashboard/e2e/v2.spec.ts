@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { cleanPests } from "../lib/v2";
-import { ACTION_ID, CALL_ID, LEAD_ID, REP_ID, callsPage, mockApi } from "./v2-fixtures";
+import { ACTION_ID, CALL_ID, LEAD_ID, REP_ID, brief, callsPage, mockApi } from "./v2-fixtures";
 
 /*
  * The v2 owner screens against made-up data: no server and no real calls.
@@ -14,18 +14,42 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Today shows one job at a time, and Skip brings up the next", async ({ page }) => {
-  await mockApi(page);
+test("Today leads with one magic button, and it sends every written text", async ({ page }) => {
+  const sent: unknown[] = [];
+  await mockApi(page, {
+    [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ...brief.todo[1].actions![0], status: "done", done_at: new Date().toISOString(), done_by: "owner" } });
+    },
+  });
   await page.goto("/v2");
-  await expect(page.getByText("5 things need you. Here's the first one.")).toBeVisible();
-  const job = page.getByRole("region", { name: "Do this next" });
-  await expect(job.getByRole("heading", { name: "Try to win back a customer who cancelled" })).toBeVisible();
-  await expect(job.getByText("1 of 5")).toBeVisible();
-  // Nothing else competes for attention: no scores or coaching here.
+  await expect(page.getByText("5 things need you. I already wrote 1 text.")).toBeVisible();
+  // Nothing to read on this page: no scores or coaching.
   await expect(page.getByText("New customers", { exact: true })).toHaveCount(0);
-  await job.getByRole("button", { name: "Skip for now" }).click();
-  await expect(job.getByRole("heading", { name: "Call Jordan Lee back" })).toBeVisible();
-  await expect(job.getByText("2 of 5")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Who to call back/ })).toBeVisible();
+  await page.getByRole("button", { name: "Do it all for me" }).click();
+  const sheet = page.getByRole("dialog", { name: "Here's what I'll send" });
+  await expect(sheet.getByText(/\$49 quote for the ants/)).toBeVisible();
+  await sheet.getByRole("button", { name: "Send it" }).click();
+  const doneSheet = page.getByRole("dialog", { name: "All done!" });
+  await expect(doneSheet.getByText("1 customer taken care of")).toBeVisible();
+  await expect(doneSheet.getByText("$588 a year you're going after")).toBeVisible();
+  await expect(doneSheet.getByRole("button", { name: "Do this for me every day" })).toBeVisible();
+  expect(sent).toEqual([{ body: null, phone: null }]);
+});
+
+test("each job is one tap: Do it sends at once", async ({ page }) => {
+  const sent: unknown[] = [];
+  await mockApi(page, {
+    [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ...brief.todo[1].actions![0], status: "done", done_at: new Date().toISOString(), done_by: "owner" } });
+    },
+  });
+  await page.goto("/v2");
+  await page.getByRole("button", { name: "Do it: Text Jordan" }).click();
+  await expect(page.getByText("Done!", { exact: true })).toBeVisible();
+  expect(sent).toEqual([{ body: null, phone: null }]);
 });
 
 test("the Team page has the scores, what to teach, and everyone", async ({ page }) => {
@@ -47,9 +71,8 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
     },
   });
   await page.goto("/v2");
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page.getByText("Worth $588 a year")).toBeVisible();
-  await page.getByRole("button", { name: "Text Jordan", exact: true }).click();
+  await expect(page.getByText("$588 a year").first()).toBeVisible();
+  await page.getByRole("button", { name: "Call Jordan Lee back: read the text first" }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
   await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);
