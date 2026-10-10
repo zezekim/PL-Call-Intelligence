@@ -60,7 +60,7 @@ export default {
         thumb: "0 1px 3px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.04)",
       },
       borderRadius: {
-        card: "18px",
+        card: "22px",
       },
       keyframes: {
         "toast-in": {

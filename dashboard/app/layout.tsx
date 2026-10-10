@@ -7,9 +7,12 @@ import { Shell } from "@/components/shell";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Calls · PestLaunch",
-  description: "Call intelligence for pest control teams",
-  icons: { icon: "/favicon.svg" },
+  title: "PestLaunch",
+  description: "Every call answered. Every customer followed up.",
+  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
+  manifest: "/manifest.webmanifest",
+  // Added to a phone's home screen, it opens like an app.
+  appleWebApp: { capable: true, title: "PestLaunch", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

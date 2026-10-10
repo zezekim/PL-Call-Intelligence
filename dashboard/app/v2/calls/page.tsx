@@ -284,7 +284,15 @@ function Row({ call: c }: { call: CallRow }) {
     .join(" · ");
   return (
     <li>
-      <Link href={`/v2/calls/${c.id}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-hover sm:gap-4 sm:px-5">
+      <Link href={`/v2/calls/${c.id}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-hover hover:no-underline sm:gap-4 sm:px-5">
+        <span
+          className={`hidden h-11 w-11 shrink-0 items-center justify-center rounded-full text-[17px] font-bold sm:flex ${
+            tone === "good" ? "bg-good-soft text-good" : tone === "bad" ? "bg-bad-soft text-bad" : tone === "warn" ? "bg-warn-soft text-warn" : "bg-fill text-ink/70"
+          }`}
+          aria-hidden
+        >
+          {(personName(c.customer_name) ?? "?")[0].toUpperCase()}
+        </span>
         <div className="min-w-0 flex-1">
           <p className="text-[17px] font-semibold">{personName(c.customer_name) ?? "Caller with no name"}</p>
           <p className="mt-0.5 text-[16px] text-ink/70">{meta}</p>

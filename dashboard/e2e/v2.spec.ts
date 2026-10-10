@@ -162,6 +162,29 @@ test("the Team page has the scores, what to teach, and everyone", async ({ page 
   await expect(page.getByRole("link", { name: /Dana.*Needs to work on: Explain the plan/ })).toBeVisible();
 });
 
+test("Team helps one person at a time, with the words to teach and one button", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2/reps");
+  const card = page.getByRole("region", { name: "Help one person" });
+  await expect(card).toContainText("Dana");
+  await expect(card).toContainText("Needs to work on");
+  await expect(card).toContainText("Explain the plan");
+  await expect(card).toContainText("Here's what we'll do first, then the price.");
+  // No mobile on file yet: getting it is the big button.
+  await expect(card.getByRole("link", { name: "Add Dana's mobile to send tips →" })).toHaveAttribute("href", `/v2/reps/${REP_ID}`);
+});
+
+test("with a tip ready, Team sends it in one tap after a look", async ({ page }) => {
+  const tip = { id: "tip1", kind: "coach_rep", status: "proposed", label: "Send Dana the tip", to_name: "Dana", to_phone: "+15550001111", to_phone_pretty: "(555) 000-1111", body: "Hi Dana, your one thing this week: explain the plan.", done_at: null, done_by: null, auto: false, error: null, reply_text: null, replied_at: null };
+  await mockApi(page, {
+    "GET /intel/actions/summary": (route) =>
+      route.fulfill({ json: { autopilot: { text_customer: false, remind_rep: false, coach_rep: false }, approvals: {}, coaching_waiting: [tip], done_today: [], replies: [], daytime: true } }),
+  });
+  await page.goto("/v2/reps");
+  await page.getByRole("region", { name: "Help one person" }).getByRole("button", { name: "Text Dana the tip →" }).click();
+  await expect(page.getByRole("dialog", { name: "Tip for Dana" }).getByRole("textbox")).toHaveValue(/explain the plan/);
+});
+
 test("a to-do is ready to send, and the third send offers autopilot", async ({ page }) => {
   const sent: unknown[] = [];
   await mockApi(page, {
