@@ -308,7 +308,7 @@ foundation, rather than bolted onto the receptionist code.
 | 4. Consistency | Three-run majority consensus; sharper step criteria after comparing runs; *Borderline* marking where runs split |
 | 5. Review UI | Overview with the three views, Call Log, call detail with audio sync, Reps, Pipeline |
 | 6. Deployment | Docker Compose stack, Caddy TLS, self-hosted runner deploys on every green push, backups, health checks |
-| 7. Settings and environments | Write-only API keys in the dashboard; Cloud/Local environment chosen at sign-in; daily spend cap |
+| 7. Settings and environments | Write-only API keys in the dashboard; Cloud/Local environment (Cloud by default, changed in Settings or the upload dialog); daily spend cap |
 | 8. Enhanced scoring | Live model lists from Anthropic and OpenAI; second-opinion model; deliberation on disagreements |
 | 9. Receptionist | Enabled on the demo number; call process in its persona; stereo recording scored like any call; playbook learned from graded calls |
 | 10. Manager tools | Step overrides, rep and date correction, follow-up checklist with assignees, disputed-step review |
@@ -641,8 +641,9 @@ in Settings), and passes an automated WCAG 2 AA audit (axe) in both themes.
 
 Other details:
 
-- **Environment modal** at sign-in: Cloud (Deepgram, seconds per call) or
-  Local (Whisper on the server, private, slower).
+- **Environment:** Cloud (Deepgram, seconds per call) by default, or Local
+  (Whisper on the server, private, slower), switched in Settings or when
+  uploading. Sign-in no longer asks.
 - **Upload dialog:** progress %, duplicate report, environment and scoring
   choice.
 - **Update notice** when a newer build is deployed; version shown in the
