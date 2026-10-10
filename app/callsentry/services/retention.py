@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import structlog
 from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from callsentry.config import get_settings
@@ -55,8 +57,9 @@ async def sweep(session: AsyncSession) -> dict[str, int]:
     )
 
     result = {
-        "recordings_purged": (recordings.rowcount or 0) + len(expired),
-        "transcripts_purged": transcripts.rowcount or 0,
+        # UPDATE and DELETE return a cursor result, which carries the row count.
+        "recordings_purged": (cast(CursorResult[Any], recordings).rowcount or 0) + len(expired),
+        "transcripts_purged": cast(CursorResult[Any], transcripts).rowcount or 0,
     }
     log.info("retention.sweep", **result)
     return result
@@ -92,7 +95,7 @@ async def erase_caller(
 
     result = {
         "calls_anonymised": len(calls),
-        "appointments_deleted": appointments.rowcount or 0,
+        "appointments_deleted": cast(CursorResult[Any], appointments).rowcount or 0,
     }
     log.info("retention.erasure", business_id=str(business_id), **result)
     return result

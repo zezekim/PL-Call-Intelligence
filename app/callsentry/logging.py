@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -22,7 +23,9 @@ _SENSITIVE_KEYS = {
 }
 
 
-def _redact(_logger: Any, _method: str, event: dict[str, Any]) -> dict[str, Any]:
+def _redact(
+    _logger: Any, _method: str, event: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     for key, value in list(event.items()):
         if key.lower() in _SENSITIVE_KEYS:
             event[key] = "<redacted>"

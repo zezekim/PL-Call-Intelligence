@@ -314,7 +314,7 @@ def _retention(rows: list[Row]) -> dict[str, Any]:
                   "href": f"/v2/calls/{no_offer[0].call.id}"}
     elif reasons:
         top, n = reasons.most_common(1)[0]
-        why = f"The most common reason: {CANCEL_REASON_LABEL.get(top, top)} ({n})."
+        why = f"The most common reason: {CANCEL_REASON_LABEL.get(str(top), str(top))} ({n})."
     else:
         why = "Every customer who wanted to cancel was helped."
     return {
@@ -555,7 +555,7 @@ def coaching(rows: list[Row]) -> dict[str, Any] | None:
         for item in row.analysis.items or []:
             if _step_id(row, item) == focus.label and _counts(item) and name:
                 by_rep[name].append(bool(item.get("awarded")))
-    reps = sorted(
+    reps: list[dict[str, Any]] = sorted(
         ({"rep": k, "missed": v.count(False), "of": len(v)} for k, v in by_rep.items()),
         key=lambda r: (-r["missed"], r["rep"]),
     )
@@ -1013,7 +1013,7 @@ def headline(
     detail: list[str] = []
     if todo:
         detail.append(f"Most urgent today: {todo[0]['title']}.")
-    if skipping:
+    if skipping and coach:
         detail.append(f"This week, teach the team to “{coach['focus']['plain'].lower()}”.")
 
     if behind and behind[0]["status"] == "bad" or (not behind and quality["status"] == "bad"):
@@ -1081,7 +1081,7 @@ async def brief(session: AsyncSession, business_id: uuid.UUID, days: int | None)
             .order_by(FollowUp.created_at.desc())
         )
     ).all()
-    todo = _todo(rows, board["open"], [tuple(f) for f in follow_ups])
+    todo = _todo(rows, board["open"], [(f, c, a) for f, c, a in follow_ups])
     await attach_actions(session, business_id, todo)
     summary = without_handled(board["summary"], board["open"],
                               await recently_handled_leads(session, business_id))

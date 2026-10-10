@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import structlog
@@ -65,7 +66,8 @@ class CalComService:
         return bool(self.api_key and self.event_type_id)
 
     async def _request(self, method: str, path: str, **kwargs: object) -> dict:
-        params = dict(kwargs.pop("params", {}) or {})  # type: ignore[arg-type]
+        raw = kwargs.pop("params", None)
+        params: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
         params["apiKey"] = self.api_key
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.request(

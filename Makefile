@@ -53,6 +53,10 @@ psql: ## Database shell
 test: ## Backend tests
 	$(COMPOSE) run --rm --no-deps app pytest -q
 
+.PHONY: lint
+lint: ## Lint and type-check the backend
+	$(COMPOSE) run --rm --no-deps app sh -c "ruff check callsentry tests && mypy callsentry"
+
 .PHONY: dev
 dev: ## Start the database and worker for running the API natively
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis worker

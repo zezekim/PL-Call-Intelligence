@@ -72,15 +72,15 @@ happening, whether it's good or bad, what matters most, and what to do next.
 
 | Feedback | As built in v2 | Where |
 |---|---|---|
-| Overview leads with "calls analyzed" | Today opens with a one-sentence verdict in words (no numbers to interpret), then three cards: **New customers** (said yes), **Customers who want to cancel** (kept), **Customers with a problem** (fixed on the call). Call counts move to a quiet footer | `app/v2/page.tsx`, `brief.headline`, `brief._sales/_retention/_service` |
-| Each area needs a clear good or bad | Every card has a status in words and colour: *Good*, *Could be better*, *Needs work*, or *Not enough calls yet* (under 3 calls, an area isn't judged). Goals are editable in Settings | `brief._judge`, `MIN_JUDGE`, Settings → Goals |
+| Overview leads with "calls analyzed" | Today opens with **Do this first**: one sentence with a name ("Maureen got a price of $649 and has not said yes yet. Nobody has talked to them in 6 weeks.") and one button that says what it does ("Text Kristen to call Maureen"). Four tiles say how it's going in a word (*Good*, *Okay*, *Not good*, *Too early to tell*) over a plain count ("7 of 13 said yes"). Call counts live on the Team page | `app/v2/page.tsx`, `brief._todo` (`plain`), `brief._sales/_retention/_service` |
+| Each area needs a clear good or bad | Every area and every person has a status in words and colour, never colour alone, with ✓ ! ✕ beside it. Under 3 calls nothing is judged (*Too early to tell*). Goals are editable in Settings and read in words: "Good: at least half say yes" | `brief._judge`, `MIN_JUDGE`, `lib/v2.ts` (`goalWords`), Settings → Goals |
 | Coaching bars looked positive when they meant misses | Bars always fill with what went right, in the status colour, with a tick at the goal. Misses are said in words ("Skipped on 19 of 19 calls"), never as a long red bar | `components/v2/kit.tsx` (`Meter`) |
-| Too much at once | One verdict, three cards, the top three things to do (the rest one tap away), and one coaching focus for the week. Detail is folded, never removed: "Show 2 more", "More", a ••• menu for rare actions | all v2 pages |
-| Say what to do next | "Do these first" ranks open work across the business: cancellations nobody tried to save, overdue call-backs, unfixed problems, promises made. Each links to where it gets done | `brief._todo` |
+| Too much at once | Today shows one job first, then three at a time ("Show the other 10"), each one sentence and one big button. Any job's call opens in a side panel instead of a new page. Detail is folded, never removed: "Read more", "Show more", a ••• menu for rare actions | all v2 pages, `components/v2/call-drawer.tsx` |
+| Say what to do next | **Your to-do list** ranks open work across the business: cancellations nobody tried to save, overdue call-backs, unfixed problems, promises made. Each has the text already written; nothing is sent until the owner has read it | `brief._todo`, `intel/actions.py`, `components/v2/act.tsx` |
 | Call page: recording and transcript together | One panel: the player is pinned above the transcript. The line being spoken is highlighted and kept in view, and any line, marker or quote plays from that moment. Keyboard: space, ← / → | `components/v2/listen.tsx` |
-| Pipeline "next step" must be an owner action, none for Won | Call back lists people, not stages: "Call Jordan back", with urgency (*Late by 2 days*, *Call today*, *Waiting a long time*) and what was promised. Decided leads have no next step and fold away | `brief.lead_action`, `app/v2/pipeline/page.tsx` |
-| Rep pages: doing well / improve / coach on | Each person's page answers it in two cards: **Teach next** (the step, how often it's skipped, the exact words, and a real moment from their own calls to listen to together) and **Good at** | `brief.rep_brief`, `app/v2/reps/[id]/page.tsx` |
-| Free to diverge from the existing UI | v2 is a new set of routes under `/v2`; v1 stays intact for comparison, one click away | `app/v2/`, `app/calls/layout.tsx` |
+| Pipeline "next step" must be an owner action, none for Won | Call back is a board of people, not stages: "Call Jordan back", with urgency (*Late by 2 days*, *Call today*, *Waiting a long time*) and what was promised. A big green **Call** button rings them, then asks *How did it go?* and moves the card. Decided customers have no next step | `brief.lead_action`, `app/v2/pipeline/page.tsx`, `components/v2/customer.tsx` |
+| Rep pages: doing well / improve / coach on | Each person's page opens with *Doing well*, *Okay* or *Needs help* and "Does about half of what a good call needs", then **Teach next** (the step, how often it's missed, the exact words, and the moment on their own call) and **Good at** | `brief.rep_brief`, `app/v2/reps/[id]/page.tsx` |
+| Free to diverge from the existing UI | v2 is a new set of routes under `/v2`, and the home page opens it. v1 stays intact at `/calls` for comparison; nothing in v2 links back to it | `app/v2/`, `app/calls/` |
 
 Beyond the feedback:
 
@@ -394,12 +394,12 @@ good or bad, what matters most, what to do next* within a few seconds.
 
 | Page | What it answers |
 |---|---|
-| **Today** (`/v2`) | A one-sentence **verdict**: what matters most, where to start, what to teach. Three **area cards**: New customers, Customers who want to cancel, Customers with a problem. Each shows a status, the number against the goal, the change since the previous period, why, and one link to act. **Do these first**: the top three actions, the rest folded. **What to teach this week**: the step that would help the most calls, the words to teach, a link to hear it on a real call, and who to start with. A footer gives calls checked, calls still processing or unreadable, calls needing a decision, and the **AI agreement score** (see below) |
-| **Call back** (`/v2/pipeline`) | How many need a call now, how many are still deciding (and their value), how many said yes. Then each person to call, most urgent first. Each row shows urgency, what we promised, who they spoke to, the pests and the price. A **suggested opening line** has a Copy button. **Listen**, **Said no** and **Said yes** buttons update at once, with Undo. Decided leads fold under *Already decided*, with *Not decided after all* to reopen one. The list fills itself from sales calls and receptionist bookings |
-| **Team** (`/v2/reps`) | Everyone, whoever needs help most first, with their share of call steps, trend, the one thing to teach and one strength. People with fewer than 3 calls are listed last and marked *Too few calls to be sure* |
-| **Person** (`/v2/reps/{id}`) | A sentence verdict, then **Teach next**: the step, how often it's skipped against an 8-in-10 goal, what happened, what to say next time, and a link to listen together. Beside it, **Good at** with an example to hear. Below: recent calls (with a link to all of that person's calls), and every step folded |
-| **All calls** (`/v2/calls`) | Search that follows typing (customer, team member, or words said), filter by kind of call, quick filters (*Need work*, *Need your decision*, *May be the wrong type*), paging that survives going back |
-| **Call** (`/v2/calls/{id}`) | The verdict: kind of call and outcome, a one-sentence summary (*More* for the rest), score and grade, one thing done well and one to do better, each playable. The **recording and transcript** sit in one panel. **Coaching**: the first tip with "try saying", the rest folded. **The call steps**: skipped first, one line each, with the reason, the quote and *Not right? Mark it as done* on tap; done steps folded. Promises made, details, and a ••• menu: check again, change the kind of call, print, open in v1, delete |
+| **Today** (`/v2`) | "You have 13 things to do. Start with the first one." **Do this first**: one sentence and one button. Four tiles: new callers, customers who wanted to cancel, customers with a problem, people to call back, each a word and a plain count, each opening what's behind it. **Your to-do list**: three jobs at a time, each with "What happened on the call?" (opens the call in a side panel) and one button. **Done**: texts sent and the answers. **Your team**: who needs help first, and with what. **Waiting for a yes**: the biggest prices first, "No call in 6 weeks". A *7 days / 30 days / All* picker |
+| **Call back** (`/v2/pipeline`) | How many need a call now, how many are still deciding (and their prices), how many said yes. **Board**: Asked about a service → Got a price → Still deciding → Said yes / Said no; drag a card or press *Move to…*. **One at a time**: the same cards in one column, most urgent first; what a phone opens on. Each card: urgency, "Wants help with ants · Price $649", "Talked to Kristen on Aug 29", what we promised, a big **Call** button (or *Add their number*), *Said yes* / *Said no*, *What to say* with a Copy button, and *Hear the call*. Every move has Undo |
+| **Team** (`/v2/reps`) | How each area is going against its goal, then everyone, whoever needs help most first: *Doing well / Okay / Needs help*, *Getting better / worse*, "Needs to work on: Explain the plan (missed on 6 of 6 calls)", one strength, and "2 of 5 new callers said yes". Then the one thing to teach this week, with the words and a real call to hear. People with fewer than 3 calls are *Too early to tell* |
+| **Person** (`/v2/reps/{id}`) | A sentence verdict and *Needs help*-style status, calls checked, good calls, new callers who said yes. **Teach next**: the step, how often it's missed, what happened, "Next time, say this:", and the moment to hear. Beside it, **Good at** with an example. Below: recent calls, and every step folded |
+| **All calls** (`/v2/calls`) | Search that follows typing (customer, team member, or words said), filter by kind of call, quick filters (*Need work*, *Need your decision*, *Might be the wrong kind*), paging that survives going back. Each call: who, "with Dana · Oct 10 · 2 minutes", how it ended (*Said no*) and how it was handled (*Call needs work*) |
+| **Call** (`/v2/calls/{id}`) | The verdict: kind of call and how it ended, a one-sentence summary (*Read more* for the rest), "How Kristen did: Needs work", one thing done well and one to do next time, each playable. Tabs: **How to do better** (the tip with "Say this instead:"), **Listen and read** (recording and transcript in one panel), **Every step** (missed first, with the reason, the quote and a way to mark it), **What we promised**, **Details**. A ••• menu: check again, change the kind of call, print, delete |
 
 **Call-back urgency.** A lead is due 1 day after first contact when new, or 2
 days after a price or a "let me think". After that it's *Late by N days*. On
@@ -423,7 +423,8 @@ verdicts count: automatic awards are rules, and a step the two models disputed
 was never the AI's call, so deciding one isn't a correction. Calls a manager
 read without changing anything leave no trace, so the score can only err on
 the low side. It's computed in `brief.accuracy` from the corrections already
-stored.
+stored, and returned by `/intel/v2/brief`. The owner's pages leave it out:
+they avoid percentages and talk about the AI.
 
 **Interaction details**
 
@@ -730,7 +731,7 @@ Served under `/api`, JSON with bearer tokens.
 | Done for you | `POST /intel/actions/refresh`, `GET /intel/actions/summary`, `POST /intel/actions/{id}/perform` (optional edited text and number), `POST /intel/actions/{id}/dismiss`, `PUT /intel/actions/autopilot`, `POST /intel/morning/test`, `PUT /intel/reps/{id}/phone`, `GET/DELETE /intel/outbox`, `POST /intel/outbox/reply` (practice mode); public: `GET /public/coach/{token}`, `POST /public/coach/{token}/listened` (signed, expiring link) |
 | Scoring rules | `GET /intel/rules` (with how many calls a re-grade covers and its cost), `PATCH/DELETE /intel/rules/{id}`, `POST /intel/rules/rescore` |
 | Insights | `GET /intel/overview`, `GET /intel/reps`, `GET /intel/reps/{id}`, `GET /intel/pipeline`, `PATCH /intel/leads/{id}` |
-| Owner views (v2) | `GET /intel/v2/brief` (verdict, three area cards, quality, prioritised to-do, coaching focus, AI agreement score; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
+| Owner views (v2) | `GET /intel/v2/brief` (verdict, area cards, quality, prioritised to-do with a plain sentence each, coaching focus, AI agreement score; `days` filter), `GET /intel/v2/pipeline` (open leads with an owner action and urgency, decided leads, summary), `GET /intel/v2/reps`, `GET /intel/v2/reps/{id}` (strengths, focus, coaching tip, examples, calls) |
 | Follow-ups | `GET /intel/follow-ups`, `PATCH /intel/follow-ups/{id}`, `GET /intel/team` |
 | Settings | `GET/PATCH /settings` (business), `GET/PUT /settings/platform`, `GET /settings/models`, `GET /settings/spend`, `POST /settings/twilio/connect`, receptionist playbook endpoints, users, `POST /settings/digest/test` |
 | Webhooks | `POST /webhooks/twilio`, `/twilio/status`, `/twilio/stream-ended/{id}`, `/twilio/whisper/{id}`, `/twilio/transfer-done/{id}`, `/twilio/sms` (owner replies, customer replies, STOP) (all Twilio-signature verified) |
@@ -819,6 +820,7 @@ make import dir=/path/to/recordings
 | `make logs s=app` | Tail one service |
 | `make psql` | Database shell |
 | `make test` | Backend tests |
+| `make lint` | Lint and type-check the backend (ruff, mypy) |
 | `make dev` | Database, Redis and worker only, for running the API and dashboard natively |
 
 Running natively for development:

@@ -57,7 +57,8 @@ async def recompute_call_cost(session: AsyncSession, call_id: uuid.UUID) -> floa
     total_f = float(total or 0)
     call = await session.get(Call, call_id)
     if call is not None:
-        call.cost_usd = Decimal(str(round(total_f, 6)))
+        # The Numeric(10, 6) column rounds it the same way on save.
+        call.cost_usd = round(total_f, 6)
     return total_f
 
 

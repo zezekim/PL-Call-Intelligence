@@ -339,7 +339,8 @@ async def twilio_status(
         log.warning("twilio.status_for_unknown_call", call_sid=call_sid)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    duration = int(form.get("CallDuration") or 0)
+    raw_duration = form.get("CallDuration")
+    duration = int(raw_duration) if isinstance(raw_duration, str) and raw_duration else 0
     call.duration_seconds = duration
     if recording := form.get("RecordingUrl"):
         call.recording_url = str(recording)

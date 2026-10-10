@@ -96,7 +96,7 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
             select(Lead.id, Lead.name_key, Lead.phone).where(Lead.business_id == call.business_id)
         )
     ).all()
-    match = same_person(key, phone, [tuple(r) for r in known])
+    match = same_person(key, phone, [(r[0], r[1], r[2]) for r in known])
     if match is None:
         await session.execute(
             insert(Lead)

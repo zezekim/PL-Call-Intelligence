@@ -348,7 +348,6 @@ function CallActions({ call, onChanged }: { call: CallDetail; onChanged: () => P
           { label: "Check this call again", onSelect: () => void checkAgain(), disabled: !a || working },
           { label: "Change the kind of call", onSelect: () => setTypeOpen(true), disabled: !a || working },
           { label: "Print", onSelect: () => window.print(), disabled: !a },
-          { label: "Open in the old version", onSelect: () => router.push(`/calls/${call.id}`) },
           { label: "Delete call…", onSelect: () => setConfirmDelete(true), danger: true, separated: true },
         ]}
       />

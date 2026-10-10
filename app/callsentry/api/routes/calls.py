@@ -56,7 +56,7 @@ def _filtered(
     since: datetime | None,
     until: datetime | None,
     search: str | None,
-) -> Select[tuple[Call]]:
+) -> Select[Any]:
     stmt = select(Call).where(Call.business_id == business_id)
     if outcome:
         stmt = stmt.where(Call.outcome == outcome)

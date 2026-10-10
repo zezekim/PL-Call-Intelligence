@@ -78,7 +78,7 @@ async def load(call_id: str) -> CallState | None:
     if raw is None:
         return None
     try:
-        return _load(raw)
+        return _load(raw if isinstance(raw, str) else raw.decode())
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
         # A state blob written by an older build. Dropping it restarts the
         # conversation cleanly rather than 500-ing mid-call.

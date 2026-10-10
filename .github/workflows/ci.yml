@@ -25,6 +25,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check callsentry tests
+      - run: mypy callsentry
       - run: pytest -q
 
   voice:
