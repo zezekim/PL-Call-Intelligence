@@ -120,18 +120,18 @@ export function HowDidItGo({
 }) {
   const first = name !== "Name not given" ? name.split(/\s+/)[0] : "they";
   return (
-    <div className="pop-in rounded-2xl border-2 border-accent/40 bg-accent-soft/50 p-3" role="group" aria-label="How did the call go?">
-      <p className="px-1 text-[18px] font-semibold">How did it go?</p>
-      <div className="mt-2 grid gap-2">
-        <button className="btn-primary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "won", called: true })}>
+    <div className="sheet-in rounded-[22px] border border-accent/30 bg-accent-soft/50 p-4" role="group" aria-label="How did the call go?">
+      <p className="px-1 text-[20px] font-semibold tracking-title">How did it go?</p>
+      <div className="mt-3 grid gap-2.5">
+        <button className="btn min-h-[56px] whitespace-normal bg-[#17733a] text-[18px] font-semibold text-white hover:bg-[#126130]" onClick={() => onAnswer({ stage: "won", called: true })}>
           <CheckIcon className="h-4 w-4" />
           {first === "they" ? "They" : first} said yes
         </button>
-        <button className="btn-secondary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "follow_up", called: true })}>
-          <RefreshIcon className="h-4 w-4" />
-          No answer, or call again later
+        <button className="btn-secondary min-h-[56px] whitespace-normal text-[18px]" onClick={() => onAnswer({ stage: "follow_up", called: true })}>
+          <RefreshIcon className="h-4 w-4 shrink-0" />
+          No answer. Try again later
         </button>
-        <button className="btn-secondary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "lost", called: true })}>
+        <button className="btn-secondary min-h-[56px] whitespace-normal text-[18px]" onClick={() => onAnswer({ stage: "lost", called: true })}>
           <CrossIcon className="h-3.5 w-3.5" />
           {first === "they" ? "They" : first} said no
         </button>
@@ -144,7 +144,7 @@ export function HowDidItGo({
 }
 
 /** "We don't have their number": type it once, and it's kept. */
-function AddNumber({ name, onSave }: { name: string; onSave: (phone: string) => Promise<boolean> }) {
+export function AddNumber({ name, onSave }: { name: string; onSave: (phone: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);

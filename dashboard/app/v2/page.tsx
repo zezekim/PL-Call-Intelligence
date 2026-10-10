@@ -14,6 +14,7 @@ import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, actionLabel, handledText } from "@/components/v2/act";
 import { CallDrawer } from "@/components/v2/call-drawer";
 import { LeadCard, displayName, personLabel, useSaveLead } from "@/components/v2/customer";
+import { AllDone, Progress } from "@/components/v2/focus";
 import { PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
@@ -181,7 +182,10 @@ export default function TodayPage() {
           onLater={open.length > 1 ? () => setLater((l) => [...l.filter((k) => k !== keyOf(top)), keyOf(top)]) : null}
         />
       ) : (
-        <AllDone count={doneCount} />
+        <AllDone
+          title="You're all caught up"
+          body={`${doneCount ? `${doneCount} thing${doneCount === 1 ? "" : "s"} done. ` : ""}New jobs show up here by themselves.`}
+        />
       )}
 
       {next.length > 0 && (
@@ -373,50 +377,6 @@ function UpNext({
           )}
         </div>
       )}
-    </section>
-  );
-}
-
-/** "3 of 13" as a ring that fills as the day gets done. */
-function Progress({ place, of }: { place: number; of: number }) {
-  const r = 15;
-  const c = 2 * Math.PI * r;
-  const done = Math.max(0, place - 1) / Math.max(1, of);
-  return (
-    <span className="flex items-center gap-2 text-[16px] font-semibold text-ink/70">
-      <svg viewBox="0 0 36 36" className="h-9 w-9 -rotate-90" aria-hidden>
-        <circle cx="18" cy="18" r={r} fill="none" stroke="currentColor" strokeOpacity="0.12" strokeWidth="4" />
-        <circle
-          cx="18"
-          cy="18"
-          r={r}
-          fill="none"
-          stroke="rgb(var(--good))"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - done)}
-          style={{ transition: "stroke-dashoffset 800ms var(--ease-apple)" }}
-        />
-      </svg>
-      {place} of {of}
-    </span>
-  );
-}
-
-/** Nothing left: a tick that draws itself. */
-function AllDone({ count }: { count: number }) {
-  return (
-    <section aria-label="Up next" className="card-in rounded-[30px] border border-hairline bg-surface px-6 py-10 text-center shadow-[0_20px_50px_-24px_rgba(0,0,0,0.25)]">
-      <span className="ring-pop mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-good text-white">
-        <svg viewBox="0 0 24 24" className="h-10 w-10" fill="none" aria-hidden>
-          <path className="draw-check" d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <h2 className="mt-5 text-[28px] font-bold tracking-title">You&apos;re all caught up</h2>
-      <p className="mx-auto mt-2 max-w-[36ch] text-[18px] text-ink/75">
-        {count ? `${count} thing${count === 1 ? "" : "s"} done. ` : ""}New jobs show up here by themselves.
-      </p>
     </section>
   );
 }

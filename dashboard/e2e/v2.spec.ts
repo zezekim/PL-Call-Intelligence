@@ -54,6 +54,8 @@ test("a job opens its call beside the page, with the job's button at the bottom"
   await expect(drawer).toContainText("How the receptionist did");
   await expect(drawer).toContainText("Ask, listen, and recap first");
   await expect(drawer.getByRole("link", { name: "See everything about this call →" })).toHaveAttribute("href", `/v2/calls/${CALL_ID}`);
+  // Colours are only final once the panel has finished sliding in.
+  await page.waitForTimeout(600);
   const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).include('[role="dialog"]').analyze();
   expect(violations.map((v) => v.id)).toEqual([]);
   await page.keyboard.press("Escape");
@@ -110,15 +112,22 @@ test("Call rings the customer, then asks how it went and moves them", async ({ p
     },
   });
   await page.goto("/v2/pipeline");
-  const call = page.getByRole("region", { name: "Got a price" }).getByRole("link", { name: "Call Jordan on (555) 123-4567" });
+  // One person at a time: the most urgent first, with the words to say.
+  const next = page.getByRole("region", { name: "Next to call" });
+  await expect(next).toContainText("Jordan Lee");
+  await expect(next).toContainText("1 of 2");
+  const call = next.getByRole("link", { name: "Call Jordan on (555) 123-4567" });
   await expect(call).toHaveAttribute("href", "tel:+15551234567");
   // The test browser has no phone app: keep it on the page.
   await call.evaluate((a) => a.addEventListener("click", (e) => e.preventDefault()));
   await call.click();
   const ask = page.getByRole("group", { name: "How did the call go?" });
-  await ask.getByRole("button", { name: "No answer, or call again later" }).click();
+  await ask.getByRole("button", { name: "No answer. Try again later" }).click();
   await expect.poll(() => sent).toEqual([{ stage: "follow_up", called: true }]);
   await expect(page.getByRole("status")).toContainText("Jordan Lee: call again in a couple of days");
+  // No answer puts them at the back; the next person slides in.
+  await expect(next).toContainText("Sam Rivera");
+  await expect(next).toContainText("2 of 2");
 });
 
 test("a job about a lead opens the same card as the board", async ({ page }) => {
@@ -196,8 +205,10 @@ test("a lead marked yes moves at once, and Undo puts it back", async ({ page }) 
     },
   });
   await page.goto("/v2/pipeline");
-  const row = page.locator("li", { hasText: "Call Jordan Lee back" });
-  await row.getByRole("button", { name: "Said yes" }).click();
+  const next = page.getByRole("region", { name: "Next to call" });
+  await next.getByRole("button", { name: "Already called" }).click();
+  await next.getByRole("button", { name: "Jordan said yes" }).click();
+  await expect(page.getByRole("heading", { name: "Jordan said yes!" })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("Jordan Lee said yes");
   await page.getByRole("button", { name: "Undo" }).click();
   await expect.poll(() => sent).toEqual(["won", "quoted"]);
@@ -208,9 +219,11 @@ test("a failed save puts the lead back and says so", async ({ page }) => {
     [`PATCH /intel/leads/${LEAD_ID}`]: (route) => route.fulfill({ status: 500, json: { detail: "boom" } }),
   });
   await page.goto("/v2/pipeline");
-  await page.locator("li", { hasText: "Call Jordan Lee back" }).getByRole("button", { name: "Said no" }).click();
+  const next = page.getByRole("region", { name: "Next to call" });
+  await next.getByRole("button", { name: "Already called" }).click();
+  await next.getByRole("button", { name: "Jordan said no" }).click();
   await expect(page.getByRole("status")).toContainText("That didn't work");
-  await expect(page.getByText("Call Jordan Lee back")).toBeVisible();
+  await expect(next).toContainText("Jordan Lee");
 });
 
 test("callers who gave no name are never called 'unknown'", async ({ page }) => {
@@ -320,8 +333,8 @@ test("a full call-back board stays inside a phone's width", async ({ page }) => 
   ).flat();
   await mockApi(page, { "GET /intel/v2/pipeline": (route) => route.fulfill({ json: { ...board, open: many } }) });
   await page.goto("/v2/pipeline");
-  // A phone starts one person at a time; the board is one tap away.
-  await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
+  // One person at a time first; the board is one tap away.
+  await expect(page.getByRole("region", { name: "Next to call" })).toBeVisible();
   await page.getByRole("tab", { name: "Board" }).click();
   await page.getByRole("region", { name: "Still deciding" }).waitFor();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -347,6 +360,7 @@ test("call back is a board, one column per step, and a card can be dragged along
     },
   });
   await page.goto("/v2/pipeline");
+  await page.getByRole("tab", { name: "Board" }).click();
   for (const column of ["Asked about a service", "Got a price", "Still deciding", "Said yes", "Said no"]) {
     await expect(page.getByRole("region", { name: column })).toBeVisible();
   }
@@ -355,7 +369,7 @@ test("call back is a board, one column per step, and a card can be dragged along
   await quoted.locator("li", { hasText: "Call Jordan Lee back" }).dragTo(page.getByRole("region", { name: "Still deciding" }));
   await expect.poll(() => sent).toEqual(["follow_up"]);
   await page.getByRole("tab", { name: "One at a time" }).click();
-  await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Next to call" })).toBeVisible();
 });
 
 test("a board card moves with a button too, and keeps a typed-in number", async ({ page }) => {
@@ -367,6 +381,7 @@ test("a board card moves with a button too, and keeps a typed-in number", async 
     },
   });
   await page.goto("/v2/pipeline");
+  await page.getByRole("tab", { name: "Board" }).click();
   const jordan = page.getByRole("region", { name: "Got a price" }).locator("li", { hasText: "Call Jordan Lee back" });
   await jordan.getByRole("button", { name: "Move" }).click();
   await jordan.getByRole("group", { name: "Move to" }).getByRole("button", { name: "Still deciding" }).click();
@@ -381,8 +396,9 @@ test("a board card moves with a button too, and keeps a typed-in number", async 
 test("the call-back list hands the owner the words to say", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2/pipeline");
-  const row = page.locator("li", { hasText: "Call Jordan Lee back" });
-  await expect(row).toContainText("Hi Jordan, it's Dana from ABC Pest Control. I'm following up on the $649 quote for the ants.");
+  const next = page.getByRole("region", { name: "Next to call" });
+  await expect(next).toContainText("When they pick up, say");
+  await expect(next).toContainText("Hi Jordan, it's Dana from ABC Pest Control. I'm following up on the $649 quote for the ants.");
 });
 
 // Every v2 screen, light and dark, against WCAG 2.1 AA.

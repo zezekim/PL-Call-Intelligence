@@ -1,16 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Me } from "@/lib/api";
 import { date } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { PipelineBoard, PipelineLead } from "@/lib/v2";
 import { cleanPests, listWords, money } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
+import { Tile, type Tint } from "@/components/brand";
+import { CallBackIcon, CheckIcon, ChevronIcon, CrossIcon, PhoneIcon, PlayIcon } from "@/components/icons";
 import { Card, Empty, Segmented } from "@/components/ui";
-import { ListSkeleton, PageError, Section } from "@/components/v2/kit";
-import { LeadCard, STAGE_LABEL, displayName, useSaveLead, type LeadChange, type Stage } from "@/components/v2/customer";
+import { ListSkeleton, PageError } from "@/components/v2/kit";
+import { AllDone, Progress, Tick } from "@/components/v2/focus";
+import {
+  AddNumber,
+  CallButton,
+  HowDidItGo,
+  LeadCard,
+  STAGE_LABEL,
+  URGENCY,
+  displayName,
+  openingLine,
+  repWords,
+  useSaveLead,
+  type LeadChange,
+  type Stage,
+} from "@/components/v2/customer";
 
 // The board, left to right: how far each customer has got.
 const COLUMNS: { stage: Stage; dot: string }[] = [
@@ -58,12 +74,11 @@ export default function PipelinePage() {
   const { data, error, status, loading, reload, setData } = useApi<PipelineBoard>("/intel/v2/pipeline");
   const me = useApi<Me>("/auth/me").data;
   const business = me?.business_name ?? null;
-  const [view, setView] = useState<"board" | "list">("board");
+  // One person at a time unless the board was chosen.
+  const [view, setView] = useState<"board" | "list">("list");
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(VIEW_KEY);
-      // A phone is too narrow for five columns: one person at a time unless asked.
-      if (saved === "list" || (!saved && window.matchMedia("(max-width: 639px)").matches)) setView("list");
+      if (window.localStorage.getItem(VIEW_KEY) === "board") setView("board");
     } catch {
       /* storage unavailable */
     }
@@ -104,18 +119,11 @@ export default function PipelinePage() {
     );
   }
 
-  const s = data.summary;
   return (
     <div className="space-y-6">
-      <Summary board={data} />
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[17px] text-ink/80">
-          {view === "board"
-            ? "Each column shows how far a customer has got. Drag a card, or press Move to…"
-            : s.open
-              ? "Most urgent first. Call the first person, then tell us how it went."
-              : "Everyone has said yes or no."}
+          {view === "board" ? "Each column shows how far a customer has got. Drag a card, or press Move to…" : "Most urgent first. Call, then tell us how it went."}
         </p>
         <Segmented
           value={view}
@@ -128,26 +136,196 @@ export default function PipelinePage() {
       </div>
 
       {view === "board" ? (
-        <Board board={data} business={business} onChange={change} />
+        <>
+          <Summary board={data} />
+          <Board board={data} business={business} onChange={change} />
+        </>
       ) : (
         <>
-          <Section title="Call these people">
-            {data.open.length ? (
-              <ul className="grid max-w-[560px] gap-3">
-                {data.open.map((lead) => (
-                  <LeadCard key={lead.id} lead={lead} business={business} onChange={(c) => change(lead, c)} />
-                ))}
-              </ul>
-            ) : (
-              <Card className="flex items-center gap-3 px-5 py-4">
-                <CheckIcon className="h-5 w-5 text-good" />
-                <p className="text-[16px]">You're all caught up. Nobody to chase.</p>
-              </Card>
-            )}
-          </Section>
+          <OneByOne board={data} business={business} onChange={change} onBoard={() => changeView("board")} />
           <Closed leads={data.closed} onReopen={(lead) => change(lead, "follow_up")} />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * One person at a time, the most urgent first. Their name, what they want,
+ * the words to say, and one big green button. Back from the call, it asks how
+ * it went; the answer moves them and the next person slides in.
+ */
+function OneByOne({
+  board,
+  business,
+  onChange,
+  onBoard,
+}: {
+  board: PipelineBoard;
+  business: string | null;
+  onChange: (lead: PipelineLead, change: LeadChange) => Promise<boolean>;
+  onBoard: () => void;
+}) {
+  // Put off with "Later", or rung with no answer: to the back of the line.
+  const [later, setLater] = useState<string[]>([]);
+  const [handled, setHandled] = useState(0);
+  // How many there were when you started; someone with no answer comes round again.
+  const [total] = useState(board.open.length);
+  const [asking, setAsking] = useState(false);
+  const [cheer, setCheer] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const cheerTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(cheerTimer.current), []);
+
+  const queue = [...board.open.filter((l) => !later.includes(l.id)), ...later.map((id) => board.open.find((l) => l.id === id)).filter((l): l is PipelineLead => !!l)];
+  const lead = queue[0];
+  const toBack = (id: string) => setLater((l) => [...l.filter((x) => x !== id), id]);
+
+  if (cheer) {
+    return (
+      <section aria-label="Next to call" className="card-in rounded-[30px] border border-hairline bg-surface px-6 py-12 text-center shadow-[0_20px_50px_-24px_rgba(0,0,0,0.25)]">
+        <Tick size={96} />
+        <h2 className="mt-6 text-[30px] font-bold tracking-title">{cheer} said yes!</h2>
+        <p className="mt-2 text-[18px] text-ink/75">Nice work. {queue.length ? "Here comes the next one." : ""}</p>
+      </section>
+    );
+  }
+  if (!lead) {
+    return <AllDone label="Next to call" title="Everyone has been called" body="People who ask about a service show up here by themselves." />;
+  }
+
+  const a = lead.action!;
+  const u = URGENCY[a.urgency];
+  const name = displayName(lead.name);
+  const first = lead.name === "Name not given" ? null : lead.name.split(/\s+/)[0];
+  const pests = listWords(cleanPests(lead.pests).slice(0, 2));
+  const wants = [pests ? `Wants help with ${pests}` : lead.service, lead.value !== null ? `Price ${money(lead.value)}` : null].filter(Boolean).join(" · ");
+  const days = lead.last_contact_at ? Math.max(0, Math.floor((Date.now() - Date.parse(lead.last_contact_at)) / 864e5)) : null;
+  const say = openingLine(lead, business);
+
+  const answer = (change: LeadChange) => {
+    setAsking(false);
+    setHandled((n) => n + 1);
+    if (change.stage === "won") {
+      setCheer(first ?? "They");
+      cheerTimer.current = window.setTimeout(() => setCheer(null), 1600);
+    }
+    if (change.stage === "follow_up") toBack(lead.id);
+    void onChange(lead, change);
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-7 min-[1180px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] min-[1180px]:items-start min-[1180px]:gap-5">
+      <section
+        key={lead.id}
+        aria-label="Next to call"
+        className="card-in relative overflow-hidden rounded-[30px] border border-hairline bg-surface p-6 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.25)] sm:p-8"
+      >
+        <span className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-good-soft opacity-70 blur-3xl" aria-hidden />
+        <div className="relative flex items-center justify-between gap-3">
+          <span className={`whitespace-nowrap rounded-full px-3 py-1 text-[15px] font-semibold ${u.cls}`}>{u.label(lead)}</span>
+          <Progress place={Math.min(handled + 1, Math.max(total, 1))} of={Math.max(total, handled + 1)} />
+        </div>
+        <div className="relative mt-5 flex items-center gap-4">
+          <span className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-full bg-good-soft text-[26px] font-bold text-good sm:flex" aria-hidden>
+            {(first ?? "?")[0].toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[30px] font-bold leading-tight tracking-title sm:text-[34px]">{name}</h2>
+            {wants && <p className="mt-1 text-[19px] text-ink/80">{wants}</p>}
+          </div>
+        </div>
+        <p className="relative mt-3 text-[17px] text-ink/70">
+          {lead.rep && <>Talked to {repWords(lead.rep)}{lead.last_contact_at && <> on {date(lead.last_contact_at)}</>}. </>}
+          {days !== null && days > 0 && <>Nobody has called in {days < 14 ? `${days} day${days === 1 ? "" : "s"}` : days < 60 ? `${Math.round(days / 7)} weeks` : `${Math.round(days / 30)} months`}.</>}
+        </p>
+        {a.promised && (
+          <p className="relative mt-2 text-[17px]">
+            <span className="font-semibold">We promised:</span> {a.promised}
+          </p>
+        )}
+
+        <div className="relative mt-5 rounded-[20px] bg-panel p-4">
+          <p className="text-[15px] font-semibold uppercase tracking-wide text-ink/70">When they pick up, say</p>
+          <p className="mt-1.5 text-[18px] leading-relaxed">“{say}”</p>
+          <button
+            className="press mt-1 min-h-[44px] text-[16px] font-medium text-link"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(say);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              } catch {
+                /* clipboard blocked: the words are on screen anyway */
+              }
+            }}
+          >
+            {copied ? "Copied ✓" : "Copy the words"}
+          </button>
+        </div>
+
+        <div className="relative mt-6 space-y-3">
+          {asking ? (
+            <HowDidItGo name={lead.name} onCancel={() => setAsking(false)} onAnswer={answer} />
+          ) : (
+            <>
+              {lead.phone ? (
+                <CallButton
+                  phone={lead.phone}
+                  pretty={lead.phone_pretty}
+                  name={lead.name}
+                  className="min-h-[64px] w-full text-[20px] shadow-[0_14px_30px_-12px_rgba(23,115,58,0.7)]"
+                  onCalled={() => window.setTimeout(() => setAsking(true), 600)}
+                />
+              ) : (
+                <AddNumber name={lead.name} onSave={async (phone) => onChange(lead, { phone })} />
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <button className="btn-secondary min-h-[52px] px-3 text-[17px]" onClick={() => setAsking(true)}>
+                  Already called
+                </button>
+                <button className="btn-secondary min-h-[52px] px-3 text-[17px]" onClick={() => toBack(lead.id)} disabled={queue.length < 2}>
+                  Later
+                </button>
+              </div>
+              {lead.last_call_id && (
+                <Link href={`/v2/calls/${lead.last_call_id}`} className="press flex min-h-[44px] items-center justify-center gap-1.5 text-[16px] font-medium text-link hover:no-underline">
+                  <PlayIcon className="h-3 w-3" />
+                  Hear the last call
+                </Link>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      <div className="space-y-7">
+        {queue.length > 1 && (
+          <section aria-label="After this" className="settle">
+            <div className="mb-2 flex items-center justify-between gap-2 px-1 min-[1180px]:-mt-2">
+              <h2 className="text-[20px] font-semibold tracking-title">After this</h2>
+              <button className="press min-h-[44px] rounded-full px-3 text-[16px] font-medium text-link hover:bg-accent-soft/60" onClick={onBoard}>
+                See everyone
+              </button>
+            </div>
+            <ul className="group-list">
+              {queue.slice(1, 4).map((l) => (
+                <li key={l.id} className="flex min-h-[64px] items-center gap-3 px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-good-soft text-[15px] font-bold text-good" aria-hidden>
+                    {(l.name === "Name not given" ? "?" : l.name[0]).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[17px] font-semibold">{displayName(l.name)}</span>
+                    <span className="block truncate text-[15px] text-ink/70">{l.action ? URGENCY[l.action.urgency].label(l) : ""}</span>
+                  </span>
+                  {l.value !== null && <span className="tnum text-[16px] font-semibold">{money(l.value)}</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        <Summary board={board} compact />
+      </div>
     </div>
   );
 }
@@ -254,23 +432,48 @@ function Board({
   );
 }
 
-function Summary({ board }: { board: PipelineBoard }) {
+function Summary({ board, compact = false }: { board: PipelineBoard; compact?: boolean }) {
   const s = board.summary;
-  const stats = [
-    { label: "Need a call now", value: String(s.needs_action), hint: "Late or due today", tone: s.needs_action ? "text-bad" : "" },
-    { label: "Still deciding", value: String(s.open), hint: s.open_value ? `${money(s.open_value)} in prices given` : undefined },
-    { label: "Said yes", value: String(s.won), hint: s.won_value ? `${money(s.won_value)} in first visits` : undefined, tone: s.won ? "text-good" : "" },
+  const stats: { label: string; value: string; hint?: string; tone: string; tint: Tint; Icon: (p: { className?: string }) => React.ReactNode }[] = [
+    { label: "Need a call now", value: String(s.needs_action), hint: "Late or due today", tone: s.needs_action ? "text-bad" : "", tint: "orange", Icon: CallBackIcon },
+    { label: "Still deciding", value: String(s.open), hint: s.open_value ? `${money(s.open_value)} in prices` : undefined, tone: "", tint: "blue", Icon: PhoneIcon },
+    { label: "Said yes", value: String(s.won), hint: s.won_value ? `${money(s.won_value)} in first visits` : undefined, tone: s.won ? "text-good" : "", tint: "green", Icon: CheckIcon },
   ];
+  if (compact) {
+    // Beside the card: one small list, a row each.
+    return (
+      <section aria-label="How call backs are going">
+        <h2 className="mb-2 px-1 text-[20px] font-semibold tracking-title">So far</h2>
+        <ul className="group-list">
+          {stats.map(({ label, value, hint, tone, tint, Icon }) => (
+            <li key={label} className="flex min-h-[64px] items-center gap-3 px-4 py-3">
+              <Tile tint={tint} size={30}>
+                <Icon />
+              </Tile>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[17px] font-semibold">{label}</span>
+                {hint && <span className="block text-[15px] text-ink/70">{hint}</span>}
+              </span>
+              <span className={`tnum text-[24px] font-bold ${tone}`}>{value}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
   return (
-    <Card className="grid grid-cols-3 p-5 sm:p-6">
-      {stats.map((st, i) => (
-        <div key={st.label} className={i ? "border-l border-line pl-4 sm:pl-6" : "pr-4"}>
-          <p className="text-[16px] text-ink/80">{st.label}</p>
-          <p className={`tnum mt-1 text-[30px] font-semibold leading-none tracking-title ${st.tone ?? ""}`}>{st.value}</p>
-          {st.hint && <p className="mt-1 hidden text-[16px] text-ink/70 sm:block">{st.hint}</p>}
+    <section aria-label="How call backs are going" className="settle grid grid-cols-3 gap-3">
+      {stats.map(({ label, value, hint, tone, tint, Icon }) => (
+        <div key={label} className="rounded-[22px] border border-hairline bg-surface p-4 shadow-card">
+          <Tile tint={tint} size={26}>
+            <Icon />
+          </Tile>
+          <p className="mt-2 text-[15px] font-semibold leading-tight text-ink/75">{label}</p>
+          <p className={`tnum mt-1 text-[30px] font-bold leading-none tracking-title ${tone}`}>{value}</p>
+          {hint && <p className="mt-1 hidden text-[15px] text-ink/70 sm:block">{hint}</p>}
         </div>
       ))}
-    </Card>
+    </section>
   );
 }
 
@@ -282,7 +485,7 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
   return (
     <section>
       <button
-        className="flex w-full items-center justify-between px-1 text-left"
+        className="press flex min-h-[52px] w-full items-center justify-between rounded-2xl px-1 text-left"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >

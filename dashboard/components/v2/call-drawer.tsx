@@ -50,13 +50,13 @@ export function CallDrawer({
   // On the body: the page fades in with a transform, which would pin a fixed
   // panel to the page instead of the window.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fade-in fixed inset-0 z-50 flex justify-end bg-black/25 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={call ? `Call with ${name ?? "a customer"}` : "Call"}
-        className="flex h-full w-full max-w-[480px] flex-col bg-surface shadow-pop"
+        className="slide-in-right flex h-full w-full max-w-[480px] flex-col bg-surface shadow-pop sm:rounded-l-[28px]"
       >
         <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <Link href={`/v2/calls/${callId}`} className="inline-flex min-h-[44px] items-center text-[16px] font-medium text-link">
