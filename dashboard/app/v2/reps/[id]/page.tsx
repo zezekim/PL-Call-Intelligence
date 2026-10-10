@@ -68,8 +68,8 @@ export default function RepPage() {
           <Fact label="Good calls" value={`${rep.meeting_standard} of ${rep.scored}`} />
           <Fact
             label="New callers who said yes"
-            value={rep.close_rate === null || !rep.sales_calls ? "–" : `${Math.round((rep.close_rate * rep.sales_calls) / 100)} of ${rep.sales_calls}`}
-            hint={rep.sales_calls ? undefined : "No new callers yet"}
+            value={rep.decided ? `${rep.sold} of ${rep.decided}` : "–"}
+            hint={rep.decided ? undefined : "No new callers yet"}
           />
         </div>
       </Card>

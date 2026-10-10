@@ -145,6 +145,8 @@ test("the Team page has the scores, what to teach, and everyone", async ({ page 
   await expect(page.getByText("Explain the plan").first()).toBeVisible();
   await expect(page.getByText(/Start with Dana/)).toBeVisible();
   await expect(page.getByText("Good: at least half say yes")).toBeVisible();
+  // Real counts, not a rate rounded to "out of 10".
+  await expect(page.getByText(/2 of 5 new callers said yes/)).toBeVisible();
   await expect(page.getByRole("link", { name: /Dana.*Needs to work on: Explain the plan/ })).toBeVisible();
 });
 

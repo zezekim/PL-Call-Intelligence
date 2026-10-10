@@ -362,7 +362,7 @@ export function LeadCard({
       {!a && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 text-[16px] font-medium text-link">
           <button className="min-h-[44px]" onClick={() => void onChange({ stage: "follow_up" })}>
-            Put back on the list
+            Move back to Still deciding
           </button>
           {lead.last_call_id && (
             <Link href={`/v2/calls/${lead.last_call_id}`} className="inline-flex min-h-[44px] items-center gap-1 hover:no-underline">

@@ -178,6 +178,8 @@ export interface RepCard {
   trend: "up" | "down" | "steady" | null;
   meeting_standard: number;
   close_rate: number | null;
+  sold?: number;
+  decided?: number;
   sales_calls: number;
   focus: StepStat | null;
   strengths: StepStat[];

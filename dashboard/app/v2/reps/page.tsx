@@ -66,7 +66,7 @@ export default function RepsPage() {
                     <span className="block truncate text-[17px] font-semibold tracking-tightish">{personLabel(r.name)}</span>
                     <span className="block text-[15px] text-ink/70">
                       {r.calls} call{r.calls === 1 ? "" : "s"}
-                      {r.close_rate !== null && ` · ${Math.round(r.close_rate / 10)} of 10 new callers said yes`}
+                      {r.decided ? ` · ${r.sold} of ${r.decided} new caller${r.decided === 1 ? "" : "s"} said yes` : ""}
                     </span>
                   </span>
                 </span>

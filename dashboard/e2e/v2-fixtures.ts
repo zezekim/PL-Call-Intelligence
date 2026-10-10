@@ -103,6 +103,8 @@ const repCard = {
   trend: "down",
   meeting_standard: 1,
   close_rate: 40,
+  sold: 2,
+  decided: 5,
   sales_calls: 5,
   focus: step("Explain the plan", 0, 6),
   strengths: [step("Say thank you", 6, 6)],

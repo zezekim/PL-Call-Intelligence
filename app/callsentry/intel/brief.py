@@ -1231,6 +1231,9 @@ def rep_card(rep: Rep, rows: list[Row]) -> dict[str, Any]:
         "trend": _trend(scored),
         "meeting_standard": sum(1 for r in scored if r.analysis.grade in ("gold", "green")),
         "close_rate": _rate(out["sold"], decided),
+        # The counts behind the rate, so a page can say "2 of 3" instead.
+        "sold": out["sold"],
+        "decided": decided,
         "sales_calls": len(sales),
         "focus": _stat_out(focus) if focus else None,
         "strengths": [_stat_out(s) for s in strong],

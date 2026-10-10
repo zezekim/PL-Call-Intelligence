@@ -315,7 +315,7 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
                 {l.value !== null && <span className="tnum">{money(l.value)}</span>}
                 <span className="tnum w-16 text-right text-ink/70">{date(l.last_contact_at)}</span>
                 <button className="min-h-[44px] text-[16px] font-medium text-link hover:underline" onClick={() => onReopen(l)}>
-                  Put back on the list
+                  Move back to Still deciding
                 </button>
               </li>
             );
