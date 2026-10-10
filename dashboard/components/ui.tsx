@@ -284,18 +284,8 @@ export function ErrorNote({ message }: { message: string }) {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Modal({
-  open,
-  onClose,
-  title,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
+/** Focus moves into a dialog, stays there, and goes back when it closes; Escape closes it. */
+export function useDialog(open: boolean, onClose: () => void, ref: React.RefObject<HTMLElement | null>) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
@@ -334,7 +324,24 @@ export function Modal({
       window.removeEventListener("keydown", onKey);
       previous?.focus?.();
     };
+    // The ref is stable; only opening and closing matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+}
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialog(open, onClose, ref);
 
   if (!open) return null;
   return (

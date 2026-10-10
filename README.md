@@ -113,6 +113,16 @@ Beyond the feedback:
     Listen), with **Send all N texts** for the lot. Beside it is **Done** with
     replies and the autopilot switch; below, **Team** (lowest score first, a
     bar and the one thing to fix) and **Still deciding** (most valuable first).
+    A **7 days / 30 days / All** picker sets the period, and is remembered.
+  - **A call opens beside the list.** Tapping a job's name opens its call in
+    a side panel (full screen on a phone): what happened, the score, play,
+    the one thing to do better with the words to say, the steps missed, and
+    the job's own button at the bottom. The full call page is one link away.
+  - **One customer is one customer.** A second call is matched by phone
+    number first, then by name, and a first name alone ("Maureen") joins the
+    one full name that starts with it ("Maureen Falzone"). Duplicates made
+    before this are merged when the worker starts, keeping the fuller name
+    and the latest price.
   - **Call back is a board**, Trello style: Asked about a service → Got a
     price → Still deciding → Said yes / Said no. Four columns on a laptop, two
     on a tablet, one at a time sideways on a phone; a long column shows five

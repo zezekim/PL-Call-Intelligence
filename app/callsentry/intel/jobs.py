@@ -116,8 +116,11 @@ async def run() -> None:
     try:
         async with get_sessionmaker()() as session:
             created = await leads.backfill(session)
+            merged = await leads.merge_duplicates(session)
         if created:
             log.info("intel.leads_backfilled", calls=created)
+        if merged:
+            log.info("intel.leads_merged", leads=merged)
     except Exception as exc:  # noqa: BLE001
         log.warning("intel.leads_backfill_failed", error=str(exc))
     try:

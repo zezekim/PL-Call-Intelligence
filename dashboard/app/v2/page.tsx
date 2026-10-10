@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, type Me } from "@/lib/api";
 import { useApi, useTitle } from "@/lib/hooks";
 import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PipelineLead, PreparedAction, RepCard, Status, Todo } from "@/lib/v2";
 import { money } from "@/lib/v2";
 import { UploadIcon } from "@/components/icons";
-import { Loading, Modal, Spinner } from "@/components/ui";
+import { Loading, Modal, Segmented, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
+import { CallDrawer } from "@/components/v2/call-drawer";
 import { LeadCard, URGENCY, useSaveLead } from "@/components/v2/customer";
 import { PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
@@ -42,12 +44,45 @@ const severity = (t: Todo): Tone => (t.handled ? "good" : t.priority >= 70 ? "ba
 const shortGoal = (goal: string) => goal.replace(/^Goal: at least (\d+) out of (\d+).*$/, "goal $1 in $2").replace(/^Goal: /, "goal ");
 const firstName = (name: string | null | undefined) => (name && name !== "Name not given" ? name.split(/\s+/)[0] : null);
 
+type Range = "7" | "30" | "all";
+const RANGE_KEY = "pestlaunch.today.range";
+const RANGES: { value: Range; label: string }[] = [
+  { value: "7", label: "7 days" },
+  { value: "30", label: "30 days" },
+  { value: "all", label: "All" },
+];
+const RANGE_WORDS: Record<Range, string> = { "7": "the last 7 days", "30": "the last 30 days", all: "all time" };
+
+function useRange(): [Range, (r: Range) => void] {
+  const [range, setRange] = useState<Range>("all");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(RANGE_KEY) as Range | null;
+      if (saved && RANGES.some((r) => r.value === saved)) setRange(saved);
+    } catch {
+      // No storage: start from all time.
+    }
+  }, []);
+  const choose = (r: Range) => {
+    setRange(r);
+    try {
+      localStorage.setItem(RANGE_KEY, r);
+    } catch {
+      // Remembering is a convenience.
+    }
+  };
+  return [range, choose];
+}
+
 export default function TodayPage() {
   useTitle("Today");
-  const { data, error, status, loading, reload } = useApi<Brief>("/intel/v2/brief");
+  const router = useRouter();
+  const [range, setRange] = useRange();
+  const days = range === "all" ? "" : `?days=${range}`;
+  const { data, error, status, loading, reload } = useApi<Brief>(`/intel/v2/brief${days}`);
   const summary = useApi<ActionsSummary>("/intel/actions/summary");
   const boardApi = useApi<PipelineBoard>("/intel/v2/pipeline");
-  const reps = useApi<RepCard[]>("/intel/v2/reps").data;
+  const reps = useApi<RepCard[]>(`/intel/v2/reps${days}`).data;
   const business = useApi<Me>("/auth/me").data?.business_name ?? null;
   const actions = summary.data?.autopilot ? summary.data : null;
   const board = boardApi.data;
@@ -55,6 +90,7 @@ export default function TodayPage() {
 
   const [acting, setActing] = useState<Todo | null>(null);
   const [card, setCard] = useState<string | null>(null);
+  const [peek, setPeek] = useState<Todo | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -98,10 +134,15 @@ export default function TodayPage() {
     return null;
   };
 
+  // A job about a call opens it beside the list; the rest go where they live.
+  const look = (t: Todo) => (t.call_id ? setPeek(t) : router.push(t.href));
+
   const top = open[0];
   const verdictTone: Tone = !data.calls.analyzed ? "none" : top ? severity(top) : "good";
   const verdict = !data.calls.analyzed
-    ? "No calls yet. Add a call recording and this page fills in by itself."
+    ? range === "all"
+      ? "No calls yet. Add a call recording and this page fills in by itself."
+      : `No calls in ${RANGE_WORDS[range]}. Pick All to see every call.`
     : top
       ? `${top.title}. ${top.why}${open.length > 1 ? ` ${open.length - 1} more thing${open.length > 2 ? "s" : ""} need${open.length > 2 ? "" : "s"} you.` : ""}`
       : "Nothing needs you right now. Every call is handled.";
@@ -113,10 +154,15 @@ export default function TodayPage() {
           <h1 className="text-[30px] font-bold leading-tight tracking-title">Today</h1>
           <p className="mt-1 text-[15px] text-muted">{data.headline.title}</p>
         </div>
-        <button className="btn-secondary" onClick={() => setUploadOpen(true)}>
-          <UploadIcon className="h-4 w-4" />
-          Add a call recording
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span role="group" aria-label="Calls from">
+            <Segmented options={RANGES} value={range} onChange={setRange} />
+          </span>
+          <button className="btn-secondary" onClick={() => setUploadOpen(true)}>
+            <UploadIcon className="h-4 w-4" />
+            Add a call recording
+          </button>
+        </div>
       </div>
 
       {actions?.practice && (
@@ -152,9 +198,9 @@ export default function TodayPage() {
               {jobButton(top)} →
             </button>
           ) : (
-            <Link href={top.href} className="btn-primary shrink-0 hover:no-underline">
+            <button className="btn-primary shrink-0" onClick={() => look(top)}>
               Listen →
-            </Link>
+            </button>
           ))}
       </section>
 
@@ -173,11 +219,11 @@ export default function TodayPage() {
               </button>
             )}
           </div>
-          <p className="mt-0.5 text-[13px] text-muted">Most urgent first. Each one has a text already written or a number to call.</p>
+          <p className="mt-0.5 text-[13px] text-muted">Most urgent first. Tap a name to see the call; the button does the job.</p>
           {open.length ? (
             <ul className="mt-2 space-y-2">
               {shown.map((t, i) => (
-                <JobRow key={t.key ?? `${t.title}-${i}`} todo={t} button={jobButton(t)} onDo={() => doJob(t)} />
+                <JobRow key={t.key ?? `${t.title}-${i}`} todo={t} button={jobButton(t)} onDo={() => doJob(t)} onLook={t.call_id ? () => look(t) : null} />
               ))}
             </ul>
           ) : (
@@ -205,6 +251,24 @@ export default function TodayPage() {
         </p>
       )}
 
+      {peek?.call_id && (
+        <CallDrawer
+          callId={peek.call_id}
+          onClose={() => setPeek(null)}
+          action={
+            jobButton(peek)
+              ? {
+                  label: jobButton(peek)!,
+                  onDo: () => {
+                    const t = peek;
+                    setPeek(null);
+                    doJob(t);
+                  },
+                }
+              : null
+          }
+        />
+      )}
       {acting && (
         <ActionSheet
           open
@@ -271,7 +335,7 @@ function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBo
             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[t.tone]}`} aria-hidden>
               {ICON[t.tone]}
             </span>
-            <span className={`tnum text-[26px] font-bold leading-tight tracking-title ${TEXT_CLS[t.tone]}`}>{t.value}</span>
+            <span className={`tnum whitespace-nowrap text-[22px] font-bold leading-tight tracking-title sm:text-[26px] ${TEXT_CLS[t.tone]}`}>{t.value}</span>
           </span>
           <span className="mt-0.5 block text-[12.5px] text-muted">{t.sub}</span>
         </Link>
@@ -281,7 +345,7 @@ function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBo
 }
 
 /** One job: icon, what and why, one button. */
-function JobRow({ todo, button, onDo }: { todo: Todo; button: string | null; onDo: () => void }) {
+function JobRow({ todo, button, onDo, onLook }: { todo: Todo; button: string | null; onDo: () => void; onLook: (() => void) | null }) {
   const tone = severity(todo);
   const worth = todo.value ? ` · ${money(todo.value)} a year` : "";
   return (
@@ -289,16 +353,30 @@ function JobRow({ todo, button, onDo }: { todo: Todo; button: string | null; onD
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[tone]}`} aria-hidden>
         {ICON[tone]}
       </span>
-      <Link href={todo.href} className="min-w-[180px] flex-1 hover:no-underline">
-        <span className="block text-[15px] font-semibold text-ink">{todo.title}</span>
-        <span className="block text-[13px] text-muted">
-          {todo.why}
-          {worth}
-        </span>
-      </Link>
+      {onLook ? (
+        <button className="group min-w-[180px] flex-1 text-left" onClick={onLook}>
+          <span className="block text-[15px] font-semibold text-ink group-hover:text-link">{todo.title}</span>
+          <span className="block text-[13px] text-muted">
+            {todo.why}
+            {worth}
+          </span>
+        </button>
+      ) : (
+        <Link href={todo.href} className="min-w-[180px] flex-1 hover:no-underline">
+          <span className="block text-[15px] font-semibold text-ink">{todo.title}</span>
+          <span className="block text-[13px] text-muted">
+            {todo.why}
+            {worth}
+          </span>
+        </Link>
+      )}
       {button ? (
         <button className="btn-primary w-full shrink-0 px-3.5 py-1.5 text-[14px] sm:w-auto" onClick={onDo}>
           {button} →
+        </button>
+      ) : onLook ? (
+        <button className="btn-secondary w-full shrink-0 px-3.5 py-1.5 text-[14px] sm:w-auto" onClick={onLook}>
+          Listen →
         </button>
       ) : (
         <Link href={todo.href} className="btn-secondary w-full shrink-0 px-3.5 py-1.5 text-[14px] hover:no-underline sm:w-auto">

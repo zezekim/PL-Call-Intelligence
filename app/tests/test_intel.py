@@ -528,6 +528,26 @@ def test_only_receptionist_bookings_become_leads_outside_sales(source, booked, e
     assert _receptionist_booking(call, analysis) is expected
 
 
+@pytest.mark.parametrize(
+    ("key", "phone", "expected"),
+    [
+        ("maureen falzone", None, "a"),     # first name on file, full name now
+        ("maureen", None, "a"),             # full name on file, first name now
+        ("pat", None, None),                # two full names start with it: don't guess
+        ("pat smith", None, "p1"),
+        ("pat jones", None, None),          # a different Pat
+        ("someone else", "+15551230000", "p2"),  # same number, same customer
+        ("call:123", None, None),
+    ],
+)
+def test_a_second_call_finds_the_same_customer(key, phone, expected):
+    from callsentry.intel.leads import same_person
+
+    leads = [("a", "maureen", None), ("p1", "pat smith", None),
+             ("p2", "pat brown", "+15551230000")]
+    assert same_person(key, phone, leads) == expected
+
+
 # --- Manager overrides -----------------------------------------------------------
 
 

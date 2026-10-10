@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,32 @@ def stage_for(triage: dict[str, Any]) -> str:
 
 
 def name_key(name: str) -> str:
-    return re.sub(r"[^a-z0-9 ]+", "", name.lower()).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", "", name.lower())).strip()
+
+
+def same_person(key: str, phone: str | None, leads: list[tuple[Any, str, str | None]]) -> Any:
+    """Which existing lead a call is about, or None for a new one.
+
+    The same number is the same customer. Otherwise the same name, or a first
+    name on its own ("maureen") against exactly one full name that starts with
+    it ("maureen falzone"), either way round: callers often give only a first
+    name on a second call. Two full names that start the same are left apart.
+    """
+    if phone:
+        for lead_id, _, lead_phone in leads:
+            if lead_phone == phone:
+                return lead_id
+    for lead_id, lead_key, _ in leads:
+        if lead_key == key:
+            return lead_id
+    if not key or key.startswith("call:"):
+        return None
+    first = key.split(" ")[0]
+    if " " in key:
+        hits = [i for i, k, _ in leads if k == first]
+    else:
+        hits = [i for i, k, _ in leads if k.startswith(f"{key} ")]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _receptionist_booking(call: Call, analysis: CallAnalysis) -> bool:
@@ -65,17 +90,31 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
     key = name_key(display) or f"call:{call.id}"
     display = display or f"Caller on {call.external_ref or 'unlabelled call'}"
 
-    await session.execute(
-        insert(Lead)
-        .values(id=uuid.uuid4(), business_id=call.business_id, name=display, name_key=key,
-                stage=LeadStage.NEW, pests=[])
-        .on_conflict_do_nothing(index_elements=["business_id", "name_key"])
-    )
-    lead = await session.scalar(
-        select(Lead).where(Lead.business_id == call.business_id, Lead.name_key == key)
-    )
+    phone = phones.for_call(call, analysis)
+    known = (
+        await session.execute(
+            select(Lead.id, Lead.name_key, Lead.phone).where(Lead.business_id == call.business_id)
+        )
+    ).all()
+    match = same_person(key, phone, [tuple(r) for r in known])
+    if match is None:
+        await session.execute(
+            insert(Lead)
+            .values(id=uuid.uuid4(), business_id=call.business_id, name=display, name_key=key,
+                    stage=LeadStage.NEW, pests=[])
+            .on_conflict_do_nothing(index_elements=["business_id", "name_key"])
+        )
+        lead = await session.scalar(
+            select(Lead).where(Lead.business_id == call.business_id, Lead.name_key == key)
+        )
+    else:
+        lead = await session.get(Lead, match)
     if lead is None:
         return None
+    # A fuller name than the one on file replaces it ("Maureen" → "Maureen Falzone").
+    if (not key.startswith("call:") and len(key) > len(lead.name_key)
+            and key.startswith(lead.name_key) and key not in {k for _, k, _ in known}):
+        lead.name, lead.name_key = display, key
 
     sales = triage.get("sales") or {}
     follow_ups = triage.get("follow_ups") or []
@@ -99,7 +138,7 @@ async def sync(session: AsyncSession, call: Call, analysis: CallAnalysis) -> Lea
         lead.rep_id = call.rep_id
         lead.service = request or lead.service
         lead.next_step = f"Visit booked for {when}" if when else "Visit booked"
-    lead.phone = phones.for_call(call, analysis) or lead.phone
+    lead.phone = phone or lead.phone
     lead.pests = sorted({*(lead.pests or []), *(triage.get("pests") or [])})
     lead.updated_at = datetime.now(UTC)
     call.lead_id = lead.id
@@ -122,6 +161,46 @@ async def backfill(session: AsyncSession) -> int:
         await sync(session, call, analysis)
     await session.commit()
     return len(rows)
+
+
+async def merge_duplicates(session: AsyncSession) -> int:
+    """Fold leads made before `same_person` into the lead they belong with.
+
+    The fuller name is kept; whichever of the two was talked to last decides
+    the stage, price and next step. Calls and prepared actions move across.
+    """
+    from callsentry.models import OwnerAction
+
+    merged = 0
+    businesses = (await session.scalars(select(Lead.business_id).distinct())).all()
+    for business_id in businesses:
+        leads = list((await session.scalars(
+            select(Lead).where(Lead.business_id == business_id)
+            .order_by(Lead.created_at))).all())
+        for short in [lead for lead in leads if " " not in lead.name_key]:
+            others = [(o.id, o.name_key, o.phone) for o in leads if o.id != short.id]
+            match = same_person(short.name_key, short.phone, others)
+            keep = next((o for o in leads if o.id == match), None)
+            if keep is None:
+                continue
+            if (short.last_contact_at and keep.last_contact_at
+                    and short.last_contact_at > keep.last_contact_at):
+                for field in ("stage", "stage_source", "last_call_id", "last_contact_at",
+                              "rep_id", "service", "price_quoted", "next_step"):
+                    setattr(keep, field, getattr(short, field) or getattr(keep, field))
+            keep.phone = keep.phone or short.phone
+            keep.pests = sorted({*(keep.pests or []), *(short.pests or [])})
+            keep.updated_at = datetime.now(UTC)
+            await session.execute(
+                update(Call).where(Call.lead_id == short.id).values(lead_id=keep.id))
+            await session.execute(
+                update(OwnerAction).where(OwnerAction.lead_id == short.id)
+                .values(lead_id=keep.id))
+            await session.delete(short)
+            leads.remove(short)
+            merged += 1
+    await session.commit()
+    return merged
 
 
 async def refresh_contact(session: AsyncSession, lead_id: Any) -> None:

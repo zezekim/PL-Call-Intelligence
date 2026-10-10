@@ -41,6 +41,38 @@ test("Today gives the answer first, then one button per job", async ({ page }) =
   await expect.poll(() => sent).toEqual([{ body: null, phone: null }]);
 });
 
+test("a job opens its call beside the list, with the job's button at the bottom", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2");
+  const jobs = page.getByRole("region", { name: "Needs attention" });
+  await jobs.getByRole("button", { name: /Try to win back a customer who cancelled/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Call with a customer" });
+  await expect(drawer).toContainText("The caller asked about ants and rodents");
+  await expect(drawer).toContainText("6/17");
+  await expect(drawer).toContainText("Ask, listen, and recap first");
+  await expect(drawer.getByRole("link", { name: "Open the full call →" })).toHaveAttribute("href", `/v2/calls/${CALL_ID}`);
+  const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).include('[role="dialog"]').analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  // A job with a written text: the drawer's button opens the same text.
+  await jobs.getByRole("button", { name: /Call Jordan Lee back/ }).click();
+  await drawer.getByRole("button", { name: "Text Jordan →" }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" })).toBeVisible();
+});
+
+test("Today can look at the last 7 or 30 days, and remembers the choice", async ({ page }) => {
+  const asked: string[] = [];
+  page.on("request", (r) => r.url().includes("/intel/v2/brief") && asked.push(new URL(r.url()).search));
+  await mockApi(page);
+  await page.goto("/v2");
+  await page.getByRole("group", { name: "Calls from" }).getByRole("tab", { name: "7 days" }).click();
+  await expect.poll(() => asked).toContain("?days=7");
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "7 days" })).toHaveAttribute("aria-selected", "true");
+});
+
 test("Call rings the customer, then asks how it went and moves them", async ({ page }) => {
   const sent: unknown[] = [];
   await mockApi(page, {
