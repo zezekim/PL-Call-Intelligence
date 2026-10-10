@@ -548,6 +548,26 @@ def test_a_second_call_finds_the_same_customer(key, phone, expected):
     assert same_person(key, phone, leads) == expected
 
 
+@pytest.mark.parametrize(("days", "words"), [(1, "1 day"), (9, "9 days"), (41, "6 weeks"),
+                                           (90, "3 months")])
+def test_time_is_said_the_way_a_person_says_it(days, words):
+    from callsentry.intel.brief import time_words
+
+    assert time_words(days) == words
+
+
+def test_a_lead_reads_as_one_plain_sentence():
+    from callsentry.intel.brief import lead_plain
+
+    lead = {"name": "Maureen Falzone", "stage": "quoted", "value": 649.0, "pests": [],
+            "service": None, "action": {"label": "Call Maureen Falzone back",
+                                        "days_since_contact": 41}}
+    assert lead_plain(lead) == ("Maureen got a price of $649 and has not said yes yet. "
+                                "Nobody has talked to them in 6 weeks.")
+    lead.update(name="Name not given", stage="new", pests=["ants"])
+    assert lead_plain(lead).startswith("This caller asked about the ants.")
+
+
 # --- Manager overrides -----------------------------------------------------------
 
 

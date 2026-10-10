@@ -40,10 +40,12 @@ export const brief = {
     { key: "quality", label: "Call steps", question: "", metric_label: "Steps", value: 41, count: 0, of: 21, goal: "", status: "bad", target: 80, change: null, detail: "0 of 21 calls followed enough steps", why: "", action: null },
   ],
   todo: [
-    { kind: "retention", priority: 100, title: "Try to win back a customer who cancelled", why: "They cancelled because they no longer need it.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(2), call_id: CALL_ID },
+    { kind: "retention", priority: 100, title: "Try to win back a customer who cancelled", why: "They cancelled because they no longer need it.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(2), call_id: CALL_ID,
+      plain: "A customer cancelled because they no longer need it. Nobody tried to keep them.", rep: "Dana" },
     {
       key: "lead:l1:c1", kind: "sales", priority: 90, title: "Call Jordan Lee back", why: "Jordan Lee was given a price and hasn't decided yet.", cta: "", href: "/v2/pipeline", when: ago(3), value: 588,
-      lead_id: LEAD_ID, call_id: CALL_ID, phone: "+15551234567", phone_pretty: "(555) 123-4567",
+      lead_id: LEAD_ID, call_id: CALL_ID, phone: "+15551234567", phone_pretty: "(555) 123-4567", customer: "Jordan Lee", rep: "Dana",
+      plain: "Jordan got a price of $588 and has not said yes yet. Nobody has talked to them in 3 days.",
       actions: [{ id: ACTION_ID, kind: "text_customer", status: "proposed", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "Hi Jordan, it's Dana from ABC Pest Control. Following up on the $49 quote for the ants. Reply STOP to opt out.", done_at: null, done_by: null, auto: false, error: null, reply_text: null, replied_at: null }],
       handled: null,
     },

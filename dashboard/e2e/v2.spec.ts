@@ -25,16 +25,20 @@ test("Today gives the answer first, then one button per job", async ({ page }) =
   await page.goto("/v2");
   // The coloured sentence names the most urgent job and how many more there are.
   const first = page.getByRole("region", { name: "What to do first" });
-  await expect(first).toContainText("Try to win back a customer who cancelled. They cancelled because they no longer need it. 4 more things need you.");
-  // Four numbers, each a link to what's behind it.
+  await expect(first).toContainText("Do this first");
+  await expect(first).toContainText("A customer cancelled because they no longer need it. Nobody tried to keep them.");
+  await expect(page.getByText("You have 5 things to do. Start with the first one.")).toBeVisible();
+  // Four tiles, each saying in a word how it's going.
   const numbers = page.getByRole("region", { name: "How it's going" });
-  await expect(numbers.getByRole("link", { name: /New customers.*7 of 13/ })).toBeVisible();
-  await expect(numbers.getByRole("link", { name: /Call backs due/ })).toBeVisible();
-  // Every job, one button each.
-  const jobs = page.getByRole("region", { name: "Needs attention" });
+  await expect(numbers.getByRole("link", { name: /New callers.*Good.*7 of 13 said yes/ })).toBeVisible();
+  await expect(numbers.getByRole("link", { name: /People to call back/ })).toBeVisible();
+  // Three jobs at a time, one button each.
+  const jobs = page.getByRole("region", { name: "Your to-do list" });
+  await expect(jobs.locator("li")).toHaveCount(3);
+  await jobs.getByRole("button", { name: "Show the other 2" }).click();
   await expect(jobs.locator("li")).toHaveCount(5);
-  await expect(page.getByRole("region", { name: "Team" }).getByRole("link", { name: /Dana.*Explain the plan/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Still deciding" })).toContainText("Jordan Lee");
+  await expect(page.getByRole("region", { name: "Your team" }).getByRole("link", { name: /Dana.*Needs to work on: Explain the plan/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Waiting for a yes" })).toContainText("Jordan Lee");
   // Jordan's text is written: one tap opens it, one more sends it.
   await jobs.getByRole("button", { name: "Text Jordan →" }).click();
   await page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" }).click();
@@ -44,19 +48,19 @@ test("Today gives the answer first, then one button per job", async ({ page }) =
 test("a job opens its call beside the list, with the job's button at the bottom", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2");
-  const jobs = page.getByRole("region", { name: "Needs attention" });
-  await jobs.getByRole("button", { name: /Try to win back a customer who cancelled/ }).click();
+  const jobs = page.getByRole("region", { name: "Your to-do list" });
+  await jobs.getByRole("button", { name: "Hear what happened →" }).click();
   const drawer = page.getByRole("dialog", { name: "Call with a customer" });
   await expect(drawer).toContainText("The caller asked about ants and rodents");
-  await expect(drawer).toContainText("6/17");
+  await expect(drawer).toContainText("How the receptionist did");
   await expect(drawer).toContainText("Ask, listen, and recap first");
-  await expect(drawer.getByRole("link", { name: "Open the full call →" })).toHaveAttribute("href", `/v2/calls/${CALL_ID}`);
+  await expect(drawer.getByRole("link", { name: "See everything about this call →" })).toHaveAttribute("href", `/v2/calls/${CALL_ID}`);
   const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).include('[role="dialog"]').analyze();
   expect(violations.map((v) => v.id)).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   // A job with a written text: the drawer's button opens the same text.
-  await jobs.getByRole("button", { name: /Call Jordan Lee back/ }).click();
+  await jobs.locator("li", { hasText: "Call Jordan Lee back" }).getByRole("button", { name: "What happened on the call?" }).click();
   await drawer.getByRole("button", { name: "Text Jordan →" }).click();
   await expect(drawer).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" })).toBeVisible();
@@ -71,6 +75,21 @@ test("Today can look at the last 7 or 30 days, and remembers the choice", async 
   await expect.poll(() => asked).toContain("?days=7");
   await page.reload();
   await expect(page.getByRole("tab", { name: "7 days" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("Today is in plain words: no percentages, goals or scorecard talk", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2");
+  await page.getByRole("region", { name: "Your to-do list" }).waitFor();
+  const text = await page.locator("main").innerText();
+  for (const word of [/%/, /\bgoal\b/i, /\d+\s*in\s*\d+/, /\bAI\b/, /autopilot/i, /\bstep marks\b/i, /a year\b/]) expect(text).not.toMatch(word);
+  // Nothing that matters is in small print.
+  const small = await page.evaluate(() =>
+    [...document.querySelectorAll("main p, main li, main a, main button")]
+      .filter((el) => el.getBoundingClientRect().height > 0 && parseFloat(getComputedStyle(el).fontSize) < 15 && el.textContent!.trim())
+      .map((el) => el.textContent!.trim().slice(0, 40)),
+  );
+  expect(small).toEqual([]);
 });
 
 test("Call rings the customer, then asks how it went and moves them", async ({ page }) => {
@@ -100,7 +119,7 @@ test("a job about a lead opens the same card as the board", async ({ page }) => 
       route.fulfill({ json: { ...brief, todo: brief.todo.map((t) => ({ ...t, actions: [] })) } }),
   });
   await page.goto("/v2");
-  await page.getByRole("region", { name: "Needs attention" }).getByRole("button", { name: "Call Jordan →" }).click();
+  await page.getByRole("region", { name: "Your to-do list" }).getByRole("button", { name: "Call Jordan →" }).click();
   const card = page.getByRole("dialog", { name: "Jordan Lee" });
   await expect(card.getByText("Late by 2 days")).toBeVisible();
   await expect(card.getByRole("link", { name: "Call Jordan on (555) 123-4567" })).toBeVisible();
@@ -127,8 +146,8 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
     },
   });
   await page.goto("/v2");
-  await expect(page.getByText(/\$588 a year/).first()).toBeVisible();
-  await page.getByRole("region", { name: "Needs attention" }).getByRole("button", { name: "Text Jordan →" }).click();
+  await expect(page.getByText("Jordan got a price of $588 and has not said yes yet.", { exact: false }).first()).toBeVisible();
+  await page.getByRole("region", { name: "Your to-do list" }).getByRole("button", { name: "Text Jordan →" }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
   await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);

@@ -104,15 +104,17 @@ Beyond the feedback:
   - The sidebar lists only pages that work: Today, Call back, My team,
     All calls, Texts. On a phone they sit in a bar along the bottom, each with
     a word under its picture.
-  - Today gives **the answer first**, then the work. A coloured bar (red, amber
-    or green, with ✕ ! ✓) says in one sentence what to do first and how many
-    more things need you, with one button. Four number tiles (new customers,
-    cancels kept, problems fixed, call backs due) have a coloured top edge and
-    open what's behind them. **Needs attention** lists every job most urgent
-    first, one button each (the text already written, or Call for a lead, or
-    Listen), with **Send all N texts** for the lot. Beside it is **Done** with
-    replies and the autopilot switch; below, **Team** (lowest score first, a
-    bar and the one thing to fix) and **Still deciding** (most valuable first).
+  - Today is written so **anyone can follow it**: no percentages, goals or
+    scorecard words, nothing that matters under 15px. "You have 5 things to
+    do. Start with the first one." A coloured bar says **Do this first** in
+    one sentence with a name ("Maureen got a price of $649 and has not said
+    yes yet. Nobody has talked to them in 6 weeks.") and one button that says
+    what it does ("Text Kristen to call Maureen"). Four tiles say how it's
+    going in a word (Good, Okay, Not good, Too early to tell) over a plain
+    count ("7 of 13 said yes"). **Your to-do list** shows three jobs at a
+    time, each one sentence and one big button. Then **Done** with the
+    replies, **Your team** ("Needs to work on: Explain the plan") and
+    **Waiting for a yes** ("No call in 6 weeks").
     A **7 days / 30 days / All** picker sets the period, and is remembered.
   - **A call opens beside the list.** Tapping a job's name opens its call in
     a side panel (full screen on a phone): what happened, the score, play,

@@ -12,7 +12,7 @@ import { Loading, Modal, Segmented, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
 import { CallDrawer } from "@/components/v2/call-drawer";
-import { LeadCard, URGENCY, useSaveLead } from "@/components/v2/customer";
+import { LeadCard, useSaveLead } from "@/components/v2/customer";
 import { PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
@@ -35,13 +35,26 @@ const ICON_CLS: Record<Tone, string> = {
 const TEXT_CLS: Record<Tone, string> = { good: "text-good", ok: "text-warn", bad: "text-bad", none: "text-muted" };
 const TOP_CLS: Record<Tone, string> = { good: "border-t-good", ok: "border-t-warn", bad: "border-t-bad", none: "border-t-line" };
 
-const JOBS_SHOWN = 6;
+const JOBS_SHOWN = 3;
 const LIST_SHOWN = 5;
 
 /** Most urgent jobs are red, the rest amber. */
 const severity = (t: Todo): Tone => (t.handled ? "good" : t.priority >= 70 ? "bad" : "ok");
-/** "Goal: at least 5 out of 10 say yes" as "goal 5 in 10". */
-const shortGoal = (goal: string) => goal.replace(/^Goal: at least (\d+) out of (\d+).*$/, "goal $1 in $2").replace(/^Goal: /, "goal ");
+/** How it's going, in a word. */
+const VERDICT: Record<Tone, string> = { good: "Good", ok: "Okay", bad: "Not good", none: "Too early to tell" };
+/** What each number counts, in everyday words. */
+const TILE: Record<string, { label: string; line: (count: number, of: number) => string }> = {
+  sales: { label: "New callers", line: (n, of) => `${n} of ${of} said yes` },
+  retention: { label: "Wanted to cancel", line: (n, of) => `${n} of ${of} stayed` },
+  service: { label: "Had a problem", line: (n, of) => `${n} of ${of} got it fixed` },
+};
+/** 41 days as "6 weeks": the way a person says it. */
+function timeWords(days: number): string {
+  if (days < 14) return `${days} day${days === 1 ? "" : "s"}`;
+  if (days < 60) return `${Math.round(days / 7)} weeks`;
+  return `${Math.round(days / 30)} months`;
+}
+const daysSince = (iso: string | null) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)) : null);
 const firstName = (name: string | null | undefined) => (name && name !== "Name not given" ? name.split(/\s+/)[0] : null);
 
 type Range = "7" | "30" | "all";
@@ -126,8 +139,12 @@ export default function TodayPage() {
     if (t.actions?.length) setActing(t);
     else if (lead) setCard(lead.id);
   };
+  // Each button says what will happen when it's pressed.
   const jobButton = (t: Todo): string | null => {
     const a = t.actions?.[0];
+    const customer = firstName(t.customer);
+    if (a?.kind === "remind_rep") return `Text ${firstName(a.to_name) ?? "them"} to call ${customer ?? "back"}`;
+    if (a?.kind === "text_customer") return `Text ${firstName(a.to_name) ?? customer ?? "them"}`;
     if (a) return a.label;
     const lead = t.lead_id ? leadById.get(t.lead_id) : undefined;
     if (lead) return `Call ${firstName(lead.name) ?? "them"}`;
@@ -144,15 +161,17 @@ export default function TodayPage() {
       ? "No calls yet. Add a call recording and this page fills in by itself."
       : `No calls in ${RANGE_WORDS[range]}. Pick All to see every call.`
     : top
-      ? `${top.title}. ${top.why}${open.length > 1 ? ` ${open.length - 1} more thing${open.length > 2 ? "s" : ""} need${open.length > 2 ? "" : "s"} you.` : ""}`
-      : "Nothing needs you right now. Every call is handled.";
+      ? (top.plain ?? `${top.title}. ${top.why}`)
+      : "Nothing to do right now. Every call was handled.";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[30px] font-bold leading-tight tracking-title">Today</h1>
-          <p className="mt-1 text-[15px] text-muted">{data.headline.title}</p>
+          <p className="mt-1 text-[17px] text-ink/80">
+            {open.length ? `You have ${open.length} thing${open.length === 1 ? "" : "s"} to do. Start with the first one.` : "You're all caught up."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span role="group" aria-label="Calls from">
@@ -191,7 +210,10 @@ export default function TodayPage() {
         <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-[17px] font-extrabold ${TEXT_CLS[verdictTone]}`} aria-hidden>
           {ICON[verdictTone]}
         </span>
-        <p className="min-w-0 flex-1 text-[16px] font-semibold leading-snug">{verdict}</p>
+        <div className="min-w-0 flex-1">
+          {top && <p className="text-[15px] font-semibold uppercase tracking-wide text-ink/70">Do this first</p>}
+          <p className="text-[18px] font-semibold leading-snug">{verdict}</p>
+        </div>
         {top &&
           (jobButton(top) ? (
             <button className="btn-primary shrink-0" onClick={() => doJob(top)}>
@@ -199,7 +221,7 @@ export default function TodayPage() {
             </button>
           ) : (
             <button className="btn-primary shrink-0" onClick={() => look(top)}>
-              Listen →
+              Hear what happened →
             </button>
           ))}
       </section>
@@ -207,11 +229,11 @@ export default function TodayPage() {
       {data.calls.analyzed > 0 && <Numbers cards={data.cards} board={board} />}
 
       <div className="grid gap-4 min-[1180px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] min-[1180px]:items-start">
-        <section aria-label="Needs attention" className="card p-5">
+        <section aria-label="Your to-do list" className="card p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-[17px] font-semibold">
-              Needs attention
-              {open.length > 0 && <span className="rounded-full bg-bad px-2 py-px text-[12px] font-bold text-white">{open.length}</span>}
+              Your to-do list
+              {open.length > 0 && <span className="rounded-full bg-bad px-2 py-px text-[13px] font-bold text-white">{open.length}</span>}
             </h2>
             {ready.length > 1 && (
               <button className="btn-secondary px-3 py-1.5 text-[14px]" onClick={() => setAllOpen(true)}>
@@ -219,7 +241,7 @@ export default function TodayPage() {
               </button>
             )}
           </div>
-          <p className="mt-0.5 text-[13px] text-muted">Most urgent first. Tap a name to see the call; the button does the job.</p>
+          <p className="mt-0.5 text-[15px] text-ink/80">Most important first. Press the blue button to do it.</p>
           {open.length ? (
             <ul className="mt-2 space-y-2">
               {shown.map((t, i) => (
@@ -227,11 +249,11 @@ export default function TodayPage() {
               ))}
             </ul>
           ) : (
-            <p className="py-3 font-semibold text-good">✓ All clear. Every call was handled.</p>
+            <p className="py-3 text-[16px] font-semibold text-good">✓ Nothing to do. Every call was handled.</p>
           )}
           {open.length > JOBS_SHOWN && (
-            <button className="mt-3 w-full rounded-xl border border-line py-2 text-[14px] font-medium text-link hover:bg-surface-hover" onClick={() => setShowAll((x) => !x)}>
-              {showAll ? "Show less" : `Show ${open.length - JOBS_SHOWN} more`}
+            <button className="mt-3 min-h-[48px] w-full rounded-xl border border-line text-[16px] font-semibold text-link hover:bg-surface-hover" onClick={() => setShowAll((x) => !x)}>
+              {showAll ? "Show fewer" : `Show the other ${open.length - JOBS_SHOWN}`}
             </button>
           )}
         </section>
@@ -244,12 +266,6 @@ export default function TodayPage() {
         {board && board.open.length > 0 && <Deciding leads={board.open} onOpen={(l) => setCard(l.id)} />}
       </div>
 
-      {data.accuracy && data.accuracy.calls > 0 && (
-        <p className="px-1 text-[13px] text-muted">
-          Managers kept <span className="font-semibold text-good">{Math.round(data.accuracy.pct)}%</span> of the AI&apos;s step marks · {data.accuracy.calls} call
-          {data.accuracy.calls === 1 ? "" : "s"} corrected
-        </p>
-      )}
 
       {peek?.call_id && (
         <CallDrawer
@@ -299,25 +315,28 @@ export default function TodayPage() {
   );
 }
 
-/** Four numbers, each coloured against its goal, each opening what's behind it. */
+/** Four tiles, each saying in a word how one part of the business is going. */
 function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBoard | null }) {
   const due = board?.summary.needs_action ?? null;
   const tiles = [
     ...cards
-      .filter((c) => c.key !== "quality")
-      .map((c) => ({
-        key: c.key,
-        label: c.label,
-        value: c.of ? `${c.count} of ${c.of}` : "–",
-        sub: c.of ? `${c.metric_label.toLowerCase()} · ${shortGoal(c.goal)}` : "Not enough calls yet",
-        tone: TONE[c.status],
-        href: c.action?.href ?? "/v2/calls",
-      })),
+      .filter((c) => TILE[c.key])
+      .map((c) => {
+        const tone = c.of ? TONE[c.status] : "none";
+        return {
+          key: c.key,
+          label: TILE[c.key].label,
+          word: VERDICT[tone],
+          line: c.of ? TILE[c.key].line(c.count, c.of) : "No calls like this yet",
+          tone,
+          href: c.action?.href ?? "/v2/calls",
+        };
+      }),
     {
       key: "callbacks",
-      label: "Call backs due",
-      value: due === null ? "–" : String(due),
-      sub: due === null ? "" : due ? `${money(board!.summary.open_value)} still deciding` : "All caught up",
+      label: "People to call back",
+      word: due === null ? VERDICT.none : due ? `${due} waiting` : "All done",
+      line: due === null ? "" : due ? `${due === 1 ? "1 person is" : `${due} people are`} waiting for a call` : "Nobody is waiting",
       tone: (due === null ? "none" : due ? "bad" : "good") as Tone,
       href: "/v2/pipeline",
     },
@@ -330,57 +349,48 @@ function Numbers({ cards, board }: { cards: PerformanceCard[]; board: PipelineBo
           href={t.href}
           className={`block rounded-xl border border-line border-t-[3px] bg-surface px-4 py-3.5 transition-colors hover:bg-surface-hover hover:no-underline ${TOP_CLS[t.tone]}`}
         >
-          <span className="block text-[13px] font-medium text-ink/80">{t.label}</span>
+          <span className="block text-[15px] font-medium text-ink/80">{t.label}</span>
           <span className="mt-1 flex items-center gap-2">
             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[t.tone]}`} aria-hidden>
               {ICON[t.tone]}
             </span>
-            <span className={`tnum whitespace-nowrap text-[22px] font-bold leading-tight tracking-title sm:text-[26px] ${TEXT_CLS[t.tone]}`}>{t.value}</span>
+            <span className={`text-[20px] font-bold leading-tight sm:text-[22px] ${TEXT_CLS[t.tone]}`}>{t.word}</span>
           </span>
-          <span className="mt-0.5 block text-[12.5px] text-muted">{t.sub}</span>
+          <span className="mt-1 block text-[15px] text-ink/80">{t.line}</span>
         </Link>
       ))}
     </section>
   );
 }
 
-/** One job: icon, what and why, one button. */
+/** One job: who and why in one sentence, one button that does it. */
 function JobRow({ todo, button, onDo, onLook }: { todo: Todo; button: string | null; onDo: () => void; onLook: (() => void) | null }) {
   const tone = severity(todo);
-  const worth = todo.value ? ` · ${money(todo.value)} a year` : "";
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-panel px-3 py-2.5">
-      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${ICON_CLS[tone]}`} aria-hidden>
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-panel px-3.5 py-3">
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold ${ICON_CLS[tone]}`} aria-hidden>
         {ICON[tone]}
       </span>
-      {onLook ? (
-        <button className="group min-w-[180px] flex-1 text-left" onClick={onLook}>
-          <span className="block text-[15px] font-semibold text-ink group-hover:text-link">{todo.title}</span>
-          <span className="block text-[13px] text-muted">
-            {todo.why}
-            {worth}
-          </span>
-        </button>
-      ) : (
-        <Link href={todo.href} className="min-w-[180px] flex-1 hover:no-underline">
-          <span className="block text-[15px] font-semibold text-ink">{todo.title}</span>
-          <span className="block text-[13px] text-muted">
-            {todo.why}
-            {worth}
-          </span>
-        </Link>
-      )}
+      <div className="min-w-[180px] flex-1">
+        <p className="text-[17px] font-semibold text-ink">{todo.title}</p>
+        <p className="text-[16px] leading-snug text-ink/80">{todo.plain ?? todo.why}</p>
+        {onLook && button && (
+          <button className="mt-1 min-h-[32px] text-[15px] font-medium text-link underline underline-offset-2" onClick={onLook}>
+            What happened on the call?
+          </button>
+        )}
+      </div>
       {button ? (
-        <button className="btn-primary w-full shrink-0 px-3.5 py-1.5 text-[14px] sm:w-auto" onClick={onDo}>
+        <button className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] sm:w-auto" onClick={onDo}>
           {button} →
         </button>
       ) : onLook ? (
-        <button className="btn-secondary w-full shrink-0 px-3.5 py-1.5 text-[14px] sm:w-auto" onClick={onLook}>
-          Listen →
+        <button className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] sm:w-auto" onClick={onLook}>
+          Hear what happened →
         </button>
       ) : (
-        <Link href={todo.href} className="btn-secondary w-full shrink-0 px-3.5 py-1.5 text-[14px] hover:no-underline sm:w-auto">
-          Listen →
+        <Link href={todo.href} className="btn-primary min-h-[48px] w-full shrink-0 px-4 text-[16px] hover:no-underline sm:w-auto">
+          Open →
         </Link>
       )}
     </li>
@@ -393,9 +403,9 @@ function Done({ items, summary }: { items: Todo[]; summary: ActionsSummary | nul
   return (
     <section aria-label="Done" className="card p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[17px] font-semibold">Done</h2>
-        <Link href="/v2/outbox" className="text-[14px] font-medium text-link">
-          All texts →
+        <h2 className="text-[19px] font-semibold">Done</h2>
+        <Link href="/v2/outbox" className="inline-flex min-h-[44px] items-center text-[16px] font-medium text-link">
+          See all texts →
         </Link>
       </div>
       {items.length ? (
@@ -404,15 +414,15 @@ function Done({ items, summary }: { items: Todo[]; summary: ActionsSummary | nul
             const a = t.handled as PreparedAction;
             return (
               <li key={t.key ?? t.title} className="flex items-start gap-2.5 border-t border-line py-2.5 first:border-t-0">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-good bg-good-soft text-[11px] font-extrabold text-good" aria-hidden>
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-good bg-good-soft text-[12px] font-extrabold text-good" aria-hidden>
                   ✓
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-semibold text-muted line-through decoration-ink/20">{t.title}</span>
-                  <span className="block text-[12.5px] text-muted">{handledText(a)}</span>
+                  <span className="block text-[16px] font-semibold">{t.title}</span>
+                  <span className="block text-[15px] text-ink/80">{handledText(a)}</span>
                   {a.reply_text && (
-                    <span className="mt-1 block rounded-lg bg-accent-soft/70 px-2.5 py-1.5 text-[13px]">
-                      <span className="font-semibold">{a.to_name ?? "They"} replied:</span> “{a.reply_text}”
+                    <span className="mt-1 block rounded-lg bg-accent-soft/70 px-2.5 py-1.5 text-[15px]">
+                      <span className="font-semibold">{a.to_name ?? "They"} wrote back:</span> “{a.reply_text}”
                     </span>
                   )}
                 </span>
@@ -421,19 +431,19 @@ function Done({ items, summary }: { items: Todo[]; summary: ActionsSummary | nul
           })}
         </ul>
       ) : (
-        <p className="mt-1 text-[13px] text-muted">Nothing yet today. Texts you send show up here, with any replies.</p>
+        <p className="mt-1 text-[16px] text-ink/80">Nothing yet. Texts you send show up here, and so do the answers.</p>
       )}
       {summary && (
-        <p className="mt-3 border-t border-line pt-3 text-[13px] text-muted">
+        <p className="mt-3 border-t border-line pt-3 text-[15px] text-ink/80">
           {on.length ? (
             <>
-              <span className="font-semibold text-good">Autopilot on</span> for {on.map((k) => KIND_WORDS[k].many).join(" and ")}.{" "}
+              <span className="font-semibold text-good">The app sends {on.map((k) => KIND_WORDS[k].many).join(" and ")} by itself.</span>{" "}
             </>
           ) : (
-            <>Want these sent without asking? </>
+            <>Want the app to send these texts by itself? </>
           )}
-          <Link href="/settings#autopilot" className="font-medium text-link">
-            {on.length ? "Change" : "Turn on autopilot"}
+          <Link href="/settings#autopilot" className="inline-flex min-h-[44px] items-center font-medium text-link">
+            {on.length ? "Change that" : "Turn that on"}
           </Link>
         </p>
       )}
@@ -441,82 +451,72 @@ function Done({ items, summary }: { items: Todo[]; summary: ActionsSummary | nul
   );
 }
 
-/** The team, lowest score first, with the one thing each should work on. */
+/** The team, whoever needs help most first, with the one thing to work on. */
 function Team({ reps }: { reps: RepCard[] }) {
   const sorted = [...reps].sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
   return (
-    <section aria-label="Team" className="card p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[17px] font-semibold">Team</h2>
-        <span className="text-[13px] text-muted">Lowest score first</span>
-      </div>
+    <section aria-label="Your team" className="card p-5">
+      <h2 className="text-[19px] font-semibold">Your team</h2>
+      <p className="text-[15px] text-ink/80">Who needs help first.</p>
       <ul className="mt-1">
-        {sorted.slice(0, LIST_SHOWN).map((r) => {
-          const tone = TONE[r.status];
-          return (
-            <li key={r.id} className="border-t border-line first:border-t-0">
-              <Link href={`/v2/reps/${r.id}`} className="group flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 hover:no-underline">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[12px] font-bold text-link">
-                  {r.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+        {sorted.slice(0, LIST_SHOWN).map((r) => (
+          <li key={r.id} className="border-t border-line first:border-t-0">
+            <Link href={`/v2/reps/${r.id}`} className="group flex min-h-[56px] items-center gap-3 py-2.5 hover:no-underline">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-bold text-link">
+                {r.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[16px] font-semibold text-ink group-hover:text-link">{r.name}</span>
+                <span className={`block text-[15px] ${r.focus ? "text-bad" : "text-good"}`}>
+                  {r.focus ? `✕ Needs to work on: ${r.focus.plain}` : "✓ Doing well"}
                 </span>
-                <span className="w-28 truncate text-[14px] font-semibold text-ink group-hover:text-link">{r.name}</span>
-                <span className="h-2 min-w-[60px] flex-1 overflow-hidden rounded-full bg-fill">
-                  <span
-                    className={`block h-full rounded-full ${tone === "good" ? "bg-good" : tone === "ok" ? "bg-warn" : tone === "bad" ? "bg-bad" : "bg-ink/20"}`}
-                    style={{ width: `${Math.max(4, Math.min(100, r.score ?? 0))}%` }}
-                  />
-                </span>
-                <span className={`tnum w-11 text-right text-[14px] font-semibold ${TEXT_CLS[tone]}`}>{r.score === null ? "–" : `${Math.round(r.score)}%`}</span>
-                <span
-                  className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${
-                    r.focus ? "border-bad/25 bg-bad-soft text-bad" : "border-good/25 bg-good-soft text-good"
-                  }`}
-                >
-                  {r.focus ? `✕ ${r.focus.plain}` : "✓ On track"}
-                </span>
-              </Link>
-            </li>
-          );
-        })}
+              </span>
+              <span className="text-[20px] text-muted" aria-hidden>
+                ›
+              </span>
+            </Link>
+          </li>
+        ))}
       </ul>
       {reps.length > LIST_SHOWN && (
-        <Link href="/v2/reps" className="mt-2 block text-[14px] font-medium text-link">
-          All {reps.length} people →
+        <Link href="/v2/reps" className="inline-flex min-h-[44px] items-center text-[16px] font-medium text-link">
+          See all {reps.length} people →
         </Link>
       )}
     </section>
   );
 }
 
-/** Customers still deciding, the most valuable first. */
+/** Customers who got a price and haven't said yes, the biggest first. */
 function Deciding({ leads, onOpen }: { leads: PipelineLead[]; onOpen: (l: PipelineLead) => void }) {
   const top = [...leads].sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).slice(0, LIST_SHOWN);
-  const total = leads.reduce((s, l) => s + (l.value ?? 0), 0);
   return (
-    <section aria-label="Still deciding" className="card p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[17px] font-semibold">Still deciding</h2>
-        {total > 0 && <span className="text-[13px] font-semibold text-ink/80">{money(total)} in prices given</span>}
-      </div>
+    <section aria-label="Waiting for a yes" className="card p-5">
+      <h2 className="text-[19px] font-semibold">Waiting for a yes</h2>
+      <p className="text-[15px] text-ink/80">People who haven&apos;t decided. Press a name to call them.</p>
       <ul className="mt-1">
         {top.map((l) => {
-          const u = l.action ? URGENCY[l.action.urgency] : null;
+          const days = daysSince(l.last_contact_at);
           return (
             <li key={l.id} className="border-t border-line first:border-t-0">
-              <button className="group flex w-full items-center gap-3 py-2.5 text-left" onClick={() => onOpen(l)}>
+              <button className="group flex min-h-[56px] w-full items-center gap-3 py-2.5 text-left" onClick={() => onOpen(l)}>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold group-hover:text-link">{l.name}</span>
-                  <span className="block truncate text-[12.5px] text-muted">{l.service ?? "Pest control"}</span>
+                  <span className="block truncate text-[16px] font-semibold group-hover:text-link">{l.name}</span>
+                  <span className={`block text-[15px] ${days !== null && days >= 7 ? "text-bad" : "text-ink/80"}`}>
+                    {days === null ? "Not called yet" : days === 0 ? "Talked to today" : `No call in ${timeWords(days)}`}
+                  </span>
                 </span>
-                {u && <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] font-semibold ${u.cls}`}>{u.label(l)}</span>}
-                <span className="tnum w-16 text-right text-[14px] font-semibold">{l.value !== null ? money(l.value) : "–"}</span>
+                {l.value !== null && <span className="tnum text-[16px] font-semibold">{money(l.value)}</span>}
+                <span className="text-[20px] text-muted" aria-hidden>
+                  ›
+                </span>
               </button>
             </li>
           );
         })}
       </ul>
-      <Link href="/v2/pipeline" className="mt-2 block text-[14px] font-medium text-link">
-        Open the call back board →
+      <Link href="/v2/pipeline" className="inline-flex min-h-[44px] items-center text-[16px] font-medium text-link">
+        See everyone to call back →
       </Link>
     </section>
   );

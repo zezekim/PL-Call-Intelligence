@@ -780,6 +780,40 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
 # --- The brief ---------------------------------------------------------------------
 
 
+def time_words(days: int) -> str:
+    """41 → "6 weeks": the unit a person would say out loud."""
+    if days < 14:
+        return _plural(days, "day")
+    if days < 60:
+        return _plural(round(days / 7), "week")
+    return _plural(round(days / 30), "month")
+
+
+def _first(name: str | None) -> str | None:
+    return name.split()[0] if name else None
+
+
+def lead_plain(lead: dict[str, Any]) -> str:
+    """One sentence a child could read: who, where they are, how long it's been."""
+    action = lead["action"]
+    name = lead["name"] if lead["name"] != "Name not given" else ""
+    who = _first(name) or "This caller"
+    price = lead.get("value")
+    if action["label"].startswith("Confirm"):
+        line = f"{who} booked a visit on the phone. Call to check the time is right."
+    elif lead["stage"] == LeadStage.QUOTED:
+        of = f" of {money(price)}" if price else ""
+        line = f"{who} got a price{of} and has not said yes yet."
+    elif lead["stage"] == LeadStage.FOLLOW_UP:
+        line = f"{who} wanted time to think."
+    else:
+        line = f"{who} asked about {_about(lead.get('pests') or [], lead.get('service'))}."
+    age = action["days_since_contact"]
+    if age:
+        line += f" Nobody has talked to them in {time_words(age)}."
+    return line
+
+
 def _todo(
     rows: list[Row], leads: list[dict[str, Any]], follow_ups: list[tuple[FollowUp, Call, Any]]
 ) -> list[dict[str, Any]]:
@@ -799,6 +833,8 @@ def _todo(
                 "title": f"Try to win back {name or 'a customer who cancelled'}",
                 "why": "They cancelled" + (f" because {because}" if because else "")
                 + ". Nobody offered them a reason to stay.",
+                "plain": f"{_first(name) or 'A customer'} cancelled"
+                + (f" because {because}" if because else "") + ". Nobody tried to keep them.",
                 "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
@@ -820,6 +856,7 @@ def _todo(
             "priority": base + stage_bonus,
             "title": action["label"],
             "why": action["why"] + (f" Last talk: {_plural(age, 'day')} ago." if age else ""),
+            "plain": lead_plain(lead),
             "cta": "See call-back list",
             "href": "/v2/pipeline",
             "when": lead["last_contact_at"],
@@ -849,6 +886,9 @@ def _todo(
                 "title": f"Check on {_customer(r)}",
                 "why": "Their problem was " + ("not fixed" if r.analysis.outcome == "unresolved"
                                                 else "only partly fixed") + " on the call.",
+                "plain": f"{_first(real_name(r.analysis.customer_name)) or 'A customer'} called"
+                " with a problem. It " + ("was not fixed" if r.analysis.outcome == "unresolved"
+                                   else "was only half fixed") + ".",
                 "cta": "Listen to the call",
                 "href": f"/v2/calls/{r.call.id}",
                 "when": r.when.isoformat(),
@@ -872,6 +912,8 @@ def _todo(
             "priority": 50,
             "title": f.action[:1].upper() + f.action[1:],
             "why": f"Promised to {who}." + (f" When: {f.due}." if f.due else ""),
+            "plain": f"We told {_first(named) or 'a caller'} we would "
+            f"{f.action[:1].lower()}{f.action[1:]}" + (f" ({f.due})" if f.due else "") + ".",
             "cta": "Listen to the call",
             "href": f"/v2/calls/{call.id}",
             "when": (call.occurred_at or call.created_at).isoformat(),
@@ -1117,6 +1159,9 @@ async def attach_actions(
         t["phone_pretty"] = phones.pretty(ctx.get("phone"))
         t["lead_id"] = ctx.get("lead_id")
         t["call_id"] = ctx.get("call_id")
+        # Names for the buttons: "Text Kristen to call Maureen".
+        t["customer"] = ctx.get("customer") or None
+        t["rep"] = ctx.get("rep") or None
         options = by_key.get(t.get("key") or "", [])
         done = [a for a in options if a.status == "done" and a.done_at and a.done_at >= recent]
         t["actions"] = [action_out(a) for a in sorted(options, key=lambda a: a.priority,

@@ -63,6 +63,10 @@ export interface Todo {
   /** The same customer on the call-back board, when it's a lead. */
   lead_id?: string | null;
   call_id?: string | null;
+  /** The job in one sentence anyone can read: who, what, how long. */
+  plain?: string;
+  customer?: string | null;
+  rep?: string | null;
 }
 
 export interface ActionsSummary {
