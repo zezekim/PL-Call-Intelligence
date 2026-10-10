@@ -369,11 +369,11 @@ function JobRow({ todo, button, onDo, onLook }: { todo: Todo; button: string | n
       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold ${ICON_CLS[tone]}`} aria-hidden>
         {ICON[tone]}
       </span>
-      <div className="min-w-[180px] flex-1">
+      <div className="min-w-[min(100%,300px)] flex-1">
         <p className="text-[17px] font-semibold text-ink">{todo.title}</p>
         <p className="text-[16px] leading-snug text-ink/80">{todo.plain ?? todo.why}</p>
         {onLook && button && (
-          <button className="mt-0.5 min-h-[44px] text-[16px] font-medium text-link underline underline-offset-2" onClick={onLook}>
+          <button className="mt-0.5 block min-h-[44px] text-left text-[16px] font-medium text-link underline underline-offset-2" onClick={onLook}>
             What happened on the call?
           </button>
         )}
