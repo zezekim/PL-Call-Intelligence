@@ -13,5 +13,5 @@ export async function signIn(page: Page) {
   await page.getByRole("dialog").getByRole("button", { name: /Cloud/ }).click();
   // Signing in opens v2.
   await expect(page).toHaveURL(/\/v2$/);
-  await expect(page.getByRole("heading", { name: /^Today/, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)$/, level: 1 })).toBeVisible();
 }
