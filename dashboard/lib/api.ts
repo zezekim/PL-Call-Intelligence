@@ -320,6 +320,9 @@ export interface FollowUp {
 
 export interface CallDetail extends CallRow {
   follow_ups: FollowUp[];
+  /** The customer's number, for the Call button. */
+  customer_phone?: string | null;
+  customer_phone_pretty?: string;
   recording_expires_at: string | null;
   stt_engine: string | null;
   stt_provider: string | null;

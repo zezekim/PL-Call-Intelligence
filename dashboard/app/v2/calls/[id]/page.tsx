@@ -14,7 +14,8 @@ import {
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
 import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN, stepName } from "@/lib/easy";
 import { FollowUpList } from "@/components/follow-up-list";
-import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
+import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PauseIcon, PlayIcon } from "@/components/icons";
+import { CallButton } from "@/components/v2/customer";
 import { Avatar, Card, ErrorNote, Modal, Spinner } from "@/components/ui";
 import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/components/v2/listen";
 import { TranscriptEditor } from "@/components/v2/transcript-editor";
@@ -41,6 +42,7 @@ function CallPage() {
     poll: (c) => IN_PROGRESS.has(c.processing_status),
   });
   const [fixing, setFixing] = useState(false);
+  const [chosen, setChosen] = useState<Tab | null>(null);
   useTitle(call ? `Call with ${personName(call.analysis?.customer_name) ?? "a customer"}` : "Call");
   const audio = useAudio();
 
@@ -75,6 +77,18 @@ function CallPage() {
       .map((s) => ({ at: s.start as number, tone: "good" as const, label: s.title })),
   ];
 
+  const hasTips = !!a && (a.coaching.coaching ?? []).length > 0;
+  const tabs: { value: Tab; label: string }[] = [
+    ...(hasTips ? [{ value: "learn" as const, label: `What ${a?.rep_name ?? "they"} can learn` }] : []),
+    { value: "listen", label: "Listen and read" },
+    ...(a && a.items.length ? [{ value: "steps" as const, label: "Call steps" }] : []),
+    ...(call.follow_ups.length ? [{ value: "promises" as const, label: `Promises (${call.follow_ups.length})` }] : []),
+    ...(a ? [{ value: "details" as const, label: "Details" }] : []),
+  ];
+  // A link to a moment opens the words; otherwise what to learn comes first.
+  const fallback: Tab = startAt > 0 || !hasTips ? "listen" : "learn";
+  const tab: Tab = chosen && tabs.some((t) => t.value === chosen) ? chosen : fallback;
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 print:hidden">
@@ -84,7 +98,7 @@ function CallPage() {
         <CallActions call={call} onChanged={reload} />
       </div>
 
-      <Verdict call={call} audio={audio} />
+      <Verdict call={call} audio={audio} onListen={() => setChosen("listen")} />
 
       {processing && (
         <Card className="flex items-center gap-3 px-5 py-4">
@@ -108,50 +122,98 @@ function CallPage() {
         <TypeCheck call={call} analysis={a} onDone={reload} />
       )}
 
-      <div className="grid items-start gap-5 min-[1360px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] print:block">
-        <div className="min-w-0 min-[1360px]:sticky min-[1360px]:top-6">
-          <ListenPanel
-            src={call.audio_url ? api.url(call.audio_url) : null}
-            duration={call.duration_seconds}
-            segments={call.segments}
-            repName={call.rep_name}
-            customerName={personName(call.analysis?.customer_name)}
-            audio={audio}
-            markers={markers}
-            expired={expired}
-            fixing={fixing}
-            onFix={processing ? undefined : setFixing}
-            fixer={
-              <TranscriptEditor
-                callId={call.id}
-                segments={call.segments}
-                repName={call.rep_name}
-                customerName={personName(call.analysis?.customer_name)}
-                audio={audio}
-                onSaved={setData}
-              />
-            }
-          />
+      {/* One part of the call at a time, picked with big buttons. The player
+          stays mounted on every tab, so a call keeps playing while you read. */}
+      <CallTabs
+        tabs={tabs}
+        value={tab}
+        onChange={setChosen}
+      />
+      {audio.playing && tab !== "listen" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-accent-soft/70 px-4 py-2.5 print:hidden" aria-live="polite">
+          <span className="text-[16px] font-medium">Playing {clock(audio.time)}</span>
+          <button className="btn-secondary min-h-[44px]" onClick={audio.toggle}>
+            <PauseIcon className="h-4 w-4" />
+            Pause
+          </button>
+          <button className="min-h-[44px] text-[15px] font-medium text-link" onClick={() => setChosen("listen")}>
+            Show the words
+          </button>
         </div>
-        <div className="min-w-0 space-y-5 print:mt-5">
-          {a && (a.coaching.coaching ?? []).length > 0 && <Coaching analysis={a} audio={audio} />}
-          {a && a.items.length > 0 && <Scorecard analysis={a} audio={audio} callId={call.id} onChange={reload} />}
-          {call.follow_ups.length > 0 && (
-            <Card className="p-5">
-              <h2 className="mb-3 text-[17px] font-semibold tracking-title">Things we promised</h2>
-              <FollowUpList items={call.follow_ups} />
-            </Card>
-          )}
-          {a && <Details analysis={a} />}
-        </div>
+      )}
+
+      <div className={tab === "listen" ? "" : "hidden print:block"}>
+        <ListenPanel
+          src={call.audio_url ? api.url(call.audio_url) : null}
+          duration={call.duration_seconds}
+          segments={call.segments}
+          repName={call.rep_name}
+          customerName={personName(call.analysis?.customer_name)}
+          audio={audio}
+          markers={markers}
+          expired={expired}
+          fixing={fixing}
+          onFix={processing ? undefined : setFixing}
+          fixer={
+            <TranscriptEditor
+              callId={call.id}
+              segments={call.segments}
+              repName={call.rep_name}
+              customerName={personName(call.analysis?.customer_name)}
+              audio={audio}
+              onSaved={setData}
+            />
+          }
+        />
       </div>
+      {tab === "learn" && a && <Coaching analysis={a} audio={audio} />}
+      {tab === "steps" && a && <Scorecard analysis={a} audio={audio} callId={call.id} onChange={reload} />}
+      {tab === "promises" && (
+        <Card className="p-5">
+          <h2 className="mb-3 text-[17px] font-semibold tracking-title">Things we promised</h2>
+          <FollowUpList items={call.follow_ups} />
+        </Card>
+      )}
+      {tab === "details" && a && <Details analysis={a} />}
+    </div>
+  );
+}
+
+type Tab = "learn" | "listen" | "steps" | "promises" | "details";
+
+/** Big, plain tab buttons: one part of the call at a time. */
+function CallTabs({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { value: Tab; label: string }[];
+  value: Tab;
+  onChange: (t: Tab) => void;
+}) {
+  if (tabs.length < 2) return null;
+  return (
+    <div role="tablist" aria-label="Parts of the call" className="flex flex-wrap gap-2 print:hidden">
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          role="tab"
+          aria-selected={t.value === value}
+          onClick={() => onChange(t.value)}
+          className={`min-h-[48px] rounded-2xl border px-4 text-[16px] font-semibold transition-colors ${
+            t.value === value ? "border-accent bg-accent text-white" : "border-control bg-surface text-ink hover:bg-surface-hover"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }
 
 // --- The verdict: what happened, and how it went -----------------------------------
 
-function Verdict({ call, audio }: { call: CallDetail; audio: AudioControl }) {
+function Verdict({ call, audio, onListen }: { call: CallDetail; audio: AudioControl; onListen: () => void }) {
   const a = call.analysis;
   const title = `Call with ${personName(a?.customer_name) ?? "a customer"}`;
   const outcomeTone = call.outcome ? OUTCOME_TONE[call.outcome] ?? "none" : "none";
@@ -197,6 +259,24 @@ function Verdict({ call, audio }: { call: CallDetail; audio: AudioControl }) {
             </p>
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2 print:hidden">
+        {call.audio_url && (
+          <button
+            className="btn-primary min-h-[52px] rounded-2xl px-5 text-[17px]"
+            onClick={() => {
+              onListen();
+              audio.toggle();
+            }}
+          >
+            {audio.playing ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
+            {audio.playing ? "Pause" : "Play the call"}
+          </button>
+        )}
+        {call.customer_phone && (
+          <CallButton phone={call.customer_phone} pretty={call.customer_phone_pretty} name={personName(a?.customer_name)} />
+        )}
       </div>
 
       {(best || fix) && (

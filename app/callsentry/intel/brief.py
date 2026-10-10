@@ -743,6 +743,7 @@ async def pipeline(session: AsyncSession, business_id: uuid.UUID) -> dict[str, A
             "last_contact_at": lead.last_contact_at.isoformat() if lead.last_contact_at else None,
             "action": action,
         }
+        item["phone_pretty"] = phones.pretty(item["phone"])
         (open_ if action else closed).append(item)
     open_.sort(key=lambda i: (
         _URGENCY_ORDER[i["action"]["urgency"]],
@@ -1110,7 +1111,12 @@ async def attach_actions(
         by_key[a.item_key].append(a)
     recent = datetime.now(UTC) - timedelta(days=HANDLED_DAYS)
     for t in todo:
-        t.pop("context", None)
+        ctx = t.pop("context", None) or {}
+        # Enough to ring the customer and to find the same person on the board.
+        t["phone"] = ctx.get("phone")
+        t["phone_pretty"] = phones.pretty(ctx.get("phone"))
+        t["lead_id"] = ctx.get("lead_id")
+        t["call_id"] = ctx.get("call_id")
         options = by_key.get(t.get("key") or "", [])
         done = [a for a in options if a.status == "done" and a.done_at and a.done_at >= recent]
         t["actions"] = [action_out(a) for a in sorted(options, key=lambda a: a.priority,

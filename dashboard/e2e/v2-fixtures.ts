@@ -43,6 +43,7 @@ export const brief = {
     { kind: "retention", priority: 100, title: "Try to win back a customer who cancelled", why: "They cancelled because they no longer need it.", cta: "", href: `/v2/calls/${CALL_ID}`, when: ago(2) },
     {
       key: "lead:l1:c1", kind: "sales", priority: 90, title: "Call Jordan Lee back", why: "Jordan Lee was given a price and hasn't decided yet.", cta: "", href: "/v2/pipeline", when: ago(3), value: 588,
+      lead_id: LEAD_ID, phone: "+15551234567", phone_pretty: "(555) 123-4567",
       actions: [{ id: ACTION_ID, kind: "text_customer", status: "proposed", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "Hi Jordan, it's Dana from ABC Pest Control. Following up on the $49 quote for the ants. Reply STOP to opt out.", done_at: null, done_by: null, auto: false, error: null, reply_text: null, replied_at: null }],
       handled: null,
     },
@@ -73,6 +74,8 @@ const lead = (id: string, name: string, stage: string, urgency: string | null, v
   value,
   pests: stage === "lost" ? [] : ["ants"],
   rep: "Dana",
+  phone: name === "Jordan Lee" ? "+15551234567" : null,
+  phone_pretty: name === "Jordan Lee" ? "(555) 123-4567" : "",
   last_call_id: CALL_ID,
   last_contact_at: ago(4),
   action: urgency

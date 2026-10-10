@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, type Me } from "@/lib/api";
 import { useApi, useTitle } from "@/lib/hooks";
-import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PreparedAction, RepCard, Todo } from "@/lib/v2";
+import type { ActionsSummary, Brief, PerformanceCard, PipelineBoard, PipelineLead, PreparedAction, RepCard, Todo } from "@/lib/v2";
 import { STATUS_BG, STATUS_TEXT } from "@/lib/v2";
 import {
   AlertIcon,
   CheckIcon,
   ChevronIcon,
   MessageIcon,
+  PhoneIcon,
   PlayIcon,
   SparkIcon,
   UploadIcon,
@@ -18,6 +19,7 @@ import {
 import { Avatar, Loading, Modal, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
 import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
+import { CallButton, HowDidItGo, LeadCard, useSaveLead, type LeadChange } from "@/components/v2/customer";
 import { Meter, PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
@@ -33,7 +35,11 @@ export default function TodayPage() {
   const { data, error, status, loading, reload } = useApi<Brief>("/intel/v2/brief");
   const summary = useApi<ActionsSummary>("/intel/actions/summary");
   const reps = useApi<RepCard[]>("/intel/v2/reps").data;
-  const board = useApi<PipelineBoard>("/intel/v2/pipeline").data;
+  const business = useApi<Me>("/auth/me").data?.business_name ?? null;
+  const boardApi = useApi<PipelineBoard>("/intel/v2/pipeline");
+  const board = boardApi.data;
+  const leadById = new Map((board ? [...board.open, ...board.closed] : []).map((l) => [l.id, l]));
+  const [card, setCard] = useState<string | null>(null);
   // Done-for-you extras are optional: an older or partial answer leaves them out.
   const actions = summary.data?.autopilot ? summary.data : null;
   const [acting, setActing] = useState<Todo | null>(null);
@@ -54,8 +60,9 @@ export default function TodayPage() {
       .catch(() => undefined);
   }, [reload, summary]);
   const refreshAll = async () => {
-    await Promise.all([reload(), summary.reload()]);
+    await Promise.all([reload(), summary.reload(), boardApi.reload()]);
   };
+  const saveLead = useSaveLead(refreshAll);
 
   if (loading && !data) return <Loading />;
   if (error && !data) return <PageError status={status} onRetry={() => void reload()} />;
@@ -115,20 +122,25 @@ export default function TodayPage() {
           <PanelHead title="Needs you" count={waiting} />
           {open.length > 0 ? (
             <ul className="space-y-2.5">
-              {shownJobs.map(({ t, k }) => (
-                <JobRow
-                  key={k}
-                  todo={t}
-                  sent={sentKeys.includes(k)}
-                  practice={!!actions?.practice}
-                  onOpen={() => setActing(t)}
-                  onSent={() => {
-                    setSentKeys((s) => [...s, k]);
-                    // Let the green tick show before the row moves to Done.
-                    window.setTimeout(() => void refreshAll(), 1600);
-                  }}
-                />
-              ))}
+              {shownJobs.map(({ t, k }) => {
+                const lead = t.lead_id ? leadById.get(t.lead_id) ?? null : null;
+                return (
+                  <JobRow
+                    key={k}
+                    todo={t}
+                    lead={lead}
+                    sent={sentKeys.includes(k)}
+                    practice={!!actions?.practice}
+                    onOpen={lead ? () => setCard(lead.id) : t.actions?.length ? () => setActing(t) : null}
+                    onSent={() => {
+                      setSentKeys((s) => [...s, k]);
+                      // Let the green tick show before the row moves to Done.
+                      window.setTimeout(() => void refreshAll(), 1600);
+                    }}
+                    onLeadChange={(c) => lead && void saveLead(lead, c)}
+                  />
+                );
+              })}
             </ul>
           ) : (
             <div className="flex items-center gap-3 rounded-2xl bg-good-soft px-4 py-4">
@@ -161,6 +173,20 @@ export default function TodayPage() {
           onClose={() => setActing(null)}
           onDone={refreshAll}
         />
+      )}
+      {card && leadById.get(card) && (
+        <Modal open onClose={() => setCard(null)} title={leadById.get(card)!.name}>
+          <LeadCard
+            as="div"
+            lead={leadById.get(card)!}
+            business={business}
+            onChange={async (c) => {
+              const ok = await saveLead(leadById.get(card)!, c);
+              if (ok && c.stage) setCard(null);
+              return ok;
+            }}
+          />
+        </Modal>
       )}
       <DoItAll
         open={allOpen}
@@ -290,27 +316,36 @@ function perYear(value: number | null | undefined): string | null {
 }
 
 /**
- * One job as one big row. The button on the right does it there and then;
- * anywhere else on the row opens the text to read or change first.
+ * One job as one row: what it is on top, then its buttons. Call rings the
+ * customer and then asks how it went; Text sends the text already written;
+ * tapping the job itself opens the customer's card (or the text, to read
+ * first).
  */
 function JobRow({
   todo,
+  lead,
   sent,
   practice,
   onOpen,
   onSent,
+  onLeadChange,
 }: {
   todo: Todo;
+  lead: PipelineLead | null;
   sent: boolean;
   practice: boolean;
-  onOpen: () => void;
+  onOpen: (() => void) | null;
   onSent: () => void;
+  onLeadChange: (change: LeadChange) => void;
 }) {
   const toast = useToast();
   const action = todo.actions?.[0];
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const worth = perYear(todo.value);
-  const sub = [action ? `I wrote: “${action.label}”` : null, worth].filter(Boolean).join(" · ");
+  const phone = lead?.phone ?? todo.phone ?? null;
+  const pretty = lead?.phone_pretty || todo.phone_pretty;
+  const sub = [action && !phone ? `I wrote: “${action.label}”` : null, worth].filter(Boolean).join(" · ");
 
   async function sendNow() {
     if (!action) return;
@@ -331,53 +366,97 @@ function JobRow({
     }
   }
 
-  const rowClass = `flex w-full flex-col gap-3 rounded-[22px] border px-4 py-3 text-left transition-all duration-300 sm:flex-row sm:items-center sm:gap-4 ${
-    sent ? "border-good/40 bg-good-soft" : "border-line bg-surface hover:border-accent/40 hover:bg-surface-hover"
-  }`;
   const body = (
     <>
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sent ? "bg-good text-white" : "bg-accent-soft text-accent"}`}
         aria-hidden
       >
-        {sent ? <CheckIcon className="pop-in h-6 w-6" /> : action ? <MessageIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
+        {sent ? (
+          <CheckIcon className="pop-in h-6 w-6" />
+        ) : phone ? (
+          <PhoneIcon className="h-5 w-5" />
+        ) : action ? (
+          <MessageIcon className="h-6 w-6" />
+        ) : (
+          <PlayIcon className="h-6 w-6" />
+        )}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[18px] font-semibold leading-snug">{todo.title}</span>
         <span className="mt-0.5 block text-[15px] text-ink/75">{sent ? "Done!" : sub || todo.why}</span>
       </span>
+      {onOpen && !sent && <ChevronIcon className="h-4 w-4 shrink-0 text-muted" />}
     </>
   );
 
+  const textButton = action?.to_phone ? (
+    <button
+      className={`${phone ? "btn-secondary" : "btn-primary"} min-h-[52px] flex-1 rounded-2xl px-5 text-[17px] sm:flex-none`}
+      disabled={busy}
+      onClick={() => void sendNow()}
+      aria-label={`Do it: ${action.label}`}
+    >
+      {busy ? <Spinner className="h-5 w-5" /> : <MessageIcon className="h-5 w-5" />}
+      {phone ? "Send the text" : "Do it"}
+    </button>
+  ) : null;
+
   return (
-    <li className={rowClass}>
-      {action ? (
-        <button className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={onOpen} disabled={sent} aria-label={`${todo.title}: read the text first`}>
+    <li
+      className={`rounded-[22px] border p-3 transition-all duration-300 ${
+        sent ? "border-good/40 bg-good-soft" : "border-line bg-surface"
+      }`}
+    >
+      {onOpen ? (
+        <button
+          className="flex w-full min-w-0 items-center gap-3 rounded-2xl p-1 text-left hover:bg-surface-hover"
+          onClick={onOpen}
+          disabled={sent}
+          aria-label={lead ? `${todo.title}: open their card` : `${todo.title}: read the text first`}
+        >
           {body}
         </button>
       ) : (
-        <Link href={todo.href} className="flex min-w-0 flex-1 items-center gap-4 hover:no-underline">
+        <Link href={todo.href} className="flex w-full min-w-0 items-center gap-3 rounded-2xl p-1 hover:bg-surface-hover hover:no-underline">
           {body}
         </Link>
       )}
-      {sent ? null : action?.to_phone ? (
-        <button
-          className="btn-primary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[18px] sm:w-auto"
-          disabled={busy}
-          onClick={() => void sendNow()}
-          aria-label={`Do it: ${action.label}`}
-        >
-          {busy ? <Spinner className="h-5 w-5" /> : <CheckIcon className="h-5 w-5" />}
-          Do it
-        </button>
-      ) : action ? (
-        <button className="btn-secondary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[17px] sm:w-auto" onClick={onOpen}>
-          Add number
-        </button>
-      ) : (
-        <Link href={todo.href} className="btn-secondary min-h-[52px] w-full shrink-0 rounded-2xl px-5 text-[17px] hover:no-underline sm:w-auto">
-          Listen
-        </Link>
+      {!sent && (
+        <div className="mt-2.5">
+          {asking && lead ? (
+            <HowDidItGo
+              name={lead.name}
+              onCancel={() => setAsking(false)}
+              onAnswer={(c) => {
+                setAsking(false);
+                onLeadChange(c);
+              }}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {phone && (
+                <CallButton
+                  phone={phone}
+                  pretty={pretty}
+                  name={lead?.name ?? null}
+                  className="flex-1 sm:flex-none"
+                  onCalled={lead ? () => window.setTimeout(() => setAsking(true), 600) : undefined}
+                />
+              )}
+              {textButton}
+              {!phone && !action?.to_phone && (
+                <Link
+                  href={todo.href}
+                  className="btn-secondary min-h-[52px] flex-1 rounded-2xl px-5 text-[17px] hover:no-underline sm:flex-none"
+                >
+                  <PlayIcon className="h-4 w-4" />
+                  Listen
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </li>
   );

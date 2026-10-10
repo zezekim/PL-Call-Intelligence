@@ -27,6 +27,7 @@ from callsentry.intel import (
     insights,
     jobs,
     overrides,
+    phones,
     pipeline,
     transcript_edit,
 )
@@ -159,6 +160,9 @@ class CallDetailOut(CallRow):
     transcript_edited_at: datetime | None = None
     # A manager fixed the transcript after this grade was made.
     transcript_stale: bool = False
+    # The customer's number, for the Call button.
+    customer_phone: str | None = None
+    customer_phone_pretty: str = ""
 
 
 class ReprocessRequest(BaseModel):
@@ -187,7 +191,11 @@ class LeadOut(BaseModel):
 
 
 class LeadUpdate(BaseModel):
-    stage: str
+    stage: str | None = None
+    # A number the owner typed in, kept for the Call button and texts.
+    phone: str | None = None
+    # "I just called them": the next call-back is due from now.
+    called: bool = False
 
 
 # --- Helpers -------------------------------------------------------------------
@@ -475,6 +483,8 @@ async def get_call(call_id: uuid.UUID, session: SessionDep, business: BusinessDe
         provider_log=call.provider_log or [],
         cost_usd=round(float(call.cost_usd or 0), 6),
         transcript_edited_at=call.transcript_edited_at,
+        customer_phone=(number := phones.for_call(call, call.analysis)),
+        customer_phone_pretty=phones.pretty(number),
         transcript_stale=bool(
             call.transcript_edited_at
             and call.analysis
@@ -642,10 +652,20 @@ async def move_lead(
     lead = await session.get(Lead, lead_id)
     if lead is None or lead.business_id != business.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "lead not found")
-    if payload.stage not in leads_service.STAGES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown stage")
-    lead.stage = payload.stage
-    lead.stage_source = "manual"
+    if payload.stage is not None:
+        if payload.stage not in leads_service.STAGES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown stage")
+        lead.stage = payload.stage
+        lead.stage_source = "manual"
+    if payload.phone is not None:
+        number = phones.normalize(payload.phone)
+        if number is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "That doesn't look like a phone number."
+            )
+        lead.phone = number
+    if payload.called:
+        lead.last_contact_at = datetime.now(UTC)
     await session.commit()
     return {"id": str(lead.id), "stage": lead.stage}
 

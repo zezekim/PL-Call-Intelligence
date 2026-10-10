@@ -57,6 +57,12 @@ export interface Todo {
   actions?: PreparedAction[];
   /** What was done about it in the last few days. */
   handled?: PreparedAction | null;
+  /** The customer's number, to ring them. */
+  phone?: string | null;
+  phone_pretty?: string;
+  /** The same customer on the call-back board, when it's a lead. */
+  lead_id?: string | null;
+  call_id?: string | null;
 }
 
 export interface ActionsSummary {
@@ -129,6 +135,8 @@ export interface PipelineLead {
   value: number | null;
   pests: string[];
   rep: string | null;
+  phone?: string | null;
+  phone_pretty?: string;
   last_call_id: string | null;
   last_contact_at: string | null;
   action: {

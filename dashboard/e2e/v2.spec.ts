@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { cleanPests } from "../lib/v2";
-import { ACTION_ID, CALL_ID, LEAD_ID, REP_ID, brief, callsPage, mockApi } from "./v2-fixtures";
+import { ACTION_ID, CALL_ID, LEAD_ID, REP_ID, brief, callsPage, mockApi, pipeline } from "./v2-fixtures";
 
 /*
  * The v2 owner screens against made-up data: no server and no real calls.
@@ -54,6 +54,37 @@ test("each job is one tap: Do it sends at once", async ({ page }) => {
   expect(sent).toEqual([{ body: null, phone: null }]);
 });
 
+test("Call rings the customer, then asks how it went and moves them", async ({ page }) => {
+  const sent: unknown[] = [];
+  await mockApi(page, {
+    [`PATCH /intel/leads/${LEAD_ID}`]: async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { id: LEAD_ID } });
+    },
+  });
+  await page.goto("/v2");
+  const call = page.getByRole("link", { name: "Call Jordan on (555) 123-4567" }).first();
+  await expect(call).toHaveAttribute("href", "tel:+15551234567");
+  // The test browser has no phone app: keep it on the page.
+  await call.evaluate((a) => a.addEventListener("click", (e) => e.preventDefault()));
+  await call.click();
+  const ask = page.getByRole("group", { name: "How did the call go?" });
+  await ask.getByRole("button", { name: "No answer, or call again later" }).click();
+  await expect.poll(() => sent).toEqual([{ stage: "follow_up", called: true }]);
+  await expect(page.getByRole("status")).toContainText("Jordan Lee: call again in a couple of days");
+});
+
+test("a job about a lead opens the same card as the board", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/v2");
+  await page.getByRole("button", { name: "Call Jordan Lee back: open their card" }).click();
+  const card = page.getByRole("dialog", { name: "Jordan Lee" });
+  await expect(card.getByText("Late by 2 days")).toBeVisible();
+  await expect(card.getByRole("link", { name: "Call Jordan on (555) 123-4567" })).toBeVisible();
+  await card.getByRole("button", { name: "What to say" }).click();
+  await expect(card.getByText(/I'm following up on the \$649 quote for the ants/)).toBeVisible();
+});
+
 test("the Team page has the scores, what to teach, and everyone", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2/reps");
@@ -71,6 +102,9 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
       sent.push(route.request().postDataJSON());
       await route.fulfill({ json: { id: ACTION_ID, kind: "text_customer", status: "done", label: "Text Jordan", to_name: "Jordan Lee", to_phone: "+15551234567", to_phone_pretty: "(555) 123-4567", body: "", done_at: new Date().toISOString(), done_by: "owner", auto: false, error: null, reply_text: null, replied_at: null } });
     },
+    // A job that isn't a lead opens the text itself.
+    "GET /intel/v2/brief": (route) =>
+      route.fulfill({ json: { ...brief, todo: brief.todo.map((t) => ({ ...t, lead_id: null, phone: null })) } }),
   });
   await page.goto("/v2");
   await expect(page.getByText("$588 a year").first()).toBeVisible();
@@ -144,8 +178,13 @@ test("the call page leads with the verdict and keeps the rest one tap away", asy
   await expect(page.getByText("Explain the fit and ask to book")).toHaveCount(0);
   await page.getByRole("button", { name: "Show 1 more tip" }).click();
   await expect(page.getByText("Explain the fit and ask to book")).toBeVisible();
+  // One part at a time: the call steps are behind their own big tab.
+  await expect(page.getByRole("button", { name: "Show the 2 steps done" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Call steps" }).click();
   // Done steps folded; reasons open on tap.
   await expect(page.getByRole("button", { name: "Show the 2 steps done" })).toBeVisible();
+  await page.getByRole("tab", { name: "Listen and read" }).click();
+  await expect(page.getByRole("heading", { name: "Listen to the call" })).toBeVisible();
   // Actions live in one menu.
   await page.getByRole("button", { name: "Call actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Delete call…" })).toBeVisible();
@@ -206,6 +245,18 @@ test("nothing spills sideways on a phone", async ({ page }) => {
   }
 });
 
+test("a full call-back board stays inside a phone's width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const board = pipeline();
+  const many = Array.from({ length: 12 }, (_, i) =>
+    board.open.map((l) => ({ ...l, id: `${l.id.slice(0, -2)}${String(i).padStart(2, "0")}`, stage: ["new", "quoted", "follow_up"][i % 3] })),
+  ).flat();
+  await mockApi(page, { "GET /intel/v2/pipeline": (route) => route.fulfill({ json: { ...board, open: many } }) });
+  await page.goto("/v2/pipeline");
+  await page.getByRole("region", { name: "Still deciding" }).waitFor();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 test("pest names read as short everyday words", () => {
   expect(cleanPests(["ants, described by the caller as possibly bed or fire ants", "Fire Ants", "Mice", "rodents"])).toEqual([
     "fire ants",
@@ -235,6 +286,26 @@ test("call back is a board, one column per step, and a card can be dragged along
   await expect.poll(() => sent).toEqual(["follow_up"]);
   await page.getByRole("tab", { name: "List" }).click();
   await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
+});
+
+test("a board card moves with a button too, and keeps a typed-in number", async ({ page }) => {
+  const sent: unknown[] = [];
+  await mockApi(page, {
+    ["PATCH /intel/leads/"]: async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { id: LEAD_ID } });
+    },
+  });
+  await page.goto("/v2/pipeline");
+  const jordan = page.getByRole("region", { name: "Got a price" }).locator("li", { hasText: "Call Jordan Lee back" });
+  await jordan.getByRole("button", { name: "Move" }).click();
+  await jordan.getByRole("group", { name: "Move to" }).getByRole("button", { name: "Still deciding" }).click();
+  await expect.poll(() => sent).toEqual([{ stage: "follow_up" }]);
+  const sam = page.locator("li", { hasText: "Call Sam Rivera back" });
+  await sam.getByRole("button", { name: "Add their number" }).click();
+  await sam.getByRole("textbox", { name: "Phone number for Sam Rivera" }).fill("(555) 987-6543");
+  await sam.getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => sent).toEqual([{ stage: "follow_up" }, { phone: "(555) 987-6543" }]);
 });
 
 test("the call-back list hands the owner the words to say", async ({ page }) => {

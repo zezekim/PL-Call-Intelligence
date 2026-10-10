@@ -113,11 +113,21 @@ Beyond the feedback:
     row with **Do it**, **Listen** or **Add number**) beside **Your team**
     (weakest first, a bar, and the one thing to work on).
   - **Call back is a board**, Trello style: Asked about a service → Got a
-    price → Still deciding → Said yes / Said no. Drag a card to another column,
-    or tap **Said yes** / **Said no** on it (with Undo). Each card shows how
-    late it is, the words to say (Copy) and **Listen**. Four columns on a
-    laptop, two on a tablet, one at a time sideways on a phone. **List** shows
-    the same people as a ranked list.
+    price → Still deciding → Said yes / Said no. Four columns on a laptop, two
+    on a tablet, one at a time sideways on a phone; a long column shows five
+    and "Show N more". **List** shows the same people as a ranked list.
+  - **One card per customer, the same everywhere.** A job on Today about a
+    lead opens the very card the board shows. The card leads with a big green
+    **Call** button (a `tel:` link with the number on it); after the call it
+    asks **How did it go?** with three answers: said yes, no answer or call
+    again later (the next call is due from now), said no. The card moves
+    itself. **Said yes / Said no** are always there too, **Move** moves it
+    without dragging (works on phones), **What to say** unfolds the opening
+    line with Copy, and **Add their number** keeps a typed number on the lead.
+  - The call page opens on the verdict with **Play the call** and **Call**
+    buttons, then one part at a time behind big tabs: what they can learn,
+    listen and read, call steps, promises, details. The player keeps playing
+    whichever tab is open, with a Pause bar on the others.
   - The full scores ("How it's going") and the one thing to teach this week
     are on **My team**, above the list of people.
   - Each page says in one line what it is for. Wording is plain ("Past week",

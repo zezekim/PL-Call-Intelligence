@@ -2,39 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Me } from "@/lib/api";
+import type { Me } from "@/lib/api";
 import { date } from "@/lib/format";
 import { useApi, useTitle } from "@/lib/hooks";
-import type { PipelineBoard, PipelineLead, Urgency } from "@/lib/v2";
+import type { PipelineBoard, PipelineLead } from "@/lib/v2";
 import { cleanPests, listWords, money } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
-import { CheckIcon, ChevronIcon, CrossIcon, PlayIcon } from "@/components/icons";
+import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
 import { Avatar, Card, Empty, Segmented } from "@/components/ui";
 import { ListSkeleton, PageError, Section } from "@/components/v2/kit";
-import { failMessage, useToast } from "@/components/v2/toast";
-
-const URGENCY: Record<Urgency, { label: (l: PipelineLead) => string; cls: string }> = {
-  overdue: {
-    label: (l) => {
-      const due = l.action?.due_at ? Math.max(1, Math.round((Date.now() - Date.parse(l.action.due_at)) / 864e5)) : 0;
-      return due ? `Late by ${due} day${due === 1 ? "" : "s"}` : "Late";
-    },
-    cls: "bg-bad-soft text-bad",
-  },
-  today: { label: () => "Call today", cls: "bg-warn-soft text-warn" },
-  cold: { label: () => "Waiting a long time", cls: "bg-fill text-subtle" },
-  upcoming: { label: (l) => (l.action?.due_at ? `Call by ${date(l.action.due_at)}` : "Call soon"), cls: "bg-fill text-subtle" },
-};
-
-const STAGE_LABEL: Record<string, string> = {
-  new: "Asked about a service",
-  quoted: "Got a price",
-  follow_up: "Still deciding",
-  won: "Said yes",
-  lost: "Said no",
-};
-
-type Stage = "new" | "quoted" | "follow_up" | "won" | "lost";
+import { CallButton, LeadCard, STAGE_LABEL, URGENCY, openingLine, useSaveLead, type LeadChange, type Stage } from "@/components/v2/customer";
 
 // The board, left to right: how far each customer has got.
 const COLUMNS: { stage: Stage; dot: string }[] = [
@@ -45,30 +22,8 @@ const COLUMNS: { stage: Stage; dot: string }[] = [
   { stage: "lost", dot: "bg-bad" },
 ];
 const VIEW_KEY = "pestlaunch.callback.view";
-
-/**
- * What to say when they pick up, from what the call already told us: their
- * name, the price, the pests, who they spoke to. Plain enough to read out.
- */
-function openingLine(lead: PipelineLead, business: string | null): string {
-  const first = lead.name === "Name not given" ? null : lead.name.split(/\s+/)[0];
-  const hi = first ? `Hi ${first}` : "Hi there";
-  const person = lead.rep && !/receptionist|\bai\b/i.test(lead.rep) ? lead.rep.split(/\s+/)[0] : null;
-  const from = person && business ? `, it's ${person} from ${business}` : business ? `, it's ${business}` : person ? `, it's ${person}` : "";
-  const pests = cleanPests(lead.pests);
-  const about = pests.length ? `the ${listWords(pests.slice(0, 2))}` : lead.service ? lead.service.toLowerCase() : "your pest problem";
-  const price = lead.value !== null ? `the ${money(lead.value)} quote` : lead.price_quoted ? `the quote we gave you` : null;
-  if (lead.action?.label.startsWith("Confirm")) {
-    return `${hi}${from}. I'm calling to confirm your visit for ${about}. Does the time still work for you?`;
-  }
-  if (lead.stage === "quoted" && price) {
-    return `${hi}${from}. I'm following up on ${price} for ${about}. Do you have any questions I can answer?`;
-  }
-  if (lead.stage === "follow_up" || lead.stage === "quoted") {
-    return `${hi}${from}. You wanted some time to think about ${about}. Is now a good time to talk it through?`;
-  }
-  return `${hi}${from}. You called us about ${about}. I'd love to help. When would be a good time for us to come out?`;
-}
+// A long column shows this many, then "Show N more".
+const COLUMN_SHOWN = 5;
 
 /** Moves a lead on the board at once, before the server answers. */
 function moveLead(board: PipelineBoard, id: string, stage: Stage): PipelineBoard {
@@ -101,7 +56,6 @@ function moveLead(board: PipelineBoard, id: string, stage: Stage): PipelineBoard
 export default function PipelinePage() {
   useTitle("Call back");
   const { refreshKey } = useCalls();
-  const toast = useToast();
   const { data, error, status, loading, reload, setData } = useApi<PipelineBoard>("/intel/v2/pipeline");
   const me = useApi<Me>("/auth/me").data;
   const business = me?.business_name ?? null;
@@ -126,42 +80,16 @@ export default function PipelinePage() {
     if (refreshKey) void reload();
   }, [refreshKey, reload]);
 
+  const save = useSaveLead(reload);
   const change = useCallback(
-    async (lead: PipelineLead, stage: Stage, undoable = true) => {
-      if (!data) return;
-      const before = data;
-      const was = lead.stage;
-      setData(moveLead(data, lead.id, stage));
-      try {
-        await api.patch(`/intel/leads/${lead.id}`, { stage });
-        const message =
-          stage === "won"
-            ? `${lead.name} said yes`
-            : stage === "lost"
-              ? `${lead.name} said no`
-              : lead.action
-                ? `${lead.name} moved to “${STAGE_LABEL[stage]}”`
-                : `${lead.name} is back on the list`;
-        toast({
-          message,
-          undo: undoable
-            ? async () => {
-                try {
-                  await api.patch(`/intel/leads/${lead.id}`, { stage: was });
-                } catch {
-                  toast({ message: failMessage(), tone: "error" });
-                }
-                await reload();
-              }
-            : undefined,
-        });
-        await reload();
-      } catch {
-        setData(before);
-        toast({ message: failMessage(), tone: "error" });
-      }
+    async (lead: PipelineLead, c: LeadChange | Stage) => {
+      const next: LeadChange = typeof c === "string" ? { stage: c } : c;
+      if (!data) return false;
+      // Moves show at once; the server's answer comes on the reload.
+      if (next.stage) setData(moveLead(data, lead.id, next.stage));
+      return save(lead, next);
     },
-    [data, reload, setData, toast],
+    [data, save, setData],
   );
 
   if (loading && !data) return <ListSkeleton rows={5} />;
@@ -199,7 +127,7 @@ export default function PipelinePage() {
       </div>
 
       {view === "board" ? (
-        <Board board={data} business={business} onMove={(lead, stage) => void change(lead, stage)} />
+        <Board board={data} business={business} onChange={change} />
       ) : (
         <>
           <Section title="Call these people">
@@ -225,24 +153,27 @@ export default function PipelinePage() {
 
 /**
  * The call-back board: one column per step, left to right, like a Trello
- * board. Drag a card to another column, or use the buttons on it.
+ * board. Drag a card to another column, or tap Move on it (which also works on
+ * a phone), or ring them and say how it went.
  */
 function Board({
   board,
   business,
-  onMove,
+  onChange,
 }: {
   board: PipelineBoard;
   business: string | null;
-  onMove: (lead: PipelineLead, stage: Stage) => void;
+  onChange: (lead: PipelineLead, change: LeadChange) => Promise<boolean>;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<Stage | null>(null);
+  const [expanded, setExpanded] = useState<Stage[]>([]);
   const all = [...board.open, ...board.closed];
 
-  const column = (stage: Stage, dot: string, compact = false) => {
+  const column = (stage: Stage, dot: string) => {
     const cards = (stage === "won" || stage === "lost" ? board.closed : board.open).filter((l) => l.stage === stage);
     const worth = cards.reduce((sum, l) => sum + (l.value ?? 0), 0);
+    const shown = expanded.includes(stage) ? cards : cards.slice(0, COLUMN_SHOWN);
     return (
       <section
         key={stage}
@@ -255,7 +186,7 @@ function Board({
         onDrop={(e) => {
           e.preventDefault();
           const lead = all.find((l) => l.id === dragging);
-          if (lead && lead.stage !== stage) onMove(lead, stage);
+          if (lead && lead.stage !== stage) void onChange(lead, { stage });
           setDragging(null);
           setOver(null);
         }}
@@ -263,7 +194,7 @@ function Board({
           over === stage ? "bg-accent-soft ring-2 ring-accent/50" : "bg-ink/[0.04]"
         }`}
       >
-        <header className="mb-3 flex items-center justify-between gap-2 px-1.5 pt-1">
+        <header className={`flex items-center justify-between gap-2 px-1.5 pt-1 ${cards.length || dragging ? "mb-3" : ""}`}>
           <span className="flex items-center gap-2 text-[16px] font-semibold leading-tight">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} aria-hidden />
             {STAGE_LABEL[stage]}
@@ -272,24 +203,32 @@ function Board({
         </header>
         {worth > 0 && <p className="-mt-2 mb-2 px-1.5 text-[14px] text-muted">{money(worth)}</p>}
         <ul className="flex flex-col gap-2.5">
-          {cards.map((lead) => (
-            <BoardCard
+          {shown.map((lead) => (
+            <LeadCard
               key={lead.id}
               lead={lead}
               business={business}
-              compact={compact}
+              draggable
               dragging={dragging === lead.id}
               onDragStart={() => setDragging(lead.id)}
               onDragEnd={() => setDragging(null)}
-              onMove={(to) => onMove(lead, to)}
+              onChange={(c) => onChange(lead, c)}
             />
           ))}
-          {!cards.length && (
-            <li className="rounded-2xl border-2 border-dashed border-line px-3 py-5 text-center text-[14px] text-muted">
-              {dragging ? "Drop here" : "Nobody here"}
+          {!cards.length && dragging && (
+            <li className="rounded-2xl border-2 border-dashed border-accent/40 px-3 py-5 text-center text-[14px] text-muted">
+              Drop here
             </li>
           )}
         </ul>
+        {cards.length > COLUMN_SHOWN && (
+          <button
+            className="btn-secondary mt-2.5 min-h-[44px] text-[15px]"
+            onClick={() => setExpanded((x) => (x.includes(stage) ? x.filter((s) => s !== stage) : [...x, stage]))}
+          >
+            {expanded.includes(stage) ? "Show less" : `Show ${cards.length - COLUMN_SHOWN} more`}
+          </button>
+        )}
       </section>
     );
   };
@@ -305,125 +244,11 @@ function Board({
           </div>
         ))}
         <div className="flex snap-start flex-col gap-3">
-          {column("won", "bg-good", true)}
-          {column("lost", "bg-bad", true)}
+          {column("won", "bg-good")}
+          {column("lost", "bg-bad")}
         </div>
       </div>
     </div>
-  );
-}
-
-function BoardCard({
-  lead,
-  business,
-  compact,
-  dragging,
-  onDragStart,
-  onDragEnd,
-  onMove,
-}: {
-  lead: PipelineLead;
-  business: string | null;
-  compact: boolean;
-  dragging: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onMove: (stage: Stage) => void;
-}) {
-  const a = lead.action;
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const say = a ? openingLine(lead, business) : null;
-  const what = listWords(cleanPests(lead.pests).slice(0, 2)) || lead.service;
-  const meta = [what, lead.value !== null ? money(lead.value) : null].filter(Boolean).join(" · ");
-  return (
-    <li
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-2xl border border-line bg-surface p-3.5 shadow-sm transition-all active:cursor-grabbing ${
-        dragging ? "rotate-1 opacity-60" : "hover:shadow-md"
-      }`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        {a ? (
-          <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${URGENCY[a.urgency].cls}`}>
-            {URGENCY[a.urgency].label(lead)}
-          </span>
-        ) : (
-          <span className="text-[16px] font-semibold leading-snug">{lead.name}</span>
-        )}
-        {lead.last_call_id && (
-          <Link
-            href={`/v2/calls/${lead.last_call_id}`}
-            className="inline-flex min-h-[32px] shrink-0 items-center gap-1 rounded-full border border-control bg-surface px-3 text-[13px] font-semibold text-ink hover:bg-surface-hover hover:no-underline"
-            aria-label={`Listen to the call with ${lead.name}`}
-          >
-            <PlayIcon className="h-3.5 w-3.5" />
-            Listen
-          </Link>
-        )}
-      </div>
-      {a && <p className="mt-2 text-[17px] font-semibold leading-snug">{a.label}</p>}
-      {meta && <p className="mt-0.5 text-[14px] text-ink/75">{meta}</p>}
-      {lead.rep && !compact && (
-        <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-muted">
-          <Avatar name={lead.rep} size={18} />
-          {lead.rep}
-          {lead.last_contact_at && <> · {date(lead.last_contact_at)}</>}
-        </p>
-      )}
-
-      {say && (
-        <div className="mt-3 rounded-xl bg-panel px-3 py-2.5">
-          <p className={`text-[14px] leading-relaxed text-ink/90 ${open ? "" : "line-clamp-2"}`}>
-            <span className="mr-1 text-[12px] font-semibold text-muted">Say</span>“{say}”
-          </p>
-          <div className="mt-1.5 flex gap-3 text-[13px] font-medium text-link">
-            <button className="min-h-[32px]" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-              {open ? "Less" : "Read all"}
-            </button>
-            <button
-              className="min-h-[32px]"
-              aria-label={`Copy what to say to ${lead.name}`}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(say);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1600);
-                } catch {
-                  /* clipboard blocked: the words are on screen anyway */
-                }
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {a ? (
-          <>
-            <button className="btn-primary min-h-[44px] flex-1 px-3 text-[15px]" onClick={() => onMove("won")}>
-              <CheckIcon className="h-4 w-4" />
-              Said yes
-            </button>
-            <button className="btn-secondary min-h-[44px] flex-1 px-3 text-[15px]" onClick={() => onMove("lost")}>
-              <CrossIcon className="h-3.5 w-3.5" />
-              Said no
-            </button>
-          </>
-        ) : (
-          <button className="btn-secondary min-h-[40px] flex-1 px-3 text-[14px]" onClick={() => onMove("follow_up")}>
-            Not decided after all
-          </button>
-        )}
-      </div>
-    </li>
   );
 }
 
@@ -473,7 +298,7 @@ function OpenLead({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${u.cls}`}>{u.label(lead)}</span>
-          <span className="text-[12px] text-muted">{STAGE_LABEL[lead.stage]}</span>
+          <span className="text-[12px] text-muted">{STAGE_LABEL[lead.stage as Stage]}</span>
         </div>
         <p className="mt-1.5 text-[16px] font-semibold leading-snug tracking-tightish">{a.label}</p>
         {(lead.rep || meta) && (
@@ -515,6 +340,7 @@ function OpenLead({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:pt-6">
+        {lead.phone && <CallButton phone={lead.phone} pretty={lead.phone_pretty} name={lead.name} />}
         {lead.last_call_id && (
           <Link href={`/v2/calls/${lead.last_call_id}`} className="btn-ghost px-3 py-1 text-[13px]">
             Listen
