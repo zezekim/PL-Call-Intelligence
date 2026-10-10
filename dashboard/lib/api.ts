@@ -6,7 +6,10 @@
  */
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
-const TOKEN_KEY = "pestlaunch.token";
+// Renamed with the new sign-in page, so every browser signed in before it
+// signs in once more and sees it. The old key is cleared on first read.
+const TOKEN_KEY = "pestlaunch.session";
+const OLD_TOKEN_KEY = "pestlaunch.token";
 
 export class ApiError extends Error {
   constructor(
@@ -20,6 +23,7 @@ export class ApiError extends Error {
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
+    window.localStorage.removeItem(OLD_TOKEN_KEY);
     return window.localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;

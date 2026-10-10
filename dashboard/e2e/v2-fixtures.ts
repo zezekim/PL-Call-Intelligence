@@ -236,7 +236,7 @@ export const outbox = {
 
 export async function mockApi(page: Page, overrides: Record<string, (route: Route) => unknown> = {}) {
   await page.addInitScript(() => {
-    window.localStorage.setItem("pestlaunch.token", "e2e");
+    window.localStorage.setItem("pestlaunch.session", "e2e");
     window.localStorage.setItem("pestlaunch.environment", "cloud");
   });
   const board = pipeline();

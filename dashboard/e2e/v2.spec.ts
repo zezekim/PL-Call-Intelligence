@@ -14,9 +14,17 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("a sign-in saved before the new login page is asked to sign in again", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("pestlaunch.token", "old"));
+  await page.goto("/v2");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem("pestlaunch.token"))).toBeNull();
+});
+
 test("signing in opens Today straight away, with no questions first", async ({ page }) => {
   await mockApi(page, { "POST /auth/login": (route) => route.fulfill({ json: { access_token: "e2e" } }) });
-  await page.addInitScript(() => window.localStorage.removeItem("pestlaunch.token"));
+  await page.addInitScript(() => window.localStorage.removeItem("pestlaunch.session"));
   await page.goto("/login");
   await page.getByLabel("Email").fill("owner@example.test");
   await page.getByLabel("Password").fill("x");
