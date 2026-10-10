@@ -5,7 +5,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { clock } from "@/lib/format";
 import type { ActionsSummary, Brief, PerformanceCard, PreparedAction } from "@/lib/v2";
-import { STATUS_SOFT, STATUS_TEXT } from "@/lib/v2";
+import { STATUS_SOFT, STATUS_TEXT, goalWords } from "@/lib/v2";
 import { AlertIcon, CheckIcon, ChevronIcon, PhoneIcon, PlayIcon } from "@/components/icons";
 import { Card, Spinner } from "@/components/ui";
 import { failMessage, useToast } from "@/components/v2/toast";
@@ -60,20 +60,20 @@ function Performance({ card }: { card: PerformanceCard }) {
         <span className={`tnum whitespace-nowrap text-[40px] font-semibold leading-none tracking-title ${STATUS_TEXT[card.status]}`}>
           {card.of ? `${card.count} of ${card.of}` : "–"}
         </span>
-        <span className="text-[17px] font-medium text-ink/80">{card.metric_label.toLowerCase()}</span>
+        <span className="text-[18px] font-medium text-ink/80">{card.metric_label.toLowerCase()}</span>
       </div>
       <div className="mt-3 w-full self-start">
         <Meter value={card.value} target={card.target} status={card.status} label={card.metric_label} />
       </div>
-      <p className="mt-2 text-[14px] text-muted" title={card.detail}>
-        {card.goal}
+      <p className="mt-2 text-[16px] text-ink/70" title={card.detail}>
+        {goalWords(card.goal)}
       </p>
 
-      <p className="mt-4 border-t border-line pt-3 text-[16px] leading-snug">{card.why}</p>
+      <p className="mt-4 border-t border-line pt-3 text-[17px] leading-snug">{card.why}</p>
       {card.action ? (
         <Link
           href={card.action.href}
-          className="mt-3 inline-flex min-h-[40px] items-center gap-1 self-start text-[16px] font-medium text-link underline underline-offset-2"
+          className="mt-3 inline-flex min-h-[40px] items-center gap-1 self-start text-[17px] font-medium text-link underline underline-offset-2"
         >
           {card.action.label}
           <ChevronIcon className="h-4 w-4" />
@@ -107,18 +107,18 @@ export function CoachingFocus({
         {c ? (
           <>
             <p className="text-[24px] font-semibold leading-tight tracking-title">{c.focus.plain}</p>
-            <p className="mt-0.5 text-[16px] text-ink/80">{c.focus.meaning}</p>
-            <p className="mt-2 text-[16px] font-medium text-bad">
+            <p className="mt-0.5 text-[17px] text-ink/80">{c.focus.meaning}</p>
+            <p className="mt-2 text-[17px] font-medium text-bad">
               Skipped on {c.focus.missed} of {c.focus.of} calls
             </p>
 
             {c.tip && (
               <div className="mt-4 rounded-2xl bg-panel p-4">
-                <p className="text-[14px] font-medium text-muted">Teach them to say</p>
-                <p className="mt-1 text-[17px] leading-relaxed">“{c.tip.try_saying}”</p>
+                <p className="text-[16px] font-medium text-ink/70">Teach them to say</p>
+                <p className="mt-1 text-[18px] leading-relaxed">“{c.tip.try_saying}”</p>
                 <Link
                   href={`/v2/calls/${c.tip.call_id}${c.tip.start !== null ? `?t=${Math.floor(c.tip.start)}` : ""}`}
-                  className="mt-3 inline-flex items-center gap-1.5 text-[15px] font-medium text-link hover:underline"
+                  className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-[16px] font-medium text-link underline underline-offset-2"
                 >
                   <PlayIcon className="h-3 w-3" />
                   Hear it on a real call
@@ -128,7 +128,7 @@ export function CoachingFocus({
             )}
 
             {first && (
-              <p className="mt-4 text-[15px] text-muted">
+              <p className="mt-4 text-[17px] text-ink/80">
                 Start with <span className="font-medium text-ink">{first.rep}</span>, who skipped it on {first.missed}{" "}
                 of {first.of} calls.
               </p>
@@ -136,7 +136,7 @@ export function CoachingFocus({
             <CoachingTexts delivery={c.delivery} waiting={summary?.coaching_waiting ?? []} onChanged={onChanged} />
           </>
         ) : (
-          <p className="text-[16px] text-muted">We need a few more calls before we can say.</p>
+          <p className="text-[17px] text-muted">We need a few more calls before we can say.</p>
         )}
 
       </Card>
@@ -181,7 +181,7 @@ function CoachingTexts({
   }
   const d = delivery;
   return (
-    <div className="mt-4 rounded-2xl border border-line p-4 text-[16px]">
+    <div className="mt-4 rounded-2xl border border-line p-4 text-[17px]">
       <p className="font-medium">Each person&apos;s own tip, by text</p>
       {d && d.sent > 0 ? (
         <p className="mt-1 text-ink/80">
@@ -199,8 +199,8 @@ function CoachingTexts({
         </button>
       ) : (
         !d?.sent && (
-          <p className="mt-2 text-[15px] text-muted">
-            To turn this on, tap a person under Each person and add their mobile number.
+          <p className="mt-2 text-[16px] text-ink/70">
+            To turn this on, press a person&apos;s name above and add their mobile number.
           </p>
         )
       )}
@@ -231,24 +231,13 @@ export function Footer({ brief }: { brief: Brief }) {
         {brief.review.type_checks} call{brief.review.type_checks === 1 ? "" : "s"} may be the wrong type
       </Link>,
     );
-  if (brief.accuracy) {
-    const a = brief.accuracy;
-    bits.push(
-      <span
-        key="a"
-        title={`Of ${a.steps} step marks the AI made on calls a manager corrected, ${a.kept} were kept. Calls a manager read without changing anything aren't counted, so the real figure is at least this.`}
-      >
-        Managers kept {Math.round(a.pct)}% of the AI's step marks ({a.calls} call{a.calls === 1 ? "" : "s"} corrected)
-      </span>,
-    );
-  }
   bits.push(
     <Link key="g" href="/settings" className="hover:text-link hover:underline">
       Change goals
     </Link>,
   );
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-4 text-[15px] text-muted">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-4 text-[16px] text-ink/70">
       <p className="flex flex-wrap gap-x-2">
         {bits.map((b, i) => (
           <span key={i}>
@@ -260,7 +249,7 @@ export function Footer({ brief }: { brief: Brief }) {
       {brief.receptionist_number && (
         <p className="inline-flex items-center gap-1.5">
           <PhoneIcon className="h-3.5 w-3.5" />
-          AI receptionist: <a className="text-link hover:underline" href={`tel:${brief.receptionist_number}`}>{brief.receptionist_number}</a>
+          Your phone receptionist: <a className="text-link hover:underline" href={`tel:${brief.receptionist_number}`}>{brief.receptionist_number}</a>
         </p>
       )}
     </div>

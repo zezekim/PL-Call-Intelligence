@@ -155,7 +155,7 @@
 
   /* Controls */
   .btn {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 py-[9px] text-[15px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 py-[9px] text-[16px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
     @apply btn bg-accent text-white hover:bg-[#0077ed] active:bg-[#006edb];

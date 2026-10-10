@@ -10,9 +10,9 @@ import { money } from "@/lib/v2";
 import { UploadIcon } from "@/components/icons";
 import { Loading, Modal, Segmented, Spinner } from "@/components/ui";
 import { UploadDialog } from "@/components/upload-dialog";
-import { ActionSheet, KIND_WORDS, handledText } from "@/components/v2/act";
+import { ActionSheet, KIND_WORDS, actionLabel, handledText } from "@/components/v2/act";
 import { CallDrawer } from "@/components/v2/call-drawer";
-import { LeadCard, useSaveLead } from "@/components/v2/customer";
+import { LeadCard, displayName, personLabel, useSaveLead } from "@/components/v2/customer";
 import { PageError } from "@/components/v2/kit";
 import { failMessage, useToast } from "@/components/v2/toast";
 
@@ -142,10 +142,7 @@ export default function TodayPage() {
   // Each button says what will happen when it's pressed.
   const jobButton = (t: Todo): string | null => {
     const a = t.actions?.[0];
-    const customer = firstName(t.customer);
-    if (a?.kind === "remind_rep") return `Text ${firstName(a.to_name) ?? "them"} to call ${customer ?? "back"}`;
-    if (a?.kind === "text_customer") return `Text ${firstName(a.to_name) ?? customer ?? "them"}`;
-    if (a) return a.label;
+    if (a) return actionLabel(a, t.customer);
     const lead = t.lead_id ? leadById.get(t.lead_id) : undefined;
     if (lead) return `Call ${firstName(lead.name) ?? "them"}`;
     return null;
@@ -290,13 +287,14 @@ export default function TodayPage() {
           open
           title={acting.title}
           options={acting.actions ?? []}
+          customer={acting.customer}
           summary={actions}
           onClose={() => setActing(null)}
           onDone={refreshAll}
         />
       )}
       {card && leadById.get(card) && (
-        <Modal open onClose={() => setCard(null)} title={leadById.get(card)!.name}>
+        <Modal open onClose={() => setCard(null)} title={displayName(leadById.get(card)!.name)}>
           <LeadCard
             as="div"
             lead={leadById.get(card)!}
@@ -375,7 +373,7 @@ function JobRow({ todo, button, onDo, onLook }: { todo: Todo; button: string | n
         <p className="text-[17px] font-semibold text-ink">{todo.title}</p>
         <p className="text-[16px] leading-snug text-ink/80">{todo.plain ?? todo.why}</p>
         {onLook && button && (
-          <button className="mt-1 min-h-[32px] text-[15px] font-medium text-link underline underline-offset-2" onClick={onLook}>
+          <button className="mt-0.5 min-h-[44px] text-[16px] font-medium text-link underline underline-offset-2" onClick={onLook}>
             What happened on the call?
           </button>
         )}
@@ -466,7 +464,7 @@ function Team({ reps }: { reps: RepCard[] }) {
                 {r.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[16px] font-semibold text-ink group-hover:text-link">{r.name}</span>
+                <span className="block text-[16px] font-semibold text-ink group-hover:text-link">{personLabel(r.name)}</span>
                 <span className={`block text-[15px] ${r.focus ? "text-bad" : "text-good"}`}>
                   {r.focus ? `✕ Needs to work on: ${r.focus.plain}` : "✓ Doing well"}
                 </span>
@@ -501,7 +499,7 @@ function Deciding({ leads, onOpen }: { leads: PipelineLead[]; onOpen: (l: Pipeli
             <li key={l.id} className="border-t border-line first:border-t-0">
               <button className="group flex min-h-[56px] w-full items-center gap-3 py-2.5 text-left" onClick={() => onOpen(l)}>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[16px] font-semibold group-hover:text-link">{l.name}</span>
+                  <span className="block truncate text-[16px] font-semibold group-hover:text-link">{displayName(l.name)}</span>
                   <span className={`block text-[15px] ${days !== null && days >= 7 ? "text-bad" : "text-ink/80"}`}>
                     {days === null ? "Not called yet" : days === 0 ? "Talked to today" : `No call in ${timeWords(days)}`}
                   </span>
@@ -584,7 +582,7 @@ function SendAll({
             <li key={a.id} className={`rounded-xl border px-3 py-2.5 ${s === "done" ? "border-good/30 bg-good-soft" : s === "failed" ? "border-bad/30 bg-bad-soft" : "border-line bg-panel"}`}>
               <p className="flex items-center justify-between gap-2 text-[14px] font-semibold">
                 <span>
-                  {a.label} <span className="font-normal text-muted">· {a.to_name ?? a.to_phone_pretty}</span>
+                  {actionLabel(a, t.customer)} <span className="font-normal text-muted">· {a.to_phone_pretty}</span>
                 </span>
                 {s === "sending" ? <Spinner className="h-4 w-4" /> : s === "done" ? <span className="text-good">✓</span> : s === "failed" ? <span className="text-bad">✕</span> : null}
               </p>

@@ -971,14 +971,14 @@ async def recently_handled_leads(session: AsyncSession, business_id: uuid.UUID) 
 
 
 def money_line(summary: dict[str, Any]) -> str | None:
-    """Open quotes in dollars, and how much of it is slipping."""
+    """Who is waiting, and what their quotes are worth, in one plain sentence."""
     at_risk, count = summary.get("at_risk_yearly") or 0, summary.get("at_risk_count") or 0
     total = summary.get("open_yearly") or 0
     if at_risk >= 1:
-        return (f"{money(at_risk)} a year in quotes is slipping: "
-                f"{_plural(count, 'customer')} waiting too long for a call back.")
+        return (f"{_plural(count, 'customer')} {'has' if count == 1 else 'have'} waited too long "
+                f"for a call back ({money(at_risk)} a year).")
     if total >= 1:
-        return f"{money(total)} a year in quotes is waiting on an answer."
+        return f"Customers are still deciding on {money(total)} a year of work."
     return None
 
 

@@ -180,12 +180,12 @@ export function ListenPanel({
     <section className="card flex flex-col overflow-hidden" aria-label="Recording and transcript">
       <div className="border-b border-line px-5 pb-4 pt-5">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className={`${large ? "text-[24px] font-bold" : "text-[17px] font-semibold"} tracking-title`}>
+          <h2 className={`${large ? "text-[24px] font-bold" : "text-[18px] font-semibold"} tracking-title`}>
             Listen to the call
           </h2>
           <div className="flex items-center gap-3">
             {markers.length > 0 && !fixing && (
-              <div className={`hidden items-center gap-3 whitespace-nowrap sm:flex ${large ? "text-[16px] text-ink" : "text-[14px] text-ink/80"}`}>
+              <div className={`hidden items-center gap-3 whitespace-nowrap sm:flex ${large ? "text-[17px] text-ink" : "text-[16px] text-ink/80"}`}>
                 <span className="inline-flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-bad" /> To do better
                 </span>
@@ -266,13 +266,13 @@ export function ListenPanel({
                     />
                   ))}
               </div>
-              <div className={`tnum flex justify-between ${large ? "text-[17px] text-ink" : "text-[12px] text-muted"}`}>
+              <div className={`tnum flex justify-between ${large ? "text-[18px] text-ink" : "text-[15px] text-muted"}`}>
                 <span>{clock(audio.time)}</span>
                 <span>{clock(length)}</span>
               </div>
             </div>
             <button
-              className={`btn-secondary tnum px-0 ${large ? "min-h-[48px] w-20 text-[17px]" : "w-12 py-1 text-[12px]"}`}
+              className={`btn-secondary tnum px-0 ${large ? "min-h-[48px] w-20 text-[18px]" : "w-12 py-1 text-[15px]"}`}
               onClick={() => setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length])}
               aria-label={`Playback speed ${rate} times`}
               title="Playback speed"
@@ -281,7 +281,7 @@ export function ListenPanel({
             </button>
           </div>
         ) : (
-          <p className={large ? "text-[18px]" : "text-[14px] text-muted"}>
+          <p className={large ? "text-[18px]" : "text-[16px] text-muted"}>
             {expired
               ? "The recording was deleted under the retention policy. The transcript remains."
               : "No recording for this call."}
@@ -297,15 +297,15 @@ export function ListenPanel({
       >
         {fixing && fixer}
         {!fixing && large && turns.length > 0 && src && (
-          <p className="text-[17px] text-ink/80">Tap any line to hear it.</p>
+          <p className="text-[18px] text-ink/80">Tap any line to hear it.</p>
         )}
-        {!fixing && turns.length === 0 && <p className={large ? "text-[18px]" : "text-[14px] text-muted"}>Nothing yet.</p>}
+        {!fixing && turns.length === 0 && <p className={large ? "text-[18px]" : "text-[16px] text-muted"}>Nothing yet.</p>}
         {!fixing && turns.map((turn, i) => {
           const rep = turn.role === "rep";
           return (
             <div key={i} className={`flex min-w-0 ${rep ? "" : "justify-end"}`}>
               <div className={`min-w-0 max-w-[88%] ${rep ? "" : "text-right"}`}>
-                <p className={`mb-1 px-1 ${large ? "text-[16px] font-semibold text-ink" : "text-[12px] text-muted"}`}>
+                <p className={`mb-1 px-1 ${large ? "text-[17px] font-semibold text-ink" : "text-[15px] text-muted"}`}>
                   {rep ? repName ?? "Team member" : turn.role === "customer" ? customerName ?? "Customer" : "Someone"}{" "}
                   <button className="tnum hover:text-link" onClick={() => audio.seek(turn.items[0].start)}>
                     {clock(turn.items[0].start)}
@@ -313,7 +313,7 @@ export function ListenPanel({
                 </p>
                 <div
                   className={`inline-block max-w-full rounded-[18px] px-4 py-2.5 text-left leading-[1.45] [overflow-wrap:anywhere] ${
-                    large ? "text-[19px]" : "text-[15px]"
+                    large ? "text-[19px]" : "text-[16px]"
                   } ${
                     rep ? "bg-bubble text-ink" : "bg-accent-soft text-ink"
                   }`}

@@ -54,12 +54,13 @@ def test_quotes_are_valued_over_a_year(price, yearly):
     assert brief.yearly_value(price) == yearly
 
 
-def test_money_line_leads_with_what_is_slipping():
+def test_money_line_leads_with_who_is_waiting():
     line = brief.money_line({"open_yearly": 3000, "at_risk_yearly": 2100, "at_risk_count": 3})
-    assert line == ("$2,100 a year in quotes is slipping: "
-                    "3 customers waiting too long for a call back.")
+    assert line == "3 customers have waited too long for a call back ($2,100 a year)."
+    assert brief.money_line({"open_yearly": 540, "at_risk_yearly": 540, "at_risk_count": 1}) == (
+        "1 customer has waited too long for a call back ($540 a year).")
     assert brief.money_line({"open_yearly": 540}) == (
-        "$540 a year in quotes is waiting on an answer.")
+        "Customers are still deciding on $540 a year of work.")
     assert brief.money_line({}) is None
 
 
@@ -176,7 +177,7 @@ def test_morning_text_is_numbered_with_money_first():
         _action("Text Dan", "Check on Dan"),
     ], greeting=True)
     assert body.splitlines()[:2] == ["Good morning!", "$2,100 a year in quotes is slipping."]
-    assert "1) Ask Mike to call: Call Sarah back ($588/yr)" in body
+    assert "1) Ask Mike to call: Call Sarah back ($588 a year)" in body
     assert "2) Text Dan: Check on Dan" in body
     assert body.endswith("Reply 1 or 2 and I'll do it. Reply ALL for all of them.")
 

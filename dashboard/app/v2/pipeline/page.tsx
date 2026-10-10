@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { Me } from "@/lib/api";
 import { date } from "@/lib/format";
@@ -9,9 +8,9 @@ import type { PipelineBoard, PipelineLead } from "@/lib/v2";
 import { cleanPests, listWords, money } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
-import { Avatar, Card, Empty, Segmented } from "@/components/ui";
+import { Card, Empty, Segmented } from "@/components/ui";
 import { ListSkeleton, PageError, Section } from "@/components/v2/kit";
-import { CallButton, LeadCard, STAGE_LABEL, URGENCY, openingLine, useSaveLead, type LeadChange, type Stage } from "@/components/v2/customer";
+import { LeadCard, STAGE_LABEL, displayName, useSaveLead, type LeadChange, type Stage } from "@/components/v2/customer";
 
 // The board, left to right: how far each customer has got.
 const COLUMNS: { stage: Stage; dot: string }[] = [
@@ -62,7 +61,9 @@ export default function PipelinePage() {
   const [view, setView] = useState<"board" | "list">("board");
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(VIEW_KEY) === "list") setView("list");
+      const saved = window.localStorage.getItem(VIEW_KEY);
+      // A phone is too narrow for five columns: one person at a time unless asked.
+      if (saved === "list" || (!saved && window.matchMedia("(max-width: 639px)").matches)) setView("list");
     } catch {
       /* storage unavailable */
     }
@@ -109,19 +110,19 @@ export default function PipelinePage() {
       <Summary board={data} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[16px] text-ink/80">
+        <p className="text-[17px] text-ink/80">
           {view === "board"
-            ? "Drag a card to move it, or tap Said yes or Said no."
+            ? "Each column shows how far a customer has got. Drag a card, or press Move to…"
             : s.open
-              ? "The most urgent is at the top."
+              ? "Most urgent first. Call the first person, then tell us how it went."
               : "Everyone has said yes or no."}
         </p>
         <Segmented
           value={view}
           onChange={changeView}
           options={[
+            { value: "list", label: "One at a time" },
             { value: "board", label: "Board" },
-            { value: "list", label: "List" },
           ]}
         />
       </div>
@@ -132,15 +133,15 @@ export default function PipelinePage() {
         <>
           <Section title="Call these people">
             {data.open.length ? (
-              <ul className="group-list">
+              <ul className="grid max-w-[560px] gap-3">
                 {data.open.map((lead) => (
-                  <OpenLead key={lead.id} lead={lead} business={business} onDecide={(stage) => change(lead, stage)} />
+                  <LeadCard key={lead.id} lead={lead} business={business} onChange={(c) => change(lead, c)} />
                 ))}
               </ul>
             ) : (
               <Card className="flex items-center gap-3 px-5 py-4">
                 <CheckIcon className="h-5 w-5 text-good" />
-                <p className="text-[15px]">You're all caught up. Nobody to chase.</p>
+                <p className="text-[16px]">You're all caught up. Nobody to chase.</p>
               </Card>
             )}
           </Section>
@@ -195,13 +196,14 @@ function Board({
         }`}
       >
         <header className={`flex items-center justify-between gap-2 px-1.5 pt-1 ${cards.length || dragging ? "mb-3" : ""}`}>
-          <span className="flex items-center gap-2 text-[16px] font-semibold leading-tight">
+          <span className="flex items-center gap-2 text-[17px] font-semibold leading-tight">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} aria-hidden />
             {STAGE_LABEL[stage]}
           </span>
-          <span className="tnum rounded-full bg-surface px-2.5 py-0.5 text-[14px] font-semibold">{cards.length}</span>
+          <span className="tnum rounded-full bg-surface px-2.5 py-0.5 text-[16px] font-semibold">{cards.length}</span>
         </header>
-        {worth > 0 && <p className="-mt-2 mb-2 px-1.5 text-[14px] text-muted">{money(worth)}</p>}
+        {worth > 0 && <p className="-mt-2 mb-2 px-1.5 text-[16px] text-ink/70">{money(worth)} in prices</p>}
+        {!cards.length && !dragging && <p className="px-1.5 pb-1 pt-2 text-[16px] text-ink/80">Nobody here right now.</p>}
         <ul className="flex flex-col gap-2.5">
           {shown.map((lead) => (
             <LeadCard
@@ -216,14 +218,14 @@ function Board({
             />
           ))}
           {!cards.length && dragging && (
-            <li className="rounded-2xl border-2 border-dashed border-accent/40 px-3 py-5 text-center text-[14px] text-muted">
+            <li className="rounded-2xl border-2 border-dashed border-accent/40 px-3 py-5 text-center text-[16px] text-muted">
               Drop here
             </li>
           )}
         </ul>
         {cards.length > COLUMN_SHOWN && (
           <button
-            className="btn-secondary mt-2.5 min-h-[44px] text-[15px]"
+            className="btn-secondary mt-2.5 min-h-[44px] text-[16px]"
             onClick={() => setExpanded((x) => (x.includes(stage) ? x.filter((s) => s !== stage) : [...x, stage]))}
           >
             {expanded.includes(stage) ? "Show less" : `Show ${cards.length - COLUMN_SHOWN} more`}
@@ -255,7 +257,7 @@ function Board({
 function Summary({ board }: { board: PipelineBoard }) {
   const s = board.summary;
   const stats = [
-    { label: "Need a call now", value: String(s.needs_action), hint: "Late, or due today", tone: s.needs_action ? "text-bad" : "" },
+    { label: "Need a call now", value: String(s.needs_action), hint: "Late or due today", tone: s.needs_action ? "text-bad" : "" },
     { label: "Still deciding", value: String(s.open), hint: s.open_value ? `${money(s.open_value)} in prices given` : undefined },
     { label: "Said yes", value: String(s.won), hint: s.won_value ? `${money(s.won_value)} in first visits` : undefined, tone: s.won ? "text-good" : "" },
   ];
@@ -263,99 +265,12 @@ function Summary({ board }: { board: PipelineBoard }) {
     <Card className="grid grid-cols-3 p-5 sm:p-6">
       {stats.map((st, i) => (
         <div key={st.label} className={i ? "border-l border-line pl-4 sm:pl-6" : "pr-4"}>
-          <p className="text-[15px] text-ink/80">{st.label}</p>
+          <p className="text-[16px] text-ink/80">{st.label}</p>
           <p className={`tnum mt-1 text-[30px] font-semibold leading-none tracking-title ${st.tone ?? ""}`}>{st.value}</p>
-          {st.hint && <p className="mt-1 hidden text-[14px] text-muted sm:block">{st.hint}</p>}
+          {st.hint && <p className="mt-1 hidden text-[16px] text-ink/70 sm:block">{st.hint}</p>}
         </div>
       ))}
     </Card>
-  );
-}
-
-function OpenLead({
-  lead,
-  business,
-  onDecide,
-}: {
-  lead: PipelineLead;
-  business: string | null;
-  onDecide: (stage: "won" | "lost") => void;
-}) {
-  const a = lead.action!;
-  const u = URGENCY[a.urgency];
-  const say = openingLine(lead, business);
-  const [copied, setCopied] = useState(false);
-  // "Late by 3 days" already says how long; otherwise say when we last talked.
-  const lastTalk =
-    a.urgency !== "overdue" && a.days_since_contact !== null
-      ? `last talk ${a.days_since_contact === 0 ? "today" : `${a.days_since_contact} days ago`}`
-      : null;
-  const meta = [listWords(cleanPests(lead.pests).slice(0, 3)) || null, lead.value !== null ? money(lead.value) : null, lastTalk]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${u.cls}`}>{u.label(lead)}</span>
-          <span className="text-[12px] text-muted">{STAGE_LABEL[lead.stage as Stage]}</span>
-        </div>
-        <p className="mt-1.5 text-[16px] font-semibold leading-snug tracking-tightish">{a.label}</p>
-        {(lead.rep || meta) && (
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
-            {lead.rep && (
-              <span className="inline-flex items-center gap-1.5">
-                <Avatar name={lead.rep} size={16} />
-                {lead.rep}
-              </span>
-            )}
-            {lead.rep && meta && <span aria-hidden>·</span>}
-            {meta && <span>{meta}</span>}
-          </p>
-        )}
-        {a.promised && (
-          <p className="mt-1.5 text-[13px]">
-            <span className="font-medium">We promised:</span> {a.promised}
-          </p>
-        )}
-        <div className="mt-2.5 flex items-start gap-3 rounded-xl bg-panel px-3.5 py-2.5">
-          <p className="min-w-0 flex-1 text-[14px] leading-relaxed text-ink/90">
-            <span className="mr-1.5 text-[12px] font-medium text-muted">Say</span>“{say}”
-          </p>
-          <button
-            className="shrink-0 pt-0.5 text-[12px] font-medium text-link hover:underline"
-            aria-label="Copy what to say"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(say);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              } catch {
-                /* clipboard blocked: the words are on screen anyway */
-              }
-            }}
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:pt-6">
-        {lead.phone && <CallButton phone={lead.phone} pretty={lead.phone_pretty} name={lead.name} />}
-        {lead.last_call_id && (
-          <Link href={`/v2/calls/${lead.last_call_id}`} className="btn-ghost px-3 py-1 text-[13px]">
-            Listen
-          </Link>
-        )}
-        <button className="btn-secondary px-3 py-1 text-[13px]" onClick={() => onDecide("lost")}>
-          <CrossIcon className="h-3 w-3" />
-          Said no
-        </button>
-        <button className="btn-primary px-3 py-1 text-[13px]" onClick={() => onDecide("won")}>
-          <CheckIcon className="h-3 w-3" />
-          Said yes
-        </button>
-      </div>
-    </li>
   );
 }
 
@@ -373,7 +288,7 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
       >
         <span>
           <span className="text-[19px] font-semibold tracking-title">Already decided</span>
-          <span className="ml-2 text-[13px] text-muted">
+          <span className="ml-2 text-[16px] text-ink/70">
             {won} said yes · {leads.length - won} said no
           </span>
         </span>
@@ -384,7 +299,7 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
           {leads.map((l) => {
             const what = l.service ?? (listWords(cleanPests(l.pests)) || null);
             return (
-              <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-[14px]">
+              <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-[16px]">
                 <span
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white ${
                     l.stage === "won" ? "bg-good" : "bg-bad"
@@ -394,13 +309,13 @@ function Closed({ leads, onReopen }: { leads: PipelineLead[]; onReopen: (lead: P
                   {l.stage === "won" ? <CheckIcon className="h-3 w-3" /> : <CrossIcon className="h-2.5 w-2.5" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="font-medium">{l.name}</span>
-                  {what && <span className="text-muted"> · {what}</span>}
+                  <span className="font-medium">{displayName(l.name)}</span>
+                  {what && <span className="text-ink/70"> · {what}</span>}
                 </span>
-                {l.value !== null && <span className="tnum text-muted">{money(l.value)}</span>}
-                <span className="tnum w-16 text-right text-muted">{date(l.last_contact_at)}</span>
-                <button className="text-[12px] text-link hover:underline" onClick={() => onReopen(l)}>
-                  Not decided after all
+                {l.value !== null && <span className="tnum">{money(l.value)}</span>}
+                <span className="tnum w-16 text-right text-ink/70">{date(l.last_contact_at)}</span>
+                <button className="min-h-[44px] text-[16px] font-medium text-link hover:underline" onClick={() => onReopen(l)}>
+                  Put back on the list
                 </button>
               </li>
             );

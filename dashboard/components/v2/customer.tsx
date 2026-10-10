@@ -18,6 +18,13 @@ import { failMessage, useToast } from "@/components/v2/toast";
 
 export type Stage = "new" | "quoted" | "follow_up" | "won" | "lost";
 
+/** "Name not given" from the server, as a person would say it. */
+export const displayName = (name: string) => (name === "Name not given" ? "Caller with no name" : name);
+/** A team member's name; the AI receptionist by what it does. */
+export const personLabel = (name: string) => (/receptionist|^ai\b/i.test(name) ? "Phone receptionist" : name);
+/** Who took the call, as a person would say it. */
+export const repWords = (rep: string) => (/receptionist|\bai\b/i.test(rep) ? "the phone receptionist" : rep.split(/\s+/)[0]);
+
 export const STAGE_LABEL: Record<Stage, string> = {
   new: "Asked about a service",
   quoted: "Got a price",
@@ -95,7 +102,7 @@ export function CallButton({
       <PhoneIcon className="h-5 w-5 shrink-0" />
       <span className="flex min-w-0 flex-col items-start leading-tight">
         <span className="max-w-full truncate">Call {first ?? "them"}</span>
-        <span className="text-[13px] font-medium">{pretty || phone}</span>
+        <span className="text-[15px] font-medium">{pretty || phone}</span>
       </span>
     </a>
   );
@@ -114,22 +121,22 @@ export function HowDidItGo({
   const first = name !== "Name not given" ? name.split(/\s+/)[0] : "they";
   return (
     <div className="pop-in rounded-2xl border-2 border-accent/40 bg-accent-soft/50 p-3" role="group" aria-label="How did the call go?">
-      <p className="px-1 text-[17px] font-semibold">How did it go?</p>
+      <p className="px-1 text-[18px] font-semibold">How did it go?</p>
       <div className="mt-2 grid gap-2">
-        <button className="btn-primary min-h-[48px] text-[16px]" onClick={() => onAnswer({ stage: "won", called: true })}>
+        <button className="btn-primary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "won", called: true })}>
           <CheckIcon className="h-4 w-4" />
           {first === "they" ? "They" : first} said yes
         </button>
-        <button className="btn-secondary min-h-[48px] text-[16px]" onClick={() => onAnswer({ stage: "follow_up", called: true })}>
+        <button className="btn-secondary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "follow_up", called: true })}>
           <RefreshIcon className="h-4 w-4" />
           No answer, or call again later
         </button>
-        <button className="btn-secondary min-h-[48px] text-[16px]" onClick={() => onAnswer({ stage: "lost", called: true })}>
+        <button className="btn-secondary min-h-[48px] text-[17px]" onClick={() => onAnswer({ stage: "lost", called: true })}>
           <CrossIcon className="h-3.5 w-3.5" />
           {first === "they" ? "They" : first} said no
         </button>
       </div>
-      <button className="mt-1.5 min-h-[40px] w-full text-[14px] font-medium text-link" onClick={onCancel}>
+      <button className="mt-1.5 min-h-[44px] w-full text-[16px] font-medium text-link" onClick={onCancel}>
         I didn&apos;t call yet
       </button>
     </div>
@@ -143,7 +150,7 @@ function AddNumber({ name, onSave }: { name: string; onSave: (phone: string) => 
   const [busy, setBusy] = useState(false);
   if (!open) {
     return (
-      <button className="btn-secondary min-h-[52px] w-full text-[16px]" onClick={() => setOpen(true)}>
+      <button className="btn-secondary min-h-[52px] w-full text-[17px]" onClick={() => setOpen(true)}>
         <PhoneIcon className="h-4 w-4" />
         Add their number
       </button>
@@ -182,16 +189,16 @@ function AddNumber({ name, onSave }: { name: string; onSave: (phone: string) => 
 function MoveTo({ stage, onMove, onClose }: { stage: Stage; onMove: (s: Stage) => void; onClose: () => void }) {
   return (
     <div className="pop-in rounded-2xl border border-line bg-panel p-2" role="group" aria-label="Move to">
-      <p className="px-2 pb-1 pt-1 text-[14px] font-semibold text-ink/80">Move to</p>
+      <p className="px-2 pb-1 pt-1 text-[16px] font-semibold text-ink/80">Move to</p>
       <div className="grid gap-1.5">
         {(Object.keys(STAGE_LABEL) as Stage[])
           .filter((s) => s !== stage)
           .map((s) => (
-            <button key={s} className="btn-secondary min-h-[44px] justify-start text-[15px]" onClick={() => onMove(s)}>
+            <button key={s} className="btn-secondary min-h-[44px] justify-start text-[16px]" onClick={() => onMove(s)}>
               {STAGE_LABEL[s]}
             </button>
           ))}
-        <button className="min-h-[40px] text-[14px] font-medium text-link" onClick={onClose}>
+        <button className="min-h-[44px] text-[16px] font-medium text-link" onClick={onClose}>
           Cancel
         </button>
       </div>
@@ -228,8 +235,8 @@ export function LeadCard({
   const [sayOpen, setSayOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const say = a ? openingLine(lead, business) : null;
-  const what = listWords(cleanPests(lead.pests).slice(0, 2)) || lead.service;
-  const meta = [what, lead.value !== null ? money(lead.value) : null].filter(Boolean).join(" · ");
+  const pests = listWords(cleanPests(lead.pests).slice(0, 2));
+  const meta = [pests ? `Wants help with ${pests}` : null, lead.value !== null ? `Price ${money(lead.value)}` : null].filter(Boolean).join(" · ");
   const Tag = as;
 
   return (
@@ -245,19 +252,24 @@ export function LeadCard({
       } ${dragging ? "rotate-1 opacity-60" : "hover:shadow-md"}`}
     >
       {a ? (
-        <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${URGENCY[a.urgency].cls}`}>
+        <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[15px] font-semibold ${URGENCY[a.urgency].cls}`}>
           {URGENCY[a.urgency].label(lead)}
         </span>
       ) : (
-        <p className="text-[16px] font-semibold leading-snug">{lead.name}</p>
+        <p className="text-[17px] font-semibold leading-snug">{displayName(lead.name)}</p>
       )}
-      {a && <p className="mt-2 text-[17px] font-semibold leading-snug">{a.label}</p>}
-      {meta && <p className="mt-0.5 text-[14px] text-ink/75">{meta}</p>}
+      {a && <p className="mt-2 text-[18px] font-semibold leading-snug">{a.label}</p>}
+      {meta && <p className="mt-0.5 text-[16px] text-ink/75">{meta}</p>}
       {a && lead.rep && (
-        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted">
+        <p className="mt-1 flex items-center gap-1.5 text-[15px] text-ink/70">
           <Avatar name={lead.rep} size={18} />
-          {lead.rep}
-          {lead.last_contact_at && <> · {date(lead.last_contact_at)}</>}
+          Talked to {repWords(lead.rep)}
+          {lead.last_contact_at && <> on {date(lead.last_contact_at)}</>}
+        </p>
+      )}
+      {a?.promised && (
+        <p className="mt-1.5 text-[16px]">
+          <span className="font-semibold">We promised:</span> {a.promised}
         </p>
       )}
 
@@ -296,36 +308,36 @@ export function LeadCard({
                 <AddNumber name={lead.name} onSave={async (phone) => (await onChange({ phone })) !== false} />
               )}
               <div className="grid grid-cols-2 gap-2">
-                <button className="btn-secondary min-h-[44px] px-2 text-[15px]" onClick={() => void onChange({ stage: "won" })}>
+                <button className="btn-secondary min-h-[44px] px-2 text-[16px]" onClick={() => void onChange({ stage: "won" })}>
                   <CheckIcon className="h-4 w-4" />
                   Said yes
                 </button>
-                <button className="btn-secondary min-h-[44px] px-2 text-[15px]" onClick={() => void onChange({ stage: "lost" })}>
-                  <CrossIcon className="h-3.5 w-3.5" />
+                <button className="btn-secondary min-h-[44px] px-2 text-[16px]" onClick={() => void onChange({ stage: "lost" })}>
+                  <CrossIcon className="h-4 w-4" />
                   Said no
                 </button>
               </div>
-              <div className="flex flex-wrap gap-x-4 text-[14px] font-medium text-link">
-                <button className="inline-flex min-h-[40px] items-center gap-1" onClick={() => setSayOpen((o) => !o)} aria-expanded={sayOpen}>
+              <div className="flex flex-wrap gap-x-4 text-[16px] font-medium text-link">
+                <button className="inline-flex min-h-[44px] items-center gap-1" onClick={() => setSayOpen((o) => !o)} aria-expanded={sayOpen}>
                   What to say
                   <ChevronIcon className={`h-3.5 w-3.5 transition-transform ${sayOpen ? "rotate-90" : ""}`} />
                 </button>
-                <button className="min-h-[40px]" onClick={() => setMoving(true)}>
-                  Move
+                <button className="min-h-[44px]" onClick={() => setMoving(true)}>
+                  Move to…
                 </button>
                 {lead.last_call_id && (
-                  <Link href={`/v2/calls/${lead.last_call_id}`} className="inline-flex min-h-[40px] items-center gap-1 hover:no-underline" aria-label={`Listen to the call with ${lead.name}`}>
+                  <Link href={`/v2/calls/${lead.last_call_id}`} className="inline-flex min-h-[44px] items-center gap-1 hover:no-underline">
                     <PlayIcon className="h-3.5 w-3.5" />
-                    Listen
+                    Hear the call
                   </Link>
                 )}
               </div>
               {sayOpen && say && (
                 <div className="rounded-xl bg-panel px-3 py-2.5">
-                  <p className="text-[15px] leading-relaxed text-ink/90">“{say}”</p>
+                  <p className="text-[16px] leading-relaxed text-ink/90">“{say}”</p>
                   <button
-                    className="mt-1 min-h-[32px] text-[13px] font-medium text-link"
-                    aria-label={`Copy what to say to ${lead.name}`}
+                    className="mt-1 min-h-[44px] text-[16px] font-medium text-link"
+                    aria-label={`Copy what to say to ${displayName(lead.name)}`}
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(say);
@@ -336,7 +348,7 @@ export function LeadCard({
                       }
                     }}
                   >
-                    {copied ? "Copied" : "Copy"}
+                    {copied ? "Copied" : "Copy the words"}
                   </button>
                 </div>
               )}
@@ -348,14 +360,14 @@ export function LeadCard({
       )}
 
       {!a && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 text-[14px] font-medium text-link">
-          <button className="min-h-[40px]" onClick={() => void onChange({ stage: "follow_up" })}>
-            Not decided after all
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 text-[16px] font-medium text-link">
+          <button className="min-h-[44px]" onClick={() => void onChange({ stage: "follow_up" })}>
+            Put back on the list
           </button>
           {lead.last_call_id && (
-            <Link href={`/v2/calls/${lead.last_call_id}`} className="inline-flex min-h-[40px] items-center gap-1 hover:no-underline" aria-label={`Listen to the call with ${lead.name}`}>
+            <Link href={`/v2/calls/${lead.last_call_id}`} className="inline-flex min-h-[44px] items-center gap-1 hover:no-underline">
               <PlayIcon className="h-3.5 w-3.5" />
-              Listen
+              Hear the call
             </Link>
           )}
         </div>
@@ -372,6 +384,7 @@ export function useSaveLead(reload: () => Promise<unknown>) {
   const toast = useToast();
   return async (lead: PipelineLead, change: LeadChange): Promise<boolean> => {
     const was = lead.stage;
+    const name = displayName(lead.name);
     try {
       await api.patch(`/intel/leads/${lead.id}`, change);
     } catch (err) {
@@ -382,17 +395,17 @@ export function useSaveLead(reload: () => Promise<unknown>) {
     const s = change.stage;
     const message = !s
       ? change.phone
-        ? `Number saved for ${lead.name}`
-        : `${lead.name}: noted`
+        ? `Number saved for ${name}`
+        : `${name}: noted`
       : s === "won"
-        ? `${lead.name} said yes`
+        ? `${name} said yes`
         : s === "lost"
-          ? `${lead.name} said no`
+          ? `${name} said no`
           : change.called
-            ? `${lead.name}: call again in a couple of days`
+            ? `${name}: call again in a couple of days`
             : lead.action
-              ? `${lead.name} moved to “${STAGE_LABEL[s]}”`
-              : `${lead.name} is back on the list`;
+              ? `${name} moved to “${STAGE_LABEL[s]}”`
+              : `${name} is back on the list`;
     toast({
       message,
       undo:

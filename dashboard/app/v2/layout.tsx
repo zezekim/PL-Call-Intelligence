@@ -106,7 +106,7 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
             </div>
             {ranged && (
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                <span className="text-[15px] text-ink/80">Calls from</span>
+                <span className="text-[16px] text-ink/80">Calls from</span>
                 <Segmented
                   value={range}
                   onChange={changeRange}
@@ -116,7 +116,7 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
                     { value: "all", label: "All time" },
                   ]}
                 />
-                <span className="text-[13px] text-muted">{updated(asOf, Math.max(now, Date.parse(asOf)))}</span>
+                <span className="text-[15px] text-ink/70">{updated(asOf, Math.max(now, Date.parse(asOf)))}</span>
               </div>
             )}
           </div>

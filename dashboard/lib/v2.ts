@@ -335,6 +335,18 @@ export function firstSentence(text: string): { first: string; more: boolean } {
   return { first, more: first.length < text.trim().length };
 }
 
+/**
+ * "Goal: at least 6 out of 10 kept" as "Good: more than half kept": a share
+ * in words instead of a fraction to compare.
+ */
+export function goalWords(goal: string): string {
+  const m = goal.match(/at least (\d+) out of (\d+)\s*(.*)$/i);
+  if (!m) return goal;
+  const r = Number(m[1]) / Number(m[2]);
+  const share = r >= 0.85 ? "almost all" : r >= 0.7 ? "most" : r > 0.5 ? "more than half" : r === 0.5 ? "at least half" : `at least ${m[1]} in ${m[2]}`;
+  return `Good: ${share} ${m[3]}`.trim();
+}
+
 /** "ants, mice and spiders" */
 export function listWords(words: string[]): string {
   if (words.length <= 1) return words[0] ?? "";

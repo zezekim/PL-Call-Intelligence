@@ -48,7 +48,7 @@ def compose(money_line: str | None, items: list[OwnerAction], *, greeting: bool)
         return "\n".join(lines)
     lines.append("")
     for n, a in enumerate(items, start=1):
-        value = f" ({brief.money(float(a.value_usd))}/yr)" if a.value_usd else ""
+        value = f" ({brief.money(float(a.value_usd))} a year)" if a.value_usd else ""
         lines.append(f"{n}) {a.label}: {_short(a.title)}{value}")
     choices = ", ".join(str(n) for n in range(1, len(items))) + f" or {len(items)}" \
         if len(items) > 1 else "1"

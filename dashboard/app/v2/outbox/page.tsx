@@ -51,12 +51,12 @@ export default function OutboxPage() {
 
   return (
     <div className="mx-auto max-w-[760px] space-y-5">
-      <Link href="/v2" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
-        <BackIcon className="h-4 w-4" /> Today
+      <Link href="/v2" className="-ml-1 inline-flex min-h-[44px] items-center gap-0.5 text-[16px] text-link hover:underline">
+        <BackIcon className="h-4 w-4" /> Back to Today
       </Link>
       <div>
         <h1 className="large-title">Texts</h1>
-        <p className="mt-2 max-w-2xl text-[16px] leading-relaxed text-ink/80">
+        <p className="mt-2 max-w-2xl text-[17px] leading-relaxed text-ink/80">
           {data.practice
             ? "Practice mode is on. These texts are shown here instead of being sent. Answer any of them as the person it went to, and the app reacts as if they had texted back."
             : "Practice mode is off, so texts go to real phones. These are from when it was on."}{" "}
@@ -107,7 +107,7 @@ function toThreads(messages: Message[]): Thread[] {
     if (!by.has(key)) {
       by.set(key, {
         phone: m.to_owner ? (m.phone === "owner" ? "owner" : m.phone) : m.phone,
-        name: m.to_owner ? "You (morning text)" : m.name ?? m.phone_pretty,
+        name: m.to_owner ? "You: your morning text" : m.name ?? m.phone_pretty,
         pretty: m.to_owner ? "" : m.phone_pretty,
         owner: m.to_owner,
         messages: [],
@@ -151,19 +151,19 @@ function Conversation({
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-line px-5 py-3">
-        <p className="text-[15px] font-semibold">{thread.name}</p>
-        {thread.pretty && <p className="text-[13px] text-muted">{thread.pretty}</p>}
+        <p className="text-[16px] font-semibold">{thread.name}</p>
+        {thread.pretty && <p className="text-[15px] text-muted">{thread.pretty}</p>}
       </div>
       <ul className="space-y-2.5 px-5 py-4">
         {thread.messages.map((m) => (
           <li key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : ""}`}>
             <div
-              className={`max-w-[85%] whitespace-pre-line rounded-[18px] px-4 py-2.5 text-[15px] leading-[1.45] [overflow-wrap:anywhere] ${
+              className={`max-w-[85%] whitespace-pre-line rounded-[18px] px-4 py-2.5 text-[16px] leading-[1.45] [overflow-wrap:anywhere] ${
                 m.direction === "out" ? "bg-accent text-white" : "bg-bubble text-ink"
               }`}
             >
               <Linked text={m.body} light={m.direction === "out"} />
-              <p className={`mt-1 text-[12px] ${m.direction === "out" ? "text-white" : "text-ink/80"}`}>
+              <p className={`mt-1 text-[15px] ${m.direction === "out" ? "text-white" : "text-ink/80"}`}>
                 {m.direction === "out" ? "From the app" : `From ${thread.owner ? "you" : first}`} ·{" "}
                 {new Date(m.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               </p>

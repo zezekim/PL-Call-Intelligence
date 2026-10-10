@@ -10,7 +10,7 @@ import { STATUS_BG, STATUS_SOFT, STATUS_TEXT, STATUS_WORD } from "@/lib/v2";
 export function StatusPill({ status, label }: { status: Status; label?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[14px] font-semibold ${STATUS_SOFT[status]} ${STATUS_TEXT[status]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[16px] font-semibold ${STATUS_SOFT[status]} ${STATUS_TEXT[status]}`}
     >
       <span className={`h-2 w-2 rounded-full ${STATUS_BG[status]}`} aria-hidden />
       {label ?? STATUS_WORD[status]}
@@ -59,7 +59,7 @@ export function Change({ value }: { value: number | null }) {
   if (value === null || Math.abs(value) < 0.5) return null;
   const up = value > 0;
   return (
-    <span className={`tnum text-[12px] font-medium ${up ? "text-good" : "text-bad"}`}>
+    <span className={`tnum text-[15px] font-medium ${up ? "text-good" : "text-bad"}`}>
       {up ? "▲ up" : "▼ down"} {Math.abs(Math.round(value))}
     </span>
   );
@@ -68,12 +68,12 @@ export function Change({ value }: { value: number | null }) {
 export function Trend({ trend }: { trend: "up" | "down" | "steady" | null }) {
   if (!trend) return null;
   const map = {
-    up: { text: "Improving", cls: "text-good", icon: "↗" },
-    down: { text: "Slipping", cls: "text-bad", icon: "↘" },
-    steady: { text: "Steady", cls: "text-muted", icon: "→" },
+    up: { text: "Getting better", cls: "text-good", icon: "↗" },
+    down: { text: "Getting worse", cls: "text-bad", icon: "↘" },
+    steady: { text: "About the same", cls: "text-ink/70", icon: "→" },
   }[trend];
   return (
-    <span className={`inline-flex items-center gap-1 text-[12px] font-medium ${map.cls}`}>
+    <span className={`inline-flex items-center gap-1 text-[15px] font-medium ${map.cls}`}>
       <span aria-hidden>{map.icon}</span>
       {map.text}
     </span>
@@ -98,7 +98,7 @@ export function Section({
       <div className="mb-4 flex items-end justify-between gap-4 px-1">
         <div>
           <h2 className="text-[22px] font-semibold tracking-title">{title}</h2>
-          {subtitle && <p className="mt-1 text-[16px] text-ink/80">{subtitle}</p>}
+          {subtitle && <p className="mt-1 text-[17px] text-ink/80">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -126,10 +126,10 @@ export function PageError({
   const missing = status === 404 || status === 422;
   return (
     <div className="card mx-auto max-w-md px-6 py-12 text-center">
-      <p className="text-[17px] font-semibold tracking-tightish">
+      <p className="text-[18px] font-semibold tracking-tightish">
         {missing ? `This ${thing} isn't here anymore` : "We couldn't load this"}
       </p>
-      <p className="mx-auto mt-1.5 max-w-xs text-[14px] text-muted">
+      <p className="mx-auto mt-1.5 max-w-xs text-[16px] text-muted">
         {missing
           ? "It may have been deleted, or the link is incomplete."
           : status === 0
@@ -170,7 +170,7 @@ export function MoreToggle({
     <button
       onClick={onToggle}
       aria-expanded={open}
-      className={`inline-flex min-h-[40px] items-center gap-1 text-[15px] font-medium text-link hover:underline ${className}`}
+      className={`inline-flex min-h-[40px] items-center gap-1 text-[16px] font-medium text-link hover:underline ${className}`}
     >
       {open ? "Show less" : `Show ${count} more${noun ? ` ${noun}` : ""}`}
       <ChevronIcon className={`h-3.5 w-3.5 transition-transform ${open ? "-rotate-90" : "rotate-90"}`} />
@@ -255,7 +255,7 @@ export function MoreMenu({
                   setOpen(false);
                   item.onSelect();
                 }}
-                className={`flex w-full items-center rounded-[8px] px-3 py-[7px] text-left text-[14px] transition-colors hover:bg-fill focus:bg-fill focus:outline-none disabled:opacity-40 ${
+                className={`flex w-full items-center rounded-[8px] px-3 py-[7px] text-left text-[16px] transition-colors hover:bg-fill focus:bg-fill focus:outline-none disabled:opacity-40 ${
                   item.danger ? "text-bad" : "text-ink"
                 }`}
               >

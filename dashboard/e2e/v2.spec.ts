@@ -77,20 +77,30 @@ test("Today can look at the last 7 or 30 days, and remembers the choice", async 
   await expect(page.getByRole("tab", { name: "7 days" })).toHaveAttribute("aria-selected", "true");
 });
 
-test("Today is in plain words: no percentages, goals or scorecard talk", async ({ page }) => {
-  await mockApi(page);
-  await page.goto("/v2");
-  await page.getByRole("region", { name: "Your to-do list" }).waitFor();
-  const text = await page.locator("main").innerText();
-  for (const word of [/%/, /\bgoal\b/i, /\d+\s*in\s*\d+/, /\bAI\b/, /autopilot/i, /\bstep marks\b/i, /a year\b/]) expect(text).not.toMatch(word);
-  // Nothing that matters is in small print.
-  const small = await page.evaluate(() =>
-    [...document.querySelectorAll("main p, main li, main a, main button")]
-      .filter((el) => el.getBoundingClientRect().height > 0 && parseFloat(getComputedStyle(el).fontSize) < 15 && el.textContent!.trim())
-      .map((el) => el.textContent!.trim().slice(0, 40)),
-  );
-  expect(small).toEqual([]);
-});
+// Written for someone with no training: no percentages, goals, fractions or
+// scorecard words, nothing that matters in small print, nothing too small to tap.
+for (const path of ["/v2", "/v2/pipeline", "/v2/reps", `/v2/reps/${REP_ID}`, "/v2/calls", `/v2/calls/${CALL_ID}`, "/v2/outbox"]) {
+  test(`${path.replace(/[0-9a-f-]{36}/, ":id")} is in plain words, big enough to read and to tap`, async ({ page }) => {
+    await mockApi(page);
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const text = await page.locator("main").innerText();
+    for (const word of [/%/, /\bgoal\b/i, /\d+\s*in\s*\d+/, /\bAI\b/, /autopilot/i, /step marks/i, /\b\d+\/\d+\b/, /\bscore\b/i, /\bgrade\b/i, /pipeline/i])
+      expect(text, `${path} says ${word}`).not.toMatch(word);
+    const problems = await page.evaluate(() => {
+      const shown = (el: Element) => el.getBoundingClientRect().height > 0 && !el.closest(".sr-only, [aria-hidden=true]");
+      const small = [...document.querySelectorAll("main *")]
+        .filter((el) => el.children.length === 0 && shown(el) && (el.textContent ?? "").trim().length > 2 && parseFloat(getComputedStyle(el).fontSize) < 15)
+        .map((el) => `small: ${el.textContent!.trim().slice(0, 30)}`);
+      // Links inside a sentence are exempt, as in WCAG's target-size rule.
+      const tiny = [...document.querySelectorAll("main a, main button, main [role=tab]")]
+        .filter((el) => shown(el) && el.getBoundingClientRect().height < 40 && !el.closest("p"))
+        .map((el) => `tiny: ${(el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 30)}`);
+      return [...small, ...tiny];
+    });
+    expect(problems).toEqual([]);
+  });
+}
 
 test("Call rings the customer, then asks how it went and moves them", async ({ page }) => {
   const sent: unknown[] = [];
@@ -134,7 +144,8 @@ test("the Team page has the scores, what to teach, and everyone", async ({ page 
   await expect(page.getByText("New customers", { exact: true })).toBeVisible();
   await expect(page.getByText("Explain the plan").first()).toBeVisible();
   await expect(page.getByText(/Start with Dana/)).toBeVisible();
-  await expect(page.getByText("Managers kept 95% of the AI's step marks (3 calls corrected)")).toBeVisible();
+  await expect(page.getByText("Good: at least half say yes")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Dana.*Needs to work on: Explain the plan/ })).toBeVisible();
 });
 
 test("a to-do is ready to send, and the third send offers autopilot", async ({ page }) => {
@@ -202,7 +213,7 @@ test("callers who gave no name are never called 'unknown'", async ({ page }) => 
   await page.goto("/v2/calls");
   await expect(page.locator("ul.group-list")).toBeVisible();
   await expect(page.locator("ul.group-list")).not.toContainText(/unknown/i);
-  await expect(page.getByText("Customer not named")).toHaveCount(2);
+  await expect(page.getByText("Caller with no name")).toHaveCount(2);
 
   await page.goto(`/v2/calls/${CALL_ID}`);
   await expect(page.getByRole("heading", { name: "Call with a customer", level: 1 })).toBeVisible();
@@ -219,7 +230,7 @@ test("the call page leads with the verdict and keeps the rest one tap away", asy
   await expect(page.getByText("Explain the fit and ask to book")).toBeVisible();
   // One part at a time: the call steps are behind their own big tab.
   await expect(page.getByRole("button", { name: "Show the 2 steps done" })).toHaveCount(0);
-  await page.getByRole("tab", { name: "Call steps" }).click();
+  await page.getByRole("tab", { name: "Every step" }).click();
   // Done steps folded; reasons open on tap.
   await expect(page.getByRole("button", { name: "Show the 2 steps done" })).toBeVisible();
   await page.getByRole("tab", { name: "Listen and read" }).click();
@@ -260,7 +271,7 @@ test("a team member's page says what to teach and what they do well", async ({ p
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
   await expect(page.getByText("Next time, say")).toBeVisible();
-  await expect(page.getByRole("link", { name: /Listen together/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Hear that moment on the call/ })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/\bunknown\b/i);
 });
 
@@ -292,6 +303,9 @@ test("a full call-back board stays inside a phone's width", async ({ page }) => 
   ).flat();
   await mockApi(page, { "GET /intel/v2/pipeline": (route) => route.fulfill({ json: { ...board, open: many } }) });
   await page.goto("/v2/pipeline");
+  // A phone starts one person at a time; the board is one tap away.
+  await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
+  await page.getByRole("tab", { name: "Board" }).click();
   await page.getByRole("region", { name: "Still deciding" }).waitFor();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
@@ -323,7 +337,7 @@ test("call back is a board, one column per step, and a card can be dragged along
   await expect(quoted.getByText("Call Jordan Lee back")).toBeVisible();
   await quoted.locator("li", { hasText: "Call Jordan Lee back" }).dragTo(page.getByRole("region", { name: "Still deciding" }));
   await expect.poll(() => sent).toEqual(["follow_up"]);
-  await page.getByRole("tab", { name: "List" }).click();
+  await page.getByRole("tab", { name: "One at a time" }).click();
   await expect(page.getByRole("heading", { name: "Call these people" })).toBeVisible();
 });
 

@@ -83,4 +83,11 @@ export function spokenLength(seconds: number | null | undefined): string {
   return `${m} minute${m === 1 ? "" : "s"}${r ? ` ${r} second${r === 1 ? "" : "s"}` : ""}`;
 }
 
+/** "2 minutes": the length of a call, rounded the way a person says it. */
+export function spokenMinutes(seconds: number | null | undefined): string | null {
+  if (!seconds) return null;
+  const m = Math.round(seconds / 60);
+  return m < 1 ? "under a minute" : `${m} minute${m === 1 ? "" : "s"}`;
+}
+
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

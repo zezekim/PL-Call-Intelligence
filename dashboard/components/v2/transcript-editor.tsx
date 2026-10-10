@@ -64,10 +64,10 @@ export function TranscriptEditor({
 
   return (
     <div className="space-y-1">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-panel px-3 py-2.5 text-[13px]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-panel px-3 py-2.5 text-[15px]">
         <p className="text-ink/80">Tap a name to swap who said it. Tap the words to fix them or split the line.</p>
         <button
-          className="btn-secondary px-3 py-1 text-[13px]"
+          className="btn-secondary px-3 py-1 text-[15px]"
           onClick={() => setAdding(Math.round(audio.time * 10) / 10)}
           disabled={busy || adding !== null}
         >
@@ -92,10 +92,10 @@ export function TranscriptEditor({
           const role: Role = s.role === "rep" ? "rep" : "customer";
           const other: Role = role === "rep" ? "customer" : "rep";
           return (
-            <li key={s.id} data-seg={s.id} className="grid grid-cols-[108px_minmax(0,1fr)] gap-3 py-2.5 text-[14px]">
+            <li key={s.id} data-seg={s.id} className="grid grid-cols-[108px_minmax(0,1fr)] gap-3 py-2.5 text-[16px]">
               <div className="space-y-0.5">
                 <button
-                  className={`block max-w-full truncate rounded-full px-2 py-0.5 text-left text-[12px] font-medium ${
+                  className={`block max-w-full truncate rounded-full px-2 py-0.5 text-left text-[15px] font-medium ${
                     role === "rep" ? "bg-bubble" : "bg-accent-soft"
                   } hover:ring-1 hover:ring-accent`}
                   title={`Said by ${names[role]}. Tap to change to ${names[other]}.`}
@@ -104,7 +104,7 @@ export function TranscriptEditor({
                 >
                   {names[role]} ⇄
                 </button>
-                <button className="tnum px-2 text-[12px] text-muted hover:text-link" onClick={() => audio.seek(s.start, s.id)}>
+                <button className="tnum px-2 text-[15px] text-muted hover:text-link" onClick={() => audio.seek(s.start, s.id)}>
                   {clock(s.start)}
                 </button>
               </div>
@@ -133,7 +133,7 @@ export function TranscriptEditor({
                     {s.text}
                   </button>
                   {(s.original_text || s.added || s.manual_role) && (
-                    <p className="mt-0.5 flex flex-wrap gap-x-2 px-1 text-[12px] text-muted">
+                    <p className="mt-0.5 flex flex-wrap gap-x-2 px-1 text-[15px] text-muted">
                       {s.original_text && <span title={`Transcribed as: “${s.original_text}”`}>Words fixed</span>}
                       {s.manual_role && <span>Speaker set by you</span>}
                       {s.added && (
@@ -195,7 +195,7 @@ function LineEditor({
       <textarea
         ref={box}
         autoFocus
-        className="input w-full py-1.5 text-[14px] leading-[1.45]"
+        className="input w-full py-1.5 text-[16px] leading-[1.45]"
         rows={Math.min(6, Math.max(2, Math.ceil(text.length / 60)))}
         value={text}
         aria-label="Line text"
@@ -203,12 +203,12 @@ function LineEditor({
         onChange={(e) => setText(e.target.value)}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy || !changed || !text.trim()} onClick={() => void onSave(text)}>
+        <button className="btn-primary px-3 py-1 text-[15px]" disabled={busy || !changed || !text.trim()} onClick={() => void onSave(text)}>
           {busy && <Spinner className="h-3 w-3" />}
           Save line
         </button>
         <button
-          className="btn-secondary px-3 py-1 text-[13px]"
+          className="btn-secondary px-3 py-1 text-[15px]"
           // Splitting cuts the saved line, so it waits until the words are saved.
           disabled={busy || changed}
           title={changed ? "Save the words first" : `Splits at the cursor: the rest is ${otherName}`}
@@ -217,11 +217,11 @@ function LineEditor({
         >
           ✂ Split here: rest is {otherName}
         </button>
-        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={onCancel}>
+        <button className="btn-ghost px-3 py-1 text-[15px]" onClick={onCancel}>
           Cancel
         </button>
       </div>
-      <p className={`text-[12px] ${hint ? "text-warn" : "text-muted"}`}>
+      <p className={`text-[15px] ${hint ? "text-warn" : "text-muted"}`}>
         {changed
           ? "Save the words first, then you can split the line."
           : `To split, click in the line just before ${otherName} starts talking.`}
@@ -249,18 +249,18 @@ function AddLine({
   const start = parseClock(time);
   return (
     <div className="mb-2 space-y-2 rounded-xl border border-line p-3">
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2 text-[15px]">
         <label className="inline-flex items-center gap-1.5">
           At
           <input
-            className="input tnum w-[72px] py-1 text-[13px]"
+            className="input tnum w-[72px] py-1 text-[15px]"
             value={time}
             onChange={(e) => setTime(e.target.value)}
             aria-label="Time, minutes:seconds"
           />
         </label>
         <select
-          className="input w-auto py-1 text-[13px]"
+          className="input w-auto py-1 text-[15px]"
           value={role}
           onChange={(e) => setRole(e.target.value as Role)}
           aria-label="Who said it"
@@ -272,7 +272,7 @@ function AddLine({
       </div>
       <textarea
         autoFocus
-        className="input w-full py-1.5 text-[14px]"
+        className="input w-full py-1.5 text-[16px]"
         rows={2}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -282,14 +282,14 @@ function AddLine({
       />
       <div className="flex gap-2">
         <button
-          className="btn-primary px-3 py-1 text-[13px]"
+          className="btn-primary px-3 py-1 text-[15px]"
           disabled={busy || !text.trim() || start === null}
           onClick={() => start !== null && void onAdd(role, text, start)}
         >
           {busy && <Spinner className="h-3 w-3" />}
           Add line
         </button>
-        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={onCancel}>
+        <button className="btn-ghost px-3 py-1 text-[15px]" onClick={onCancel}>
           Cancel
         </button>
       </div>

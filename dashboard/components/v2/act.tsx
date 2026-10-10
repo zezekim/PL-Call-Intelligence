@@ -26,6 +26,15 @@ export const KIND_WORDS: Record<PreparedAction["kind"], { many: string; detail: 
 /** After this many sends of one kind, offer to do them automatically. */
 const OFFER_AFTER = 3;
 
+const first = (name: string | null | undefined) => (name && name !== "Name not given" ? name.split(/\s+/)[0] : null);
+
+/** What a prepared text does, said on its button: "Text Kristen to call Maureen". */
+export function actionLabel(a: PreparedAction, customer?: string | null): string {
+  if (a.kind === "remind_rep") return `Text ${first(a.to_name) ?? "them"} to call ${first(customer) ?? "them back"}`;
+  if (a.kind === "text_customer") return `Text ${first(a.to_name) ?? first(customer) ?? "them"}`;
+  return a.label;
+}
+
 /**
  * One tap to see exactly what will be sent, change it if you like, and send.
  * When a situation can be handled two ways (ask the rep to call, or text the
@@ -35,6 +44,7 @@ export function ActionSheet({
   open,
   title,
   options,
+  customer,
   summary,
   onClose,
   onDone,
@@ -42,6 +52,8 @@ export function ActionSheet({
   open: boolean;
   title: string;
   options: PreparedAction[];
+  /** Who it's about, for the option names. */
+  customer?: string | null;
   summary: ActionsSummary | null;
   onClose: () => void;
   onDone: () => void | Promise<void>;
@@ -121,7 +133,7 @@ export function ActionSheet({
   if (sent) {
     return (
       <Modal open={open} onClose={onClose} title="Sent">
-        <p className="flex items-center gap-2 text-[15px]">
+        <p className="flex items-center gap-2 text-[16px]">
           <CheckIcon className="h-5 w-5 text-good" /> {summary?.practice ? "On the Texts page for" : "Sent to"}{" "}
           {sent.action.to_name ?? sent.action.to_phone_pretty}.
         </p>
@@ -148,19 +160,19 @@ export function ActionSheet({
                 role="radio"
                 aria-checked={i === index}
                 onClick={() => setIndex(i)}
-                className={`min-h-[44px] rounded-full border px-4 text-[14px] font-medium transition-colors ${
+                className={`min-h-[44px] rounded-full border px-4 text-[16px] font-medium transition-colors ${
                   i === index ? "border-accent bg-accent-soft/60 ring-1 ring-accent" : "border-line hover:bg-panel"
                 }`}
               >
-                {o.label}
-                {i === 0 && <span className="ml-1.5 text-[12px] font-normal text-muted">best</span>}
+                {actionLabel(o, customer)}
+                {i === 0 && <span className="ml-1.5 text-[15px] font-normal text-muted">(recommended)</span>}
               </button>
             ))}
           </div>
         )}
 
-        <div className="text-[14px]">
-          <p className="text-[13px] font-medium text-muted">To</p>
+        <div className="text-[16px]">
+          <p className="text-[15px] font-medium text-muted">To</p>
           {needsNumber ? (
             <label className="mt-1 block">
               <span className="block">{option.to_name ?? "Customer"}: we don&apos;t have a mobile number yet.</span>
@@ -173,7 +185,7 @@ export function ActionSheet({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
-              <span className="mt-1 block text-[12px] text-muted">We&apos;ll remember it for next time.</span>
+              <span className="mt-1 block text-[15px] text-muted">We&apos;ll remember it for next time.</span>
             </label>
           ) : (
             <p className="mt-0.5">
@@ -183,15 +195,15 @@ export function ActionSheet({
         </div>
 
         <label className="block">
-          <span className="text-[13px] font-medium text-muted">The text (you can change it)</span>
+          <span className="text-[15px] font-medium text-muted">The text (you can change it)</span>
           <textarea
-            className="input mt-1 w-full text-[15px] leading-relaxed"
+            className="input mt-1 w-full text-[16px] leading-relaxed"
             rows={Math.min(8, Math.max(4, Math.ceil(body.length / 52)))}
             maxLength={600}
             value={body}
             onChange={(e) => setBody(e.target.value)}
           />
-          <span className="mt-0.5 block text-right text-[12px] text-muted">{body.length} / 600</span>
+          <span className="mt-0.5 block text-right text-[15px] text-muted">{body.length} / 600</span>
         </label>
 
         {error && <ErrorNote message={error} />}
@@ -205,7 +217,7 @@ export function ActionSheet({
               Cancel
             </button>
             <button
-              className="btn-primary min-h-[44px] px-6 text-[15px]"
+              className="btn-primary min-h-[44px] px-6 text-[16px]"
               disabled={busy || !body.trim() || (needsNumber && !phone.trim())}
               onClick={() => void send()}
             >
@@ -215,12 +227,12 @@ export function ActionSheet({
           </div>
         </div>
         {summary?.practice && (
-          <p className="rounded-xl bg-warn-soft px-3 py-2 text-[13px]">
+          <p className="rounded-xl bg-warn-soft px-3 py-2 text-[15px]">
             Practice mode: this goes to the Texts page, not to their phone.
           </p>
         )}
         {other && index === 0 && (
-          <p className="text-[12px] text-muted">Prefer the other way? Pick “{other.label}” above.</p>
+          <p className="text-[15px] text-muted">Prefer the other way? Pick “{actionLabel(other, customer)}” above.</p>
         )}
       </div>
     </Modal>
@@ -242,10 +254,10 @@ export function AutopilotOffer({
   const words = KIND_WORDS[kind];
   return (
     <div className="mt-5 rounded-2xl bg-accent-soft/60 p-4">
-      <p className="text-[15px] font-semibold">
+      <p className="text-[16px] font-semibold">
         You&apos;ve sent {count} {words.many} yourself. Want me to send them for you from now on?
       </p>
-      <p className="mt-1 text-[13px] leading-relaxed text-ink/80">
+      <p className="mt-1 text-[15px] leading-relaxed text-ink/80">
         {words.detail} Only between 9am and 7pm, Monday to Saturday. You can turn it off any time in Settings.
       </p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">

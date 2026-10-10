@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useApi, useTitle } from "@/lib/hooks";
-import type { ActionsSummary, Brief, RepCard } from "@/lib/v2";
+import type { ActionsSummary, Brief, RepCard, Status } from "@/lib/v2";
 import { STATUS_TEXT } from "@/lib/v2";
 import { useCalls } from "@/components/calls-context";
 import { CheckIcon, ChevronIcon, CrossIcon } from "@/components/icons";
 import { Avatar, Card, Empty } from "@/components/ui";
+import { personLabel } from "@/components/v2/customer";
 import { CoachingFocus, Footer, Scores } from "@/components/v2/how-its-going";
 import { ListSkeleton, PageError, Section, Trend } from "@/components/v2/kit";
 
 // One or two calls are shown, but not judged as a pattern.
 const FEW_CALLS = 3;
+const PERSON_WORD: Record<Status, string> = { good: "Doing well", watch: "Okay", bad: "Needs help", none: "Too early to tell" };
 
 export default function RepsPage() {
   useTitle("Team");
@@ -49,7 +51,7 @@ export default function RepsPage() {
       {b && <Scores brief={b} />}
       <Section
         title="Each person"
-        subtitle="Who needs help most is at the top. The number is how many call steps they follow; good is 80% or more."
+        subtitle="Who needs help most is at the top. Press a name to see how to help them."
       >
         <ul className="group-list">
           {data.map((r) => (
@@ -61,38 +63,37 @@ export default function RepsPage() {
                 <span className="flex min-w-0 items-center gap-3">
                   <Avatar name={r.name} size={36} />
                   <span className="min-w-0">
-                    <span className="block truncate text-[16px] font-semibold tracking-tightish">{r.name}</span>
-                    <span className="block text-[12px] text-muted">
+                    <span className="block truncate text-[17px] font-semibold tracking-tightish">{personLabel(r.name)}</span>
+                    <span className="block text-[15px] text-ink/70">
                       {r.calls} call{r.calls === 1 ? "" : "s"}
-                      {r.close_rate !== null && ` · ${Math.round(r.close_rate / 10)} of 10 new customers say yes`}
+                      {r.close_rate !== null && ` · ${Math.round(r.close_rate / 10)} of 10 new callers said yes`}
                     </span>
                   </span>
                 </span>
                 <span>
-                  <span
-                    className={`tnum block text-[24px] font-semibold leading-none ${
-                      r.scored < FEW_CALLS ? "text-muted" : STATUS_TEXT[r.status]
-                    }`}
-                  >
-                    {r.score === null ? "–" : `${Math.round(r.score)}%`}
+                  <span className={`block text-[18px] font-semibold leading-tight ${r.scored < FEW_CALLS ? "text-ink/70" : STATUS_TEXT[r.status]}`}>
+                    {r.scored < FEW_CALLS || r.score === null ? "Too early to tell" : PERSON_WORD[r.status]}
                   </span>
-                  {r.scored < FEW_CALLS ? <span className="text-[12px] text-muted">Too few calls to be sure</span> : <Trend trend={r.trend} />}
+                  {r.scored >= FEW_CALLS && <Trend trend={r.trend} />}
                 </span>
-                <span className="space-y-1 text-[14px]">
+                <span className="space-y-1 text-[16px]">
                   {r.focus && (
                     <span className="flex items-start gap-2">
                       <CrossIcon className="mt-1 h-3 w-3 shrink-0 text-bad" />
                       <span>
-                        <span className="font-medium">Teach: {r.focus.plain}</span>
-                        <span className="text-muted"> · skipped {r.focus.missed} of {r.focus.of}</span>
+                        <span className="font-medium">Needs to work on: {r.focus.plain}</span>
+                        <span className="text-ink/70">
+                          {" "}
+                          (missed on {r.focus.missed} of {r.focus.of} calls)
+                        </span>
                       </span>
                     </span>
                   )}
                   {r.strengths[0] && (
                     <span className="flex items-start gap-2">
                       <CheckIcon className="mt-1 h-3 w-3 shrink-0 text-good" />
-                      <span className="text-muted">
-                        Good at <span className="text-ink">{r.strengths[0].plain}</span>
+                      <span className="text-ink/70">
+                        Good at: <span className="text-ink">{r.strengths[0].plain}</span>
                       </span>
                     </span>
                   )}

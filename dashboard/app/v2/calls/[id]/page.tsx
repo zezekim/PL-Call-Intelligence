@@ -12,10 +12,10 @@ import {
   duration,
 } from "@/lib/format";
 import { IN_PROGRESS, useApi, useTitle } from "@/lib/hooks";
-import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN, stepName } from "@/lib/easy";
+import { CALL_TYPE_PLAIN, GRADE_PLAIN, OUTCOME_PLAIN, spokenMinutes, stepName } from "@/lib/easy";
 import { FollowUpList } from "@/components/follow-up-list";
 import { AlertIcon, BackIcon, CheckIcon, ChevronIcon, CrossIcon, PauseIcon, PlayIcon } from "@/components/icons";
-import { CallButton } from "@/components/v2/customer";
+import { CallButton, personLabel, repWords } from "@/components/v2/customer";
 import { Avatar, Card, ErrorNote, Modal, Spinner } from "@/components/ui";
 import { ListenPanel, type AudioControl, type Marker, useAudio } from "@/components/v2/listen";
 import { TranscriptEditor } from "@/components/v2/transcript-editor";
@@ -79,10 +79,10 @@ function CallPage() {
 
   const hasTips = !!a && (a.coaching.coaching ?? []).length > 0;
   const tabs: { value: Tab; label: string }[] = [
-    ...(hasTips ? [{ value: "learn" as const, label: `What ${a?.rep_name ?? "they"} can learn` }] : []),
+    ...(hasTips ? [{ value: "learn" as const, label: "How to do better" }] : []),
     { value: "listen", label: "Listen and read" },
-    ...(a && a.items.length ? [{ value: "steps" as const, label: "Call steps" }] : []),
-    ...(call.follow_ups.length ? [{ value: "promises" as const, label: `Promises (${call.follow_ups.length})` }] : []),
+    ...(a && a.items.length ? [{ value: "steps" as const, label: "Every step" }] : []),
+    ...(call.follow_ups.length ? [{ value: "promises" as const, label: `What we promised (${call.follow_ups.length})` }] : []),
     ...(a ? [{ value: "details" as const, label: "Details" }] : []),
   ];
   // A link to a moment opens the words; otherwise what to learn comes first.
@@ -92,8 +92,8 @@ function CallPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 print:hidden">
-        <Link href="/v2/calls" className="-ml-1 inline-flex items-center gap-0.5 text-[15px] text-link hover:underline">
-          <BackIcon className="h-4 w-4" /> All calls
+        <Link href="/v2/calls" className="-ml-1 inline-flex min-h-[44px] items-center gap-0.5 text-[16px] text-link hover:underline">
+          <BackIcon className="h-4 w-4" /> Back to all calls
         </Link>
         <CallActions call={call} onChanged={reload} />
       </div>
@@ -103,7 +103,7 @@ function CallPage() {
       {processing && (
         <Card className="flex items-center gap-3 px-5 py-4">
           <Spinner className="h-4 w-4" />
-          <p className="text-[15px]">We are still listening to this call. This page will update by itself.</p>
+          <p className="text-[16px]">We are still listening to this call. This page will update by itself.</p>
         </Card>
       )}
       {call.processing_status === "failed" && (
@@ -131,12 +131,12 @@ function CallPage() {
       />
       {audio.playing && tab !== "listen" && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-accent-soft/70 px-4 py-2.5 print:hidden" aria-live="polite">
-          <span className="text-[16px] font-medium">Playing {clock(audio.time)}</span>
+          <span className="text-[17px] font-medium">Playing {clock(audio.time)}</span>
           <button className="btn-secondary min-h-[44px]" onClick={audio.toggle}>
             <PauseIcon className="h-4 w-4" />
             Pause
           </button>
-          <button className="min-h-[44px] text-[15px] font-medium text-link" onClick={() => setChosen("listen")}>
+          <button className="min-h-[44px] text-[16px] font-medium text-link" onClick={() => setChosen("listen")}>
             Show the words
           </button>
         </div>
@@ -170,7 +170,7 @@ function CallPage() {
       {tab === "steps" && a && <Scorecard analysis={a} audio={audio} callId={call.id} onChange={reload} />}
       {tab === "promises" && (
         <Card className="p-5">
-          <h2 className="mb-3 text-[17px] font-semibold tracking-title">Things we promised</h2>
+          <h2 className="mb-3 text-[18px] font-semibold tracking-title">Things we promised</h2>
           <FollowUpList items={call.follow_ups} />
         </Card>
       )}
@@ -200,7 +200,7 @@ function CallTabs({
           role="tab"
           aria-selected={t.value === value}
           onClick={() => onChange(t.value)}
-          className={`min-h-[48px] rounded-2xl border px-4 text-[16px] font-semibold transition-colors ${
+          className={`min-h-[48px] rounded-2xl border px-4 text-[17px] font-semibold transition-colors ${
             t.value === value ? "border-accent bg-accent text-white" : "border-control bg-surface text-ink hover:bg-surface-hover"
           }`}
         >
@@ -220,41 +220,39 @@ function Verdict({ call, audio, onListen }: { call: CallDetail; audio: AudioCont
   const best = a?.coaching.strengths?.[0];
   const fix = a?.coaching.coaching?.[0];
   const needed = a?.score_max && a.grade === "below" ? greenAt(a) : null;
+  const who = call.rep_name ? repWords(call.rep_name) : "they";
 
   return (
     <Card className="p-5 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <div className="flex flex-wrap items-center gap-2 text-[15px]">
             <span className="font-medium">{CALL_TYPE_PLAIN[call.call_type ?? ""] ?? "Call"}</span>
             {call.outcome && call.outcome !== "not_applicable" && (
               <StatusPill status={OUTCOME_STATUS[outcomeTone]} label={OUTCOME_PLAIN[call.outcome] ?? call.outcome} />
             )}
           </div>
           <h1 className="mt-1.5 text-[28px] font-semibold leading-tight tracking-title">{title}</h1>
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-muted">
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[16px] text-muted">
             {call.rep_name && (
               <span className="inline-flex items-center gap-1.5 text-ink">
                 <Avatar name={call.rep_name} size={20} />
-                {call.rep_name}
+                {personLabel(call.rep_name)} took this call
               </span>
             )}
             <span>{dateTime(call.occurred_at ?? call.created_at)}</span>
-            <span>{duration(call.duration_seconds)}</span>
+            {spokenMinutes(call.duration_seconds) && <span>{spokenMinutes(call.duration_seconds)}</span>}
           </p>
           {a?.summary && <Summary text={a.summary} />}
         </div>
 
         {a?.score_max ? (
-          <div className="flex shrink-0 items-center gap-3 sm:block sm:text-right">
-            <p className="tnum text-[34px] font-semibold leading-none tracking-title sm:text-[44px]">
-              {a.score}
-              <span className="text-[20px] font-medium text-muted sm:text-[24px]">/{a.score_max}</span>
-            </p>
-            <div className="flex sm:mt-2 sm:justify-end">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 sm:block sm:text-right">
+            <p className="text-[16px] font-medium text-ink/80">How {who} did</p>
+            <div className="flex sm:mt-1.5 sm:justify-end">
               <StatusPill status={GRADE_STATUS[a.grade ?? ""] ?? "none"} label={a.grade ? GRADE_PLAIN[a.grade] : "Not checked"} />
             </div>
-            <p className="text-[12px] text-muted sm:mt-1.5">
+            <p className="text-[15px] text-muted sm:mt-1.5">
               {needed ? `${needed} more step${needed === 1 ? "" : "s"} to be good` : "call steps done"}
             </p>
           </div>
@@ -264,7 +262,7 @@ function Verdict({ call, audio, onListen }: { call: CallDetail; audio: AudioCont
       <div className="mt-5 flex flex-wrap gap-2 print:hidden">
         {call.audio_url && (
           <button
-            className="btn-primary min-h-[52px] rounded-2xl px-5 text-[17px]"
+            className="btn-primary min-h-[52px] rounded-2xl px-5 text-[18px]"
             onClick={() => {
               onListen();
               audio.toggle();
@@ -282,10 +280,10 @@ function Verdict({ call, audio, onListen }: { call: CallDetail; audio: AudioCont
       {(best || fix) && (
         <div className="mt-5 grid gap-3 border-t border-line pt-5 sm:grid-cols-2 sm:gap-y-0">
           {best && (
-            <Moment tone="good" label="Done well" title={best.title} at={best.start} seg={best.segment_id} audio={audio} />
+            <Moment tone="good" label={`What ${who} did well`} title={best.title} at={best.start} seg={best.segment_id} audio={audio} />
           )}
           {fix && (
-            <Moment tone="bad" label="Do better next time" title={fix.title} at={fix.start} seg={fix.segment_id} audio={audio} />
+            <Moment tone="bad" label={`What ${who} should do next time`} title={fix.title} at={fix.start} seg={fix.segment_id} audio={audio} />
           )}
         </div>
       )}
@@ -298,10 +296,10 @@ function Summary({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const { first, more } = firstSentence(text);
   return (
-    <p className="mt-4 max-w-3xl text-[16px] leading-relaxed">
+    <p className="mt-4 max-w-3xl text-[17px] leading-relaxed">
       {open || !more ? text : first}
       {more && (
-        <button className="ml-1.5 text-[14px] font-medium text-link hover:underline print:hidden" onClick={() => setOpen((o) => !o)}>
+        <button className="ml-1.5 text-[16px] font-medium text-link hover:underline print:hidden" onClick={() => setOpen((o) => !o)}>
           {open ? "Less" : "More"}
         </button>
       )}
@@ -356,7 +354,7 @@ function CallActions({ call, onChanged }: { call: CallDetail; onChanged: () => P
       />
       <TypeDialog call={call} open={typeOpen} onClose={() => setTypeOpen(false)} onDone={onChanged} />
       <Modal open={confirmDelete} onClose={() => !busy && setConfirmDelete(false)} title="Delete this call?">
-        <p className="text-[14px] text-muted">The recording and everything we wrote about it will be gone for good.</p>
+        <p className="text-[16px] text-muted">The recording and everything we wrote about it will be gone for good.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>
             Cancel
@@ -410,11 +408,11 @@ function Moment({
       >
         <Icon className="h-3 w-3" />
       </span>
-      <span className={`block text-[12px] font-semibold ${tone === "good" ? "text-good" : "text-bad"}`}>{label}</span>
-      <span className="block text-[15px] font-medium leading-snug">{title}</span>
+      <span className={`block text-[15px] font-semibold ${tone === "good" ? "text-good" : "text-bad"}`}>{label}</span>
+      <span className="block text-[16px] font-medium leading-snug">{title}</span>
       {at !== null ? (
-        <span className="mt-1 inline-flex items-center gap-1 self-end text-[12px] text-link group-hover:underline">
-          <PlayIcon className="h-2.5 w-2.5" /> Hear it ({clock(at)})
+        <span className="mt-1 inline-flex items-center gap-1 self-end text-[15px] text-link group-hover:underline">
+          <PlayIcon className="h-2.5 w-2.5" /> Hear that part
         </span>
       ) : (
         <span aria-hidden />
@@ -431,29 +429,29 @@ function Coaching({ analysis: a, audio }: { analysis: Analysis; audio: AudioCont
   const shown = all ? tips : tips.slice(0, 1);
   return (
     <Card className="p-5">
-      <h2 className="text-[17px] font-semibold tracking-title">What {a.rep_name ?? "they"} can learn</h2>
+      <h2 className="text-[18px] font-semibold tracking-title">How {a.rep_name ? repWords(a.rep_name) : "they"} can do better</h2>
       <ol className="mt-4 space-y-4">
         {shown.map((tip, i) => (
           <li key={i} className={i ? "border-t border-line pt-4" : ""}>
             <div className="flex items-start justify-between gap-3">
-              <p className="text-[15px] font-semibold leading-snug tracking-tightish">
+              <p className="text-[16px] font-semibold leading-snug tracking-tightish">
                 {tips.length > 1 && `${i + 1}. `}
                 {tip.title}
               </p>
               {tip.start !== null && (
                 <button
                   onClick={() => audio.seek(tip.start as number, tip.segment_id)}
-                  className="tnum inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-medium text-link hover:underline"
+                  className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-3.5 text-[16px] font-medium text-link hover:underline"
                 >
                   <PlayIcon className="h-2.5 w-2.5" />
-                  {clock(tip.start)}
+                  Hear it
                 </button>
               )}
             </div>
-            <p className="mt-1 text-[14px] leading-relaxed text-ink/80">{tip.what_happened}</p>
+            <p className="mt-1 text-[16px] leading-relaxed text-ink/80">{tip.what_happened}</p>
             <div className="mt-2.5 rounded-xl bg-panel px-4 py-3">
-              <p className="text-[12px] font-medium text-muted">Try saying</p>
-              <p className="mt-0.5 text-[14px] leading-relaxed [overflow-wrap:anywhere]">{tip.try_saying}</p>
+              <p className="text-[16px] font-semibold">Say this instead:</p>
+              <p className="mt-0.5 text-[16px] leading-relaxed [overflow-wrap:anywhere]">{tip.try_saying}</p>
             </div>
           </li>
         ))}
@@ -484,15 +482,15 @@ function Scorecard({
   return (
     <Card className="p-5">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[17px] font-semibold tracking-title">The call steps</h2>
-        <span className="tnum text-[14px] text-muted">
+        <h2 className="text-[18px] font-semibold tracking-title">The call steps</h2>
+        <span className="tnum text-[16px] text-muted">
           {a.score} of {a.score_max} done
         </span>
       </div>
 
       {missed.length > 0 && (
         <>
-          <p className="mt-4 text-[13px] font-semibold text-bad">Skipped ({missed.length})</p>
+          <p className="mt-4 text-[15px] font-semibold text-bad">Skipped ({missed.length})</p>
           <ul className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl bg-panel">
             {missed.map((item) => (
               <Step key={item.key} item={item} audio={audio} callId={callId} onChange={onChange} />
@@ -503,7 +501,7 @@ function Scorecard({
 
       {done.length > 0 && (
       <button
-        className="mt-4 flex w-full items-center justify-between text-left text-[13px] font-semibold text-good"
+        className="mt-4 flex w-full items-center justify-between text-left text-[15px] font-semibold text-good"
         onClick={() => setShowDone((s) => !s)}
         aria-expanded={showDone}
       >
@@ -519,7 +517,7 @@ function Scorecard({
         </ul>
       )}
       {a.evidence_verified_pct !== null && (
-        <p className="mt-4 text-[12px] text-muted">
+        <p className="mt-4 text-[15px] text-muted">
           Tap a step to see why. Each one is backed by words from the call.
         </p>
       )}
@@ -556,8 +554,8 @@ function Step({
         >
           {item.awarded ? <CheckIcon className="h-3 w-3" /> : <CrossIcon className="h-2.5 w-2.5" />}
         </span>
-        <span className="flex-1 text-[14px]">{stepName(item.key, item.label)}</span>
-        {item.override && <span className="text-[12px] text-muted">You changed this</span>}
+        <span className="flex-1 text-[16px]">{stepName(item.key, item.label)}</span>
+        {item.override && <span className="text-[15px] text-muted">You changed this</span>}
         {item.agreement === "disputed" && !item.override && (
           <span className="chip bg-warn-soft text-warn" title="We were not sure. Please decide.">
             Please decide
@@ -566,10 +564,10 @@ function Step({
         <ChevronIcon className={`h-4 w-4 shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
-        <div className="space-y-2.5 px-3 pb-3.5 pl-[38px] text-[14px]">
+        <div className="space-y-2.5 px-3 pb-3.5 pl-[38px] text-[16px]">
           <p className="leading-relaxed text-ink/80">{item.reason}</p>
           {(item.rules ?? []).map((r) => (
-            <p key={r} className="rounded-xl bg-accent-soft/60 px-3 py-2 text-[13px] leading-snug">
+            <p key={r} className="rounded-xl bg-accent-soft/60 px-3 py-2 text-[15px] leading-snug">
               <span className="font-medium">Your rule:</span> {r}{" "}
               <Link href="/settings#scoring-rules" className="whitespace-nowrap text-link hover:underline">
                 Change
@@ -581,8 +579,8 @@ function Step({
               onClick={() => audio.seek(evidence.start as number, evidence.segment_id)}
               className="block w-full rounded-xl bg-surface px-3 py-2 text-left transition-colors [overflow-wrap:anywhere] hover:bg-accent-soft"
             >
-              <span className="text-[13px]">“{evidence.quote}”</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-link">
+              <span className="text-[15px]">“{evidence.quote}”</span>
+              <span className="mt-0.5 flex items-center gap-1 text-[15px] text-link">
                 <PlayIcon className="h-2.5 w-2.5" /> Hear it ({clock(evidence.start)})
               </span>
             </button>
@@ -627,7 +625,7 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
   }
   if (item.override) {
     return (
-      <p className="text-[13px] text-muted">
+      <p className="text-[15px] text-muted">
         {item.override.by} marked this as {item.override.status === "met" ? "done" : "skipped"}
         {item.override.note ? `: “${item.override.note}”` : ""}.{" "}
         <button className="text-link hover:underline" disabled={busy} onClick={() => save(null)}>
@@ -639,7 +637,7 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
   const target = item.awarded ? "missed" : "met";
   if (!editing) {
     return (
-      <button className="text-[13px] text-link hover:underline" onClick={() => setEditing(true)}>
+      <button className="text-[15px] text-link hover:underline" onClick={() => setEditing(true)}>
         Not right? Mark it as {target === "met" ? "done" : "skipped"}
       </button>
     );
@@ -648,14 +646,14 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
   return (
     <div className="space-y-2.5">
       <input
-        className="input w-full py-1.5 text-[13px]"
+        className="input w-full py-1.5 text-[15px]"
         placeholder="Why? (optional)"
         aria-label="Reason for the change"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         maxLength={500}
       />
-      <label className="flex cursor-pointer items-start gap-2 text-[13px]">
+      <label className="flex cursor-pointer items-start gap-2 text-[15px]">
         <input
           type="checkbox"
           className="mt-0.5 h-4 w-4 accent-accent"
@@ -664,12 +662,12 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
         />
         <span>
           Check future calls this way too
-          <span className="block text-[12px] text-muted">So the same thing isn&apos;t marked wrong again.</span>
+          <span className="block text-[15px] text-muted">So the same thing isn&apos;t marked wrong again.</span>
         </span>
       </label>
       {keep && (
         <textarea
-          className="input w-full py-1.5 text-[13px]"
+          className="input w-full py-1.5 text-[15px]"
           rows={2}
           placeholder={
             target === "met"
@@ -683,11 +681,11 @@ function Override({ item, callId, onChange }: { item: ScoreItem; callId: string;
         />
       )}
       <div className="flex flex-wrap gap-2">
-        <button className="btn-primary px-3 py-1 text-[13px]" disabled={busy || needsRule} onClick={() => save(target)}>
+        <button className="btn-primary px-3 py-1 text-[15px]" disabled={busy || needsRule} onClick={() => save(target)}>
           {busy && <Spinner className="h-3 w-3" />}
           Mark it as {target === "met" ? "done" : "skipped"}
         </button>
-        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(false)}>
+        <button className="btn-ghost px-3 py-1 text-[15px]" onClick={() => setEditing(false)}>
           Cancel
         </button>
       </div>
@@ -717,10 +715,10 @@ function Details({ analysis: a }: { analysis: Analysis }) {
   if (!rows.length) return null;
   return (
     <Card className="p-5">
-      <h2 className="mb-3 text-[17px] font-semibold tracking-title">Details</h2>
+      <h2 className="mb-3 text-[18px] font-semibold tracking-title">Details</h2>
       <dl className="space-y-2.5">
         {rows.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 text-[14px]">
+          <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 text-[16px]">
             <dt className="text-muted">{k}</dt>
             <dd className="leading-snug [overflow-wrap:anywhere]">{v}</dd>
           </div>
@@ -738,7 +736,7 @@ function StaleGrade({ callId, onDone }: { callId: string; onDone: () => Promise<
   const [busy, setBusy] = useState(false);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-accent-soft px-5 py-4 print:hidden">
-      <p className="text-[14px]">
+      <p className="text-[16px]">
         <span className="font-semibold">You fixed the transcript.</span>{" "}
         <span className="text-ink/80">Check the call again so the steps and coaching use your fixes. Your step changes are kept.</span>
       </p>
@@ -815,13 +813,13 @@ function TypeDialog({
   useEffect(() => setValue(call.call_type ?? ""), [call.call_type, open]);
   return (
     <Modal open={open} onClose={onClose} title="What kind of call was this?">
-      <p className="mb-4 text-[14px] text-muted">We will check the call again using the steps for this kind of call.</p>
+      <p className="mb-4 text-[16px] text-muted">We will check the call again using the steps for this kind of call.</p>
       <div className="grid grid-cols-2 gap-2">
         {CALL_TYPES.map((t) => (
           <button
             key={t.value}
             onClick={() => setValue(t.value)}
-            className={`rounded-xl border px-3 py-2.5 text-left text-[14px] font-medium transition-colors ${
+            className={`rounded-xl border px-3 py-2.5 text-left text-[16px] font-medium transition-colors ${
               value === t.value ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-line hover:bg-panel"
             }`}
           >
@@ -869,7 +867,7 @@ function TypeCheck({ call, analysis, onDone }: { call: CallDetail; analysis: Ana
   const [busy, setBusy] = useState(false);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-soft px-5 py-4 print:hidden">
-      <div className="flex items-start gap-2.5 text-[14px]">
+      <div className="flex items-start gap-2.5 text-[16px]">
         <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
         <p>
           <span className="font-semibold">

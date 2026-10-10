@@ -127,8 +127,15 @@ Beyond the feedback:
     and the latest price.
   - **Call back is a board**, Trello style: Asked about a service → Got a
     price → Still deciding → Said yes / Said no. Four columns on a laptop, two
-    on a tablet, one at a time sideways on a phone; a long column shows five
-    and "Show N more". **List** shows the same people as a ranked list.
+    on a tablet; a long column shows five and "Show N more". **One at a
+    time** shows the same cards in one column, most urgent first, and is what
+    a phone opens on.
+  - **Every v2 page is in plain words**, checked by a test on each page: no
+    percentages, goals, fractions like 6/17, "AI" or scorecard words; nothing
+    that matters under 15px; nothing to tap under 40px. People are "Doing
+    well / Okay / Needs help", goals read "Good: at least half say yes", a
+    call is "2 minutes" taken by "the phone receptionist", and a caller with
+    no name is "Caller with no name".
   - **One card per customer, the same everywhere.** A job on Today about a
     lead opens the very card the board shows. The card leads with a big green
     **Call** button (a `tel:` link with the number on it); after the call it

@@ -227,7 +227,7 @@ export const outbox = {
   practice: true,
   messages: [
     { id: "m2", direction: "in", purpose: "reply", body: "1", phone: "owner", phone_pretty: "", name: "You", to_owner: true, created_at: ago(0) },
-    { id: "m1", direction: "out", purpose: "morning", body: "Good morning!\n$588 a year in quotes is slipping.\n\n1) Text Jordan: Call Jordan Lee back\n\nReply 1 and I'll do it.", phone: "owner", phone_pretty: "", name: "You", to_owner: true, created_at: ago(0) },
+    { id: "m1", direction: "out", purpose: "morning", body: "Good morning!\n1 customer has waited too long for a call back ($588 a year).\n\n1) Text Jordan: Call Jordan Lee back\n\nReply 1 and I'll do it.", phone: "owner", phone_pretty: "", name: "You", to_owner: true, created_at: ago(0) },
     { id: "m0", direction: "out", purpose: "customer", body: "Hi Jordan, it's Dana from ABC Pest Control. Reply STOP to opt out.", phone: "+15551234567", phone_pretty: "(555) 123-4567", name: "Jordan Lee", to_owner: false, created_at: ago(0) },
   ],
 };
