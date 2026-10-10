@@ -144,12 +144,19 @@ export function HowDidItGo({
 }
 
 /** "We don't have their number": type it once, and it's kept. */
-export function AddNumber({ name, onSave }: { name: string; onSave: (phone: string) => Promise<boolean> }) {
+export function AddNumber({ name, onSave, big = false }: { name: string; onSave: (phone: string) => Promise<boolean>; big?: boolean }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const first = name !== "Name not given" ? name.split(/\s+/)[0] : null;
   if (!open) {
-    return (
+    // Where it's the one thing to do, it looks like it.
+    return big ? (
+      <button className="btn-primary min-h-[64px] w-full text-[20px] font-semibold" onClick={() => setOpen(true)}>
+        <PhoneIcon className="h-5 w-5" />
+        {first ? `Add ${first}'s number` : "Add their number"}
+      </button>
+    ) : (
       <button className="btn-secondary min-h-[52px] w-full text-[17px]" onClick={() => setOpen(true)}>
         <PhoneIcon className="h-4 w-4" />
         Add their number
@@ -361,7 +368,7 @@ export function LeadCard({
 
       {!a && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 text-[16px] font-medium text-link">
-          <button className="min-h-[44px]" onClick={() => void onChange({ stage: "follow_up" })}>
+          <button className="min-h-[44px] text-left" onClick={() => void onChange({ stage: "follow_up" })}>
             Move back to Still deciding
           </button>
           {lead.last_call_id && (

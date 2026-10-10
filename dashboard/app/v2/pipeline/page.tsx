@@ -278,7 +278,7 @@ function OneByOne({
                   onCalled={() => window.setTimeout(() => setAsking(true), 600)}
                 />
               ) : (
-                <AddNumber name={lead.name} onSave={async (phone) => onChange(lead, { phone })} />
+                <AddNumber big name={lead.name} onSave={async (phone) => onChange(lead, { phone })} />
               )}
               <div className="grid grid-cols-2 gap-3">
                 <button className="btn-secondary min-h-[52px] px-3 text-[17px]" onClick={() => setAsking(true)}>

@@ -128,6 +128,8 @@ test("Call rings the customer, then asks how it went and moves them", async ({ p
   // No answer puts them at the back; the next person slides in.
   await expect(next).toContainText("Sam Rivera");
   await expect(next).toContainText("2 of 2");
+  // No number yet: adding it is the big button.
+  await expect(next.getByRole("button", { name: "Add Sam's number" })).toBeVisible();
 });
 
 test("a job about a lead opens the same card as the board", async ({ page }) => {
