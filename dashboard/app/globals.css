@@ -34,6 +34,8 @@
     --gold: 138 106 0;
     --gold-soft: 251 245 226;
     --hairline: rgba(0, 0, 0, 0.08);
+    /* Apple's ease: quick to start, long soft landing. */
+    --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
   }
   /* Light by default (data-theme="light"); with Automatic chosen, the
      attribute is removed and the device's setting decides. */
@@ -119,6 +121,9 @@
   :focus-visible {
     @apply outline-none ring-[3px] ring-accent/40 ring-offset-0;
   }
+  html.night {
+    background: #060a1a;
+  }
   ::selection {
     background: rgba(0, 113, 227, 0.18);
   }
@@ -155,7 +160,16 @@
 
   /* Controls */
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 py-[9px] text-[16px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 py-[9px] text-[16px] font-medium disabled:cursor-not-allowed disabled:opacity-40;
+    transition: transform 180ms var(--ease-apple), background-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  }
+  /* Everything you can press gives a little under your finger. */
+  .btn:active:not(:disabled),
+  .press:active {
+    transform: scale(0.97);
+  }
+  .press {
+    transition: transform 180ms var(--ease-apple), background-color 150ms ease, box-shadow 200ms ease;
   }
   .btn-primary {
     @apply btn bg-accent text-white hover:bg-[#0077ed] active:bg-[#006edb];
@@ -211,7 +225,61 @@
     }
   }
   .animate-page-in {
-    animation: page-in 220ms ease-out;
+    animation: page-in 420ms var(--ease-apple);
+  }
+  /* Widgets settle in one after another, like a phone's home screen. */
+  .settle > * {
+    animation: settle 560ms var(--ease-apple) backwards;
+  }
+  .settle > *:nth-child(2) { animation-delay: 50ms; }
+  .settle > *:nth-child(3) { animation-delay: 100ms; }
+  .settle > *:nth-child(4) { animation-delay: 150ms; }
+  .settle > *:nth-child(5) { animation-delay: 200ms; }
+  .settle > *:nth-child(6) { animation-delay: 250ms; }
+  .settle > *:nth-child(n + 7) { animation-delay: 300ms; }
+  .card-in {
+    animation: card-in 520ms var(--ease-apple) backwards;
+  }
+  .card-out {
+    animation: card-out 340ms var(--ease-apple) forwards;
+  }
+  .sheet-in {
+    animation: sheet-in 420ms var(--ease-apple);
+  }
+  .fade-in {
+    animation: page-in 300ms ease-out;
+  }
+  .shake {
+    animation: shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+  /* A green tick that draws itself. */
+  .draw-check {
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
+    animation: draw 520ms 200ms var(--ease-apple) forwards;
+  }
+  .ring-pop {
+    animation: ring-pop 600ms var(--ease-apple) backwards;
+  }
+  /* Sign-in: soft light drifting slowly, never in step with each other. */
+  .aurora {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    opacity: 0.55;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  .aurora-2 {
+    animation-duration: 28s;
+    animation-delay: -6s;
+  }
+  .aurora-3 {
+    animation-duration: 34s;
+    animation-delay: -12s;
+    opacity: 0.4;
+  }
+  .notify-in {
+    animation: notify-in 700ms var(--ease-apple) backwards;
   }
   /* The one big "do it for me" button: a slow shimmer so the eye lands on it. */
   .magic-button {
@@ -245,6 +313,15 @@
   @media (prefers-reduced-motion: reduce) {
     .magic-button,
     .pop-in,
+    .settle > *,
+    .card-in,
+    .card-out,
+    .sheet-in,
+    .fade-in,
+    .shake,
+    .ring-pop,
+    .aurora,
+    .notify-in,
     .animate-page-in,
     .animate-toast-in,
     .animate-menu-in {
@@ -259,8 +336,6 @@
   }
 }
 
-/* Opacity only: animating transform would make the page the containing block
-   for its fixed-position dialogs, shifting them off-centre. */
 @keyframes magic-shimmer {
   0%,
   100% {
@@ -281,12 +356,93 @@
   }
 }
 
+/* Pages rise a few pixels as they appear. Dialogs and panels render on the
+   body (portals), so the moving page never becomes their containing block. */
 @keyframes page-in {
   from {
     opacity: 0;
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
+    transform: none;
+  }
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateX(48px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes card-out {
+  to {
+    opacity: 0;
+    transform: translateX(-64px) scale(0.96);
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-8px); }
+  40%, 60% { transform: translateX(8px); }
+}
+@keyframes drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(6vmax, 4vmax) scale(1.12);
+  }
+  100% {
+    transform: translate(-4vmax, 7vmax) scale(0.95);
+  }
+}
+@keyframes notify-in {
+  from {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.96);
+  }
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ring-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  to {
+    transform: none;
   }
 }
 

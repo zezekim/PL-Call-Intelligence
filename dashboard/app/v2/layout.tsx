@@ -15,9 +15,9 @@ type Range = "7" | "30" | "all";
 // along the bottom of a phone) moves between them. Today draws its own
 // header: it is one job at a time, with nothing else on the page.
 const TABS = [
-  { href: "/v2/pipeline", title: "People to call back", about: "Customers still deciding. Call them before they go somewhere else." },
-  { href: "/v2/reps", title: "Your team", about: "How each person is doing on their calls." },
-  { href: "/v2/calls", title: "All calls", about: "Every call, newest first. Tap one to hear it." },
+  { href: "/v2/pipeline", title: "Call back", about: "People still deciding. Call them before they go somewhere else." },
+  { href: "/v2/reps", title: "Team", about: "How each person is doing, and what to help them with." },
+  { href: "/v2/calls", title: "Calls", about: "Every call, newest first. Tap one to hear it." },
 ];
 
 const RANGE_KEY = "pestlaunch.range";
@@ -96,12 +96,12 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
           <div className="mb-8">
             <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
               <div className="min-w-0">
-                <h1 className="large-title">{tab.title}</h1>
-                <p className="mt-2 text-[16px] leading-snug text-ink/80">{tab.about}</p>
+                <h1 className="text-[34px] font-bold leading-tight tracking-title sm:text-[40px]">{tab.title}</h1>
+                <p className="mt-1 text-[18px] leading-snug text-ink/75">{tab.about}</p>
               </div>
-              <button className="btn-primary" onClick={() => setUploadOpen(true)}>
+              <button className="btn-secondary" onClick={() => setUploadOpen(true)}>
                 <UploadIcon className="h-4 w-4" />
-                Add a call recording
+                Add a call
               </button>
             </div>
             {ranged && (

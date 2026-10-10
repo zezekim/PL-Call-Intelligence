@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Grade } from "@/lib/api";
 import {
   GRADE_LABEL,
@@ -344,9 +345,11 @@ export function Modal({
   useDialog(open, onClose, ref);
 
   if (!open) return null;
-  return (
+  // On the body, so a page that is still moving in can't carry it along.
+  // On a phone it rises from the bottom like an iPhone sheet.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-3 backdrop-blur-[6px] sm:items-center sm:p-6"
+      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-[6px] sm:items-center sm:p-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -354,12 +357,13 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-[460px] rounded-[22px] bg-surface/95 p-6 shadow-pop backdrop-blur-xl"
+        className="sheet-in max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-surface px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 shadow-pop sm:max-w-[480px] sm:rounded-[28px] sm:pt-6"
       >
+        <span className="mx-auto mb-3 block h-1.5 w-10 rounded-full bg-ink/15 sm:hidden" aria-hidden />
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-[19px] font-semibold tracking-title">{title}</h2>
+          <h2 className="text-[21px] font-semibold tracking-title">{title}</h2>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-fill text-[13px] text-muted hover:bg-fill-hover"
+            className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fill text-[15px] text-ink/70 hover:bg-fill-hover"
             onClick={onClose}
             aria-label="Close"
           >
@@ -368,6 +372,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -22,10 +22,10 @@ test("signs in and every page renders without errors", async ({ page }) => {
 
   // The v2 owner views render too.
   for (const [path, heading] of [
-    ["/v2", /^Today$/],
-    ["/v2/pipeline", "People to call back"],
-    ["/v2/reps", "Your team"],
-    ["/v2/calls", "All calls"],
+    ["/v2", /^Good (morning|afternoon|evening)$/],
+    ["/v2/pipeline", "Call back"],
+    ["/v2/reps", "Team"],
+    ["/v2/calls", "Calls"],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();

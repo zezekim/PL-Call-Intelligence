@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Today gives the answer first, then one button per job", async ({ page }) => {
+test("Today is one job at a time: one big button, Later, and what's coming up", async ({ page }) => {
   const sent: unknown[] = [];
   await mockApi(page, {
     [`POST /intel/actions/${ACTION_ID}/perform`]: async (route) => {
@@ -23,33 +23,32 @@ test("Today gives the answer first, then one button per job", async ({ page }) =
     },
   });
   await page.goto("/v2");
-  // The coloured sentence names the most urgent job and how many more there are.
-  const first = page.getByRole("region", { name: "What to do first" });
-  await expect(first).toContainText("Do this first");
-  await expect(first).toContainText("A customer cancelled because they no longer need it. Nobody tried to keep them.");
-  await expect(page.getByText("You have 5 things to do. Start with the first one.")).toBeVisible();
-  // Four tiles, each saying in a word how it's going.
+  await expect(page.getByRole("heading", { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeVisible();
+  await expect(page.getByText("5 things to do today.")).toBeVisible();
+  // One job, said in one sentence, with how far through the day you are.
+  const next = page.getByRole("region", { name: "Up next" });
+  await expect(next).toContainText("A customer cancelled because they no longer need it. Nobody tried to keep them.");
+  await expect(next).toContainText("1 of 5");
+  await expect(page.getByRole("region", { name: "Coming up" }).locator("li")).toHaveCount(3);
+  // Four widgets, each a word and a plain count.
   const numbers = page.getByRole("region", { name: "How it's going" });
   await expect(numbers.getByRole("link", { name: /New callers.*Good.*7 of 13 said yes/ })).toBeVisible();
   await expect(numbers.getByRole("link", { name: /People to call back/ })).toBeVisible();
-  // Three jobs at a time, one button each.
-  const jobs = page.getByRole("region", { name: "Your to-do list" });
-  await expect(jobs.locator("li")).toHaveCount(3);
-  await jobs.getByRole("button", { name: "Show the other 2" }).click();
-  await expect(jobs.locator("li")).toHaveCount(5);
   await expect(page.getByRole("region", { name: "Your team" }).getByRole("link", { name: /Dana.*Needs to work on: Explain the plan/ })).toBeVisible();
   await expect(page.getByRole("region", { name: "Waiting for a yes" })).toContainText("Jordan Lee");
-  // Jordan's text is written: one tap opens it, one more sends it.
-  await jobs.getByRole("button", { name: "Text Jordan →" }).click();
+  // Later puts it at the back; Jordan is next, and his text is one tap away.
+  await next.getByRole("button", { name: "Later" }).click();
+  await expect(next).toContainText("Call Jordan Lee back");
+  await next.getByRole("button", { name: "Text Jordan →" }).click();
   await page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" }).click();
   await expect.poll(() => sent).toEqual([{ body: null, phone: null }]);
 });
 
-test("a job opens its call beside the list, with the job's button at the bottom", async ({ page }) => {
+test("a job opens its call beside the page, with the job's button at the bottom", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2");
-  const jobs = page.getByRole("region", { name: "Your to-do list" });
-  await jobs.getByRole("button", { name: "Hear what happened →" }).click();
+  const next = page.getByRole("region", { name: "Up next" });
+  await next.getByRole("button", { name: "Hear what happened →" }).click();
   const drawer = page.getByRole("dialog", { name: "Call with a customer" });
   await expect(drawer).toContainText("The caller asked about ants and rodents");
   await expect(drawer).toContainText("How the receptionist did");
@@ -60,21 +59,21 @@ test("a job opens its call beside the list, with the job's button at the bottom"
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   // A job with a written text: the drawer's button opens the same text.
-  await jobs.locator("li", { hasText: "Call Jordan Lee back" }).getByRole("button", { name: "What happened on the call?" }).click();
+  await next.getByRole("button", { name: "Later" }).click();
+  await next.getByRole("button", { name: "What happened?" }).click();
   await drawer.getByRole("button", { name: "Text Jordan →" }).click();
   await expect(drawer).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Call Jordan Lee back" }).getByRole("button", { name: "Send text" })).toBeVisible();
 });
 
-test("Today can look at the last 7 or 30 days, and remembers the choice", async ({ page }) => {
-  const asked: string[] = [];
-  page.on("request", (r) => r.url().includes("/intel/v2/brief") && asked.push(new URL(r.url()).search));
+test("See all lists every job, each with its own button", async ({ page }) => {
   await mockApi(page);
   await page.goto("/v2");
-  await page.getByRole("group", { name: "Calls from" }).getByRole("tab", { name: "7 days" }).click();
-  await expect.poll(() => asked).toContain("?days=7");
-  await page.reload();
-  await expect(page.getByRole("tab", { name: "7 days" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("region", { name: "Coming up" }).getByRole("button", { name: "See all 5" }).click();
+  const all = page.getByRole("dialog", { name: "Everything to do (5)" });
+  await expect(all.getByRole("list", { name: "Your to-do list" }).locator("li")).toHaveCount(5);
+  await all.getByRole("button", { name: "Text Jordan →" }).click();
+  await expect(page.getByRole("dialog", { name: "Call Jordan Lee back" })).toBeVisible();
 });
 
 // Written for someone with no training: no percentages, goals, fractions or
@@ -129,7 +128,9 @@ test("a job about a lead opens the same card as the board", async ({ page }) => 
       route.fulfill({ json: { ...brief, todo: brief.todo.map((t) => ({ ...t, actions: [] })) } }),
   });
   await page.goto("/v2");
-  await page.getByRole("region", { name: "Your to-do list" }).getByRole("button", { name: "Call Jordan →" }).click();
+  const next = page.getByRole("region", { name: "Up next" });
+  await next.getByRole("button", { name: "Later" }).click();
+  await next.getByRole("button", { name: "Call Jordan →" }).click();
   const card = page.getByRole("dialog", { name: "Jordan Lee" });
   await expect(card.getByText("Late by 2 days")).toBeVisible();
   await expect(card.getByRole("link", { name: "Call Jordan on (555) 123-4567" })).toBeVisible();
@@ -160,7 +161,9 @@ test("a to-do is ready to send, and the third send offers autopilot", async ({ p
   });
   await page.goto("/v2");
   await expect(page.getByText("Jordan got a price of $588 and has not said yes yet.", { exact: false }).first()).toBeVisible();
-  await page.getByRole("region", { name: "Your to-do list" }).getByRole("button", { name: "Text Jordan →" }).click();
+  const next = page.getByRole("region", { name: "Up next" });
+  await next.getByRole("button", { name: "Later" }).click();
+  await next.getByRole("button", { name: "Text Jordan →" }).click();
   const sheet = page.getByRole("dialog", { name: "Call Jordan Lee back" });
   await expect(sheet.getByText("(555) 123-4567")).toBeVisible();
   await expect(sheet.getByRole("textbox")).toHaveValue(/\$49 quote for the ants/);
@@ -294,6 +297,18 @@ test("nothing spills sideways on a phone", async ({ page }) => {
     await page.waitForLoadState("networkidle");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, path).toBeLessThanOrEqual(0);
+    // The app clips sideways overflow, so also look for anything cut off at the edge.
+    await page.waitForTimeout(700);
+    const cut = await page.evaluate(() =>
+      [...document.querySelectorAll("main *")]
+        .filter((el) => {
+          const b = el.getBoundingClientRect();
+          return b.width > 0 && b.right > document.documentElement.clientWidth + 1 && !el.closest("[class*='overflow-x-auto'], .sr-only, [aria-hidden=true]");
+        })
+        .map((el) => (el.textContent ?? "").trim().slice(0, 30))
+        .slice(0, 3),
+    );
+    expect(cut, path).toEqual([]);
   }
 });
 

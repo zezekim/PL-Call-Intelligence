@@ -7,6 +7,7 @@ import { api, clearToken, getToken, type Me } from "@/lib/api";
 import { setBusinessZone } from "@/lib/format";
 import { TextSizePicker, useTextZoom } from "@/components/v2/text-size";
 import { APP_VERSION, BUILD_ID } from "@/lib/version";
+import { AppMark, Tile, type Tint } from "./brand";
 import { EnvironmentPrompt } from "./environment";
 import { RouteProgress, startProgress } from "./route-progress";
 import { UpdateNotice } from "./update-notice";
@@ -38,12 +39,12 @@ const NAV = [
 ];
 
 // The owner's app: only pages that work, in plain words, biggest first.
-const SIMPLE_NAV = [
-  { label: "Today", icon: HomeIcon, href: "/v2", exact: true },
-  { label: "Call back", icon: CallBackIcon, href: "/v2/pipeline" },
-  { label: "My team", icon: TeamIcon, href: "/v2/reps" },
-  { label: "All calls", icon: PhoneIcon, href: "/v2/calls" },
-  { label: "Texts", icon: MessageIcon, href: "/v2/outbox" },
+const SIMPLE_NAV: { label: string; icon: (p: { className?: string }) => React.ReactNode; href: string; exact?: boolean; tint: Tint }[] = [
+  { label: "Today", icon: HomeIcon, href: "/v2", exact: true, tint: "orange" },
+  { label: "Call back", icon: CallBackIcon, href: "/v2/pipeline", tint: "green" },
+  { label: "Team", icon: TeamIcon, href: "/v2/reps", tint: "indigo" },
+  { label: "Calls", icon: PhoneIcon, href: "/v2/calls", tint: "blue" },
+  { label: "Texts", icon: MessageIcon, href: "/v2/outbox", tint: "teal" },
 ];
 
 function isOn(pathname: string, href: string, exact?: boolean): boolean {
@@ -123,13 +124,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           menuOpen ? "translate-x-0 shadow-pop" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center gap-2.5 px-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-ink text-[13px] font-semibold text-canvas">
-            {company.slice(0, 1).toUpperCase()}
-          </span>
+        <div className="flex items-center gap-3 px-2">
+          <AppMark size={38} />
           <div className="min-w-0 leading-tight">
-            <p className="truncate text-[14px] font-semibold tracking-tightish">{company}</p>
-            <p className="text-[12px] text-muted">PestLaunch OS</p>
+            <p className="text-[16px] font-semibold tracking-title">PestLaunch</p>
+            <p className="truncate text-[13px] text-muted">{company}</p>
           </div>
         </div>
 
@@ -137,18 +136,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         {simple ? (
           <nav className="mt-5 flex flex-1 flex-col gap-1" aria-label="Main">
-            {SIMPLE_NAV.map(({ label, icon: Icon, href, exact }) => {
+            {SIMPLE_NAV.map(({ label, icon: Icon, href, exact, tint }) => {
               const active = isOn(pathname, href, exact);
               return (
                 <Link
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[16px] ${
-                    active ? "bg-accent-soft text-link font-semibold" : "font-medium text-ink hover:bg-ink/[0.05]"
+                  className={`press flex items-center gap-3 rounded-xl px-2.5 py-2 text-[16px] hover:no-underline ${
+                    active ? "bg-ink/[0.07] font-semibold text-ink" : "font-medium text-ink hover:bg-ink/[0.04]"
                   }`}
                 >
-                  <Icon className="h-[22px] w-[22px]" />
+                  <Tile tint={tint} size={30}>
+                    <Icon />
+                  </Tile>
                   {label}
                 </Link>
               );
@@ -199,11 +200,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <Link
             href="/settings"
             aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-            className={`mb-1 flex items-center gap-2.5 rounded-lg px-2.5 ${simple ? "py-2 text-[15px]" : "py-[6px] text-[14px]"} ${
-              pathname.startsWith("/settings") ? "bg-ink/[0.07] font-medium text-ink" : "text-ink hover:bg-ink/[0.04]"
+            className={`press mb-1 flex items-center gap-3 rounded-xl px-2.5 hover:no-underline ${simple ? "py-2 text-[16px]" : "py-[6px] text-[14px]"} ${
+              pathname.startsWith("/settings") ? "bg-ink/[0.07] font-semibold text-ink" : "font-medium text-ink hover:bg-ink/[0.04]"
             }`}
           >
-            <SettingsIcon />
+            {simple ? (
+              <Tile tint="gray" size={30}>
+                <SettingsIcon />
+              </Tile>
+            ) : (
+              <SettingsIcon />
+            )}
             Settings
           </Link>
           {me && <p className="truncate px-2.5 pb-1 pt-1 text-[12px] text-muted">{me.email}</p>}
@@ -235,14 +242,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </svg>
           {simple && <span className="text-[15px]">Menu</span>}
         </button>
-        <span className="text-[15px] font-semibold tracking-tightish">{company}</span>
+        <span className="flex items-center gap-2 text-[16px] font-semibold tracking-tightish">
+          <AppMark size={26} />
+          {company}
+        </span>
       </header>
 
       {simple && (
         // On a phone the main pages are always one thumb away, with words under each picture.
         <nav
           aria-label="Pages"
-          className="print:hidden fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden"
+          className="print:hidden fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-hairline bg-surface/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 lg:hidden"
         >
           {SIMPLE_NAV.map(({ label, icon: Icon, href, exact }) => {
             const active = isOn(pathname, href, exact);
@@ -251,11 +261,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-[12px] ${
-                  active ? "font-semibold text-link" : "text-ink/80"
+                className={`press flex min-h-[62px] flex-col items-center justify-center gap-1 text-[12px] hover:no-underline ${
+                  active ? "font-semibold text-link" : "font-medium text-ink/70"
                 }`}
               >
-                <Icon className="h-6 w-6" />
+                <Icon className={`h-[26px] w-[26px] transition-transform duration-300 ${active ? "scale-110" : ""}`} />
                 {label}
               </Link>
             );
