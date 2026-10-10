@@ -189,7 +189,7 @@ export default function SettingsPage() {
         </div>
         <div className="flex items-center gap-2">
           {saved && (
-            <span className="inline-flex items-center gap-1 text-[14px] text-good">
+            <span className="inline-flex items-center gap-1 text-[16px] text-good">
               <CheckIcon className="h-4 w-4" /> Saved
             </span>
           )}
@@ -221,7 +221,7 @@ export default function SettingsPage() {
         <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 rounded-2xl border border-control bg-surface px-5 text-[17px] font-semibold [&::-webkit-details-marker]:hidden">
           <span className="transition-transform group-open:rotate-90" aria-hidden>›</span>
           Advanced settings
-          <span className="text-[14px] font-normal text-muted">For the person who set up the system</span>
+          <span className="text-[16px] font-normal text-muted">For the person who set up the system</span>
         </summary>
         <div className="space-y-5 pt-2">
           {SECTIONS.filter((x) => !OWNER_SECTIONS.includes(x.title)).map(renderSection)}
@@ -231,14 +231,14 @@ export default function SettingsPage() {
       </details>
 
       <Modal open={confirming} onClose={() => !saving && setConfirming(false)} title="Save these changes?">
-        <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[14px] leading-snug">
+        <div className="flex gap-3 rounded-2xl bg-warn-soft p-4 text-[16px] leading-snug">
           <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
           <p>
             Changing these settings can break the demo. A wrong or missing key stops calls from
             being transcribed, scored or answered until it is fixed.
           </p>
         </div>
-        <ul className="mt-4 space-y-1.5 text-[14px]">
+        <ul className="mt-4 space-y-1.5 text-[16px]">
           {Object.keys(edits).map((k) => (
             <li key={k} className="flex justify-between gap-3">
               <span>{byKey[k]?.label ?? k}</span>
@@ -310,7 +310,7 @@ function FieldRow({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 text-[14px] ${field.is_set ? "text-ink" : "text-muted"}`}>
+          <span className={`inline-flex items-center gap-1.5 text-[16px] ${field.is_set ? "text-ink" : "text-muted"}`}>
             <span className={`h-[7px] w-[7px] rounded-full ${field.is_set ? "bg-[#34c759]" : "bg-neutral"}`} />
             {field.is_set ? "Set" : "Not set"}
           </span>
@@ -328,7 +328,7 @@ function FieldRow({
   } else if (field.kind === "bool") {
     const current = (edit ?? field.value) === "true";
     control = (
-      <label className="inline-flex cursor-pointer items-center gap-2 text-[14px]">
+      <label className="inline-flex cursor-pointer items-center gap-2 text-[16px]">
         <input
           type="checkbox"
           aria-label={field.label}
@@ -390,8 +390,8 @@ function FieldRow({
   return (
     <div className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:items-center sm:gap-8">
       <div>
-        <p className="text-[15px]">{field.label}</p>
-        {field.help && <p className="mt-0.5 text-[12px] leading-snug text-muted">{field.help}</p>}
+        <p className="text-[16px]">{field.label}</p>
+        {field.help && <p className="mt-0.5 text-[15px] leading-snug text-muted">{field.help}</p>}
       </div>
       <div className="flex sm:justify-end">{control}</div>
     </div>
@@ -464,8 +464,8 @@ function ConnectNumber({ disabled }: { disabled: boolean }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-surface px-5 py-4">
-      <div className="min-w-0 flex-1 text-[14px]">
-        <p className="text-[15px]">Connect the number</p>
+      <div className="min-w-0 flex-1 text-[16px]">
+        <p className="text-[16px]">Connect the number</p>
         <p className="text-muted">
           Points the Twilio number at this site so incoming calls reach the receptionist.
         </p>
@@ -502,7 +502,7 @@ function SpendMeter({ spent, cap }: { spent: number; cap: number }) {
   const tone = pctUsed >= 100 ? "bg-[#ff3b30]" : pctUsed >= 75 ? "bg-[#ff9f0a]" : "bg-accent";
   return (
     <div className="mt-3 rounded-2xl border border-hairline bg-surface px-5 py-4">
-      <div className="flex items-baseline justify-between text-[15px]">
+      <div className="flex items-baseline justify-between text-[16px]">
         <span>Spent today</span>
         <span className="tnum">
           ${spent.toFixed(2)} {cap > 0 ? `of $${cap.toFixed(2)}` : "(no cap)"}
@@ -582,8 +582,8 @@ function DoneForYouPanel() {
               disabled={!biz.data || !!busy}
               onChange={(e) => run("practice", () => api.patch("/settings", { practice_mode: e.target.checked }))}
             />
-            <span className="text-[14px]">
-              <span className="text-[15px] font-semibold">Practice mode</span>
+            <span className="text-[16px]">
+              <span className="text-[16px] font-semibold">Practice mode</span>
               <span className="block text-ink/80">
                 Texts are shown on the Texts page instead of being sent. Everything else works the same, and you can answer
                 them there to see what happens. Use it until a texting service (like Twilio) is connected.
@@ -597,8 +597,8 @@ function DoneForYouPanel() {
           </label>
         </div>
         <div className="p-5">
-          <p className="text-[15px] font-semibold">Morning text</p>
-          <p className="mt-0.5 max-w-2xl text-[14px] text-ink/80">
+          <p className="text-[16px] font-semibold">Morning text</p>
+          <p className="mt-0.5 max-w-2xl text-[16px] text-ink/80">
             At 8am you get a text with what&apos;s at stake and the top three things to do. Reply 1, 2 or 3 and it&apos;s
             done. Replies from customers come to you the same way.
           </p>
@@ -628,7 +628,7 @@ function DoneForYouPanel() {
               </button>
             )}
           </div>
-          <label className="mt-3 inline-flex min-h-[44px] cursor-pointer items-center gap-2.5 text-[14px]">
+          <label className="mt-3 inline-flex min-h-[44px] cursor-pointer items-center gap-2.5 text-[16px]">
             <input
               type="checkbox"
               className="h-5 w-5 accent-[#0071e3]"
@@ -660,8 +660,8 @@ function DoneForYouPanel() {
         </div>
 
         <div className="p-5">
-          <p className="text-[15px] font-semibold">Autopilot</p>
-          <p className="mt-0.5 max-w-2xl text-[14px] text-ink/80">
+          <p className="text-[16px] font-semibold">Autopilot</p>
+          <p className="mt-0.5 max-w-2xl text-[16px] text-ink/80">
             Turned on, these are sent without asking, between 9am and 7pm Monday to Saturday. Everything sent shows on
             Today, and nobody who replied STOP is texted again.
           </p>
@@ -681,11 +681,11 @@ function DoneForYouPanel() {
                         run(kind, () => api.put("/intel/actions/autopilot", { kind, on: e.target.checked }))
                       }
                     />
-                    <span className="text-[14px]">
+                    <span className="text-[16px]">
                       <span className="font-medium">Send {KIND_WORDS[kind].many} for me</span>
                       <span className="block text-ink/80">{KIND_WORDS[kind].detail}</span>
                       {sent > 0 && (
-                        <span className="block text-[12px] text-muted">
+                        <span className="block text-[15px] text-muted">
                           You&apos;ve sent {sent} yourself in the last 60 days.
                         </span>
                       )}
@@ -697,7 +697,7 @@ function DoneForYouPanel() {
           </ul>
         </div>
         {note && (
-          <p className={`px-5 py-3 text-[14px] ${note.tone === "good" ? "text-good" : "text-bad"}`} role="status">
+          <p className={`px-5 py-3 text-[16px] ${note.tone === "good" ? "text-good" : "text-bad"}`} role="status">
             {note.text}
           </p>
         )}
@@ -743,7 +743,7 @@ function ScoringRulesPanel() {
       <div className="card p-5">
         {error && !data && <ErrorNote message={error} />}
         {data && rules.length === 0 && (
-          <p className="text-[14px] text-muted">
+          <p className="text-[16px] text-muted">
             No rules yet. Open a call, tap a step, choose <em>Not right?</em>, and tick the box to make one.
           </p>
         )}
@@ -753,12 +753,12 @@ function ScoringRulesPanel() {
               <li key={r.id} className="py-3 first:pt-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-muted">
+                    <p className="text-[15px] text-muted">
                       {r.scorecard_name} · <span className="font-medium text-ink">{r.step_label}</span>
                     </p>
                     {editing?.id === r.id ? (
                       <textarea
-                        className="input mt-1.5 w-full py-1.5 text-[14px]"
+                        className="input mt-1.5 w-full py-1.5 text-[16px]"
                         rows={2}
                         maxLength={300}
                         value={editing.text}
@@ -766,9 +766,9 @@ function ScoringRulesPanel() {
                         onChange={(e) => setEditing({ id: r.id, text: e.target.value })}
                       />
                     ) : (
-                      <p className={`mt-0.5 text-[14px] leading-snug ${r.active ? "" : "text-muted line-through"}`}>{r.text}</p>
+                      <p className={`mt-0.5 text-[16px] leading-snug ${r.active ? "" : "text-muted line-through"}`}>{r.text}</p>
                     )}
-                    <p className="mt-1 text-[12px] text-muted">
+                    <p className="mt-1 text-[15px] text-muted">
                       {r.created_by ?? "A manager"} · {new Date(r.created_at).toLocaleDateString()}
                       {r.source_call_id && (
                         <>
@@ -784,7 +784,7 @@ function ScoringRulesPanel() {
                     {editing?.id === r.id ? (
                       <>
                         <button
-                          className="btn-primary px-3 py-1 text-[13px]"
+                          className="btn-primary px-3 py-1 text-[15px]"
                           disabled={!!busy || !editing.text.trim()}
                           onClick={() =>
                             run(`save-${r.id}`, async () => {
@@ -797,17 +797,17 @@ function ScoringRulesPanel() {
                           {busy === `save-${r.id}` && <Spinner className="h-3 w-3" />}
                           Save
                         </button>
-                        <button className="btn-ghost px-3 py-1 text-[13px]" onClick={() => setEditing(null)}>
+                        <button className="btn-ghost px-3 py-1 text-[15px]" onClick={() => setEditing(null)}>
                           Cancel
                         </button>
                       </>
                     ) : (
                       <>
-                        <button className="btn-ghost px-3 py-1 text-[13px]" disabled={!!busy} onClick={() => setEditing({ id: r.id, text: r.text })}>
+                        <button className="btn-ghost px-3 py-1 text-[15px]" disabled={!!busy} onClick={() => setEditing({ id: r.id, text: r.text })}>
                           Edit
                         </button>
                         <button
-                          className="btn-secondary px-3 py-1 text-[13px]"
+                          className="btn-secondary px-3 py-1 text-[15px]"
                           disabled={!!busy}
                           onClick={() => run(`toggle-${r.id}`, () => api.patch(`/intel/rules/${r.id}`, { active: !r.active }))}
                         >
@@ -815,7 +815,7 @@ function ScoringRulesPanel() {
                           {r.active ? "Turn off" : "Turn on"}
                         </button>
                         <button
-                          className="btn-ghost px-3 py-1 text-[13px] text-bad"
+                          className="btn-ghost px-3 py-1 text-[15px] text-bad"
                           disabled={!!busy}
                           onClick={() => {
                             setData({ ...(data as ScoringRules), rules: rules.filter((x) => x.id !== r.id) });
@@ -834,7 +834,7 @@ function ScoringRulesPanel() {
         )}
         {calls > 0 && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-            <p className="text-[13px] text-muted">
+            <p className="text-[15px] text-muted">
               {queued !== null
                 ? `Checking ${queued} call${queued === 1 ? "" : "s"} again. Grades update as each one finishes.`
                 : `Past calls were graded before some of these rules. ${calls} call${calls === 1 ? "" : "s"} can be checked again.`}
@@ -851,7 +851,7 @@ function ScoringRulesPanel() {
         )}
       </div>
       <Modal open={confirm} onClose={() => busy !== "rescore" && setConfirm(false)} title="Check past calls again?">
-        <p className="text-[14px] text-muted">
+        <p className="text-[16px] text-muted">
           {calls} call{calls === 1 ? "" : "s"} will be graded again with your rules
           {cost > 0 ? `, for about $${cost.toFixed(2)} in AI usage` : ""}. Transcripts and your own step changes are kept.
           The daily spending cap still applies.
@@ -917,13 +917,13 @@ function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
       </p>
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-[14px]">
+          <div className="text-[16px]">
             <span className="inline-flex items-center gap-1.5">
               <span className={`h-[7px] w-[7px] rounded-full ${published ? "bg-[#34c759]" : "bg-neutral"}`} />
               {published ? (live ? "Published - the receptionist is using this" : "Published version differs from this draft") : "Not published"}
             </span>
             {draft && (
-              <p className="mt-0.5 text-[12px] text-muted">
+              <p className="mt-0.5 text-[15px] text-muted">
                 Learned from {draft.source_calls} graded calls
                 {draft.removed_items ? ` · ${draft.removed_items} entries removed for privacy` : ""}
               </p>
@@ -971,7 +971,7 @@ function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
           </div>
         </div>
         {busy === "generate" && (
-          <p className="mt-3 text-[13px] text-muted">Reading your calls. This takes about a minute.</p>
+          <p className="mt-3 text-[15px] text-muted">Reading your calls. This takes about a minute.</p>
         )}
         {(failure || error) && (
           <div className="mt-3">
@@ -980,7 +980,7 @@ function PlaybookPanel({ canEdit }: { canEdit: boolean }) {
         )}
         {draft && (
           <textarea
-            className="input mt-4 min-h-[320px] font-mono text-[13px] leading-relaxed"
+            className="input mt-4 min-h-[320px] font-mono text-[15px] leading-relaxed"
             value={value}
             onChange={(e) => setText(e.target.value)}
             disabled={!canEdit}
@@ -1092,18 +1092,18 @@ function TeamPanel({ canEdit }: { canEdit: boolean }) {
           <div key={u.id} className="px-5 py-3.5">
             <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px]">
+                <p className="truncate text-[16px]">
                   {u.email}
                   {u.is_current_user && <span className="text-muted"> (you)</span>}
                 </p>
-                <p className="text-[12px] text-muted">{ROLE_LABEL[u.role] ?? u.role}</p>
+                <p className="text-[15px] text-muted">{ROLE_LABEL[u.role] ?? u.role}</p>
               </div>
               {canEdit && !u.is_current_user && (
                 <div className="flex gap-2">
-                  <button className="btn-secondary px-3 py-1 text-[13px]" onClick={() => setResetting(resetting === u.id ? null : u.id)}>
+                  <button className="btn-secondary px-3 py-1 text-[15px]" onClick={() => setResetting(resetting === u.id ? null : u.id)}>
                     Set password
                   </button>
-                  <button className="btn-danger px-3 py-1 text-[13px]" onClick={() => setRemoving(u)}>
+                  <button className="btn-danger px-3 py-1 text-[15px]" onClick={() => setRemoving(u)}>
                     Remove
                   </button>
                 </div>
@@ -1138,7 +1138,7 @@ function TeamPanel({ canEdit }: { canEdit: boolean }) {
         ))}
       </div>
       <Modal open={!!removing} onClose={() => setRemoving(null)} title="Remove this person?">
-        <p className="text-[14px] text-muted">{removing?.email} will no longer be able to sign in.</p>
+        <p className="text-[16px] text-muted">{removing?.email} will no longer be able to sign in.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-secondary" onClick={() => setRemoving(null)}>
             Cancel
@@ -1204,7 +1204,7 @@ function AccountPanel() {
         >
           Change password
         </button>
-        {message && <p className={`w-full text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
+        {message && <p className={`w-full text-[15px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
       </div>
     </section>
   );
@@ -1264,8 +1264,8 @@ function BusinessPanel({ canEdit }: { canEdit: boolean }) {
   const row = (label: string, help: string, control: React.ReactNode) => (
     <div className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:items-center sm:gap-8">
       <div>
-        <p className="text-[15px]">{label}</p>
-        <p className="mt-0.5 text-[12px] leading-snug text-muted">{help}</p>
+        <p className="text-[16px]">{label}</p>
+        <p className="mt-0.5 text-[15px] leading-snug text-muted">{help}</p>
       </div>
       <div className="flex sm:justify-end">{control}</div>
     </div>
@@ -1323,7 +1323,7 @@ function BusinessPanel({ canEdit }: { canEdit: boolean }) {
       </div>
       {(dirty || message) && (
         <div className="mt-3 flex items-center justify-end gap-3 px-1">
-          {message && <p className={`text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
+          {message && <p className={`text-[15px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
           {dirty && (
             <>
               <button className="btn-secondary" onClick={() => setEdits({})} disabled={busy}>
@@ -1349,7 +1349,7 @@ function TranscriptionChoice() {
     <section className="pt-3">
       <h2 className="section-title px-1">Where calls are transcribed</h2>
       <div className="card mt-3 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-        <span className="text-[15px]">{ENVIRONMENTS.find((e) => e.value === env)?.label ?? "Cloud"}</span>
+        <span className="text-[16px]">{ENVIRONMENTS.find((e) => e.value === env)?.label ?? "Cloud"}</span>
         <button className="btn-secondary" onClick={() => setOpen(true)}>
           Change
         </button>
@@ -1368,7 +1368,7 @@ function AppearancePanel() {
       <h2 className="section-title px-1">Appearance</h2>
       <p className="footnote mb-3 mt-1 px-1">Applies to this browser only.</p>
       <div className="card flex items-center justify-between gap-4 px-5 py-4">
-        <span className="text-[15px]">Theme</span>
+        <span className="text-[16px]">Theme</span>
         <Segmented<Theme>
           options={[
             { value: "system", label: "Automatic" },
@@ -1420,8 +1420,8 @@ function DigestTest({ disabled }: { disabled: boolean }) {
         {busy && <Spinner className="h-3.5 w-3.5" />}
         Send a test
       </button>
-      {disabled && <span className="text-[13px] text-muted">Save your changes first.</span>}
-      {message && <p className={`w-full text-[13px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
+      {disabled && <span className="text-[15px] text-muted">Save your changes first.</span>}
+      {message && <p className={`w-full text-[15px] ${message.ok ? "text-good" : "text-bad"}`}>{message.text}</p>}
     </div>
   );
 }
