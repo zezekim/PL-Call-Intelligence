@@ -8,10 +8,7 @@ export async function signIn(page: Page) {
   await page.getByLabel("Email").fill(EMAIL);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  // First sign-in asks which environment to use.
-  await expect(page.getByRole("dialog", { name: "Choose an environment" })).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: /Cloud/ }).click();
-  // Signing in opens v2.
+  // Signing in opens v2 straight away: no questions first.
   await expect(page).toHaveURL(/\/v2$/);
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)$/, level: 1 })).toBeVisible();
 }

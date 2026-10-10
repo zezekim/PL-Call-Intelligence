@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { api, setToken } from "@/lib/api";
 import { useTitle } from "@/lib/hooks";
 import { AppMark } from "@/components/brand";
-import { askForEnvironmentNext } from "@/components/environment";
 import { CallBackIcon, CheckIcon, MessageIcon, TeamIcon } from "@/components/icons";
 import { Spinner } from "@/components/ui";
 
@@ -53,7 +52,6 @@ export default function LoginPage() {
       const result = await api.post<{ access_token: string }>("/auth/login", { email: email.trim(), password });
       setToken(result.access_token);
       setDone(true);
-      askForEnvironmentNext();
       // A beat to see the tick, then the day opens.
       window.setTimeout(() => router.replace("/v2"), 450);
     } catch (err) {

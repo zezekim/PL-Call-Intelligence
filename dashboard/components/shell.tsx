@@ -8,7 +8,6 @@ import { setBusinessZone } from "@/lib/format";
 import { TextSizePicker, useTextZoom } from "@/components/v2/text-size";
 import { APP_VERSION, BUILD_ID } from "@/lib/version";
 import { AppMark, Tile, type Tint } from "./brand";
-import { EnvironmentPrompt } from "./environment";
 import { RouteProgress, startProgress } from "./route-progress";
 import { UpdateNotice } from "./update-notice";
 import {
@@ -285,7 +284,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
-      <EnvironmentPrompt />
     </div>
   );
 }

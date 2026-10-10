@@ -14,6 +14,18 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("signing in opens Today straight away, with no questions first", async ({ page }) => {
+  await mockApi(page, { "POST /auth/login": (route) => route.fulfill({ json: { access_token: "e2e" } }) });
+  await page.addInitScript(() => window.localStorage.removeItem("pestlaunch.token"));
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@example.test");
+  await page.getByLabel("Password").fill("x");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/v2$/);
+  await expect(page.getByRole("region", { name: "Up next" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("Today is one job at a time: one big button, Later, and what's coming up", async ({ page }) => {
   const sent: unknown[] = [];
   await mockApi(page, {

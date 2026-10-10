@@ -6,7 +6,6 @@ import { Modal } from "./ui";
 export type Environment = "cloud" | "local";
 
 const KEY = "pestlaunch.environment";
-const ASK_KEY = "pestlaunch.askEnvironment";
 const EVENT = "pestlaunch:environment";
 
 export const ENGINE_FOR: Record<Environment, string> = { cloud: "deepgram", local: "local" };
@@ -65,30 +64,6 @@ export function useEnvironment() {
   }, []);
 
   return { env, choose };
-}
-
-/** Called after sign-in so the next page asks which environment to use. */
-export function askForEnvironmentNext() {
-  try {
-    window.sessionStorage.setItem(ASK_KEY, "1");
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-export function EnvironmentPrompt() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    try {
-      if (window.sessionStorage.getItem(ASK_KEY) === "1") {
-        window.sessionStorage.removeItem(ASK_KEY);
-        setOpen(true);
-      }
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-  return <EnvironmentDialog open={open} onClose={() => setOpen(false)} />;
 }
 
 export function EnvironmentDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
