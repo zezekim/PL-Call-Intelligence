@@ -287,7 +287,7 @@ Beyond the brief:
 - a spending cap
 - dark mode
 - printable reports
-- CI/CD with browser tests
+- browser tests (Playwright)
 
 #### B.2 Starting point
 
@@ -307,7 +307,7 @@ foundation, rather than bolted onto the receptionist code.
 | 3. Analysis | Triage schema, per-scorecard scoring schema, structured outputs, quote verification, manual rules computed in code |
 | 4. Consistency | Three-run majority consensus; sharper step criteria after comparing runs; *Borderline* marking where runs split |
 | 5. Review UI | Overview with the three views, Call Log, call detail with audio sync, Reps, Pipeline |
-| 6. Deployment | Docker Compose stack, Caddy TLS, self-hosted runner deploys on every green push, backups, health checks |
+| 6. Deployment | Docker Compose stack, Caddy TLS, backups, health checks |
 | 7. Settings and environments | Write-only API keys in the dashboard; Cloud/Local environment (Cloud by default, changed in Settings or the upload dialog); daily spend cap |
 | 8. Enhanced scoring | Live model lists from Anthropic and OpenAI; second-opinion model; deliberation on disagreements |
 | 9. Receptionist | Enabled on the demo number; call process in its persona; stereo recording scored like any call; playbook learned from graded calls |
@@ -873,29 +873,13 @@ token.
 - Cloudflare DNS in front of Caddy.
 - Configuration in `/opt/pestlaunch/.env`.
 
-**CI/CD** (`.github/workflows/ci.yml`), on every push to `main`:
-
-| Job | Runs on | Does |
-|---|---|---|
-| `api` | GitHub-hosted | ruff, pytest |
-| `voice` | GitHub-hosted | voice pipeline tests |
-| `dashboard` | GitHub-hosted | TypeScript check, production build |
-| `e2e` | GitHub-hosted, with real Postgres and Redis | seeds an admin and a synthetic call, runs Playwright |
-| `deploy` | self-hosted runner on the server | needs all four; stamps the version and commit, rebuilds changed services, reloads Caddy |
-
-Pull requests are tested but never deployed. The dashboard shows a notice when
-a newer build is live.
-
 **Operations:**
 - **Backups:** `ops/install-backup.sh` installs a nightly (03:15 UTC) dump of
   the database and recordings to `/var/backups/pestlaunch`, kept 7 days. It
   prints the restore command.
-- **Health:** `.github/workflows/health.yml` checks the API and dashboard every
-  15 minutes; a failure emails the repository owner. `/health/deep` checks the
-  database and each provider.
+- **Health:** `/health/deep` checks the database and each provider.
 - **Migrations** run on API start.
-- **Automatic restarts** by OS updates (`needrestart`) exclude Docker and the
-  runner, so a security update can't cancel a deploy.
+- **Automatic restarts** by OS updates (`needrestart`) exclude Docker.
 
 ---
 
@@ -1101,5 +1085,4 @@ pipecat/                     receptionist voice transport and recording
 worker/                      faster-whisper service
 caddy/                       reverse proxy, TLS, security headers
 ops/                         backups
-.github/workflows/           CI/CD and health checks
 ```
